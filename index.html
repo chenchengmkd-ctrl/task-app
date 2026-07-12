@@ -312,6 +312,7 @@
     .toolbar .search { flex: 1; min-width: 0; }
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
 <div class="container">
@@ -372,9 +373,7 @@
         <button type="button" data-export="txt">📄 テキスト保存 (.txt)</button>
         <button type="button" data-export="csv">📊 CSV保存 (.csv)</button>
         <hr class="export-sep">
-        <button type="button" data-export="pull">📥 シートから読み込む</button>
-        <button type="button" data-export="sheet">☁️ スプレッドシートに送信</button>
-        <button type="button" data-export="config">⚙ 送信先を設定</button>
+        <button type="button" data-export="sync">☁️ 今すぐ同期</button>
       </div>
     </div>
   </div>
@@ -434,7 +433,12 @@ let tasks = [];
 let recurring = [];   // 定期タスクのテンプレート
 let lineImported = [];   // 取り込み済みのLINEタスクIDリスト（重複防止）
 let hiddenCols = [];     // 非表示にしている列のキー
-let autoSyncTimer = null;   // 変更後に自動同期するためのタイマー
+let supabaseSyncTimer = null;
+
+/* ---------- Supabase ---------- */
+const SUPABASE_URL = 'https://xldkfkhgazpugfuscpqt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZGtma2hnYXpwdWdmdXNjcHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NDg3MzgsImV4cCI6MjA5OTQyNDczOH0.C3_TYQI8R3HeXYWTzca9erUMjpTWm2sneB7hk5Bre8Y';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let filter = "all";
 let sortBy = "custom";
 let searchText = "";
@@ -462,7 +466,7 @@ function load() {
 }
 function save() {
   localStorage.setItem(STORE_KEY, JSON.stringify(tasks));
-  scheduleAutoSync();   // 変更したら少し待って自動でシートへ同期
+  scheduleSupabaseSync();
 }
 function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -502,7 +506,7 @@ function loadRecurring() {
 }
 function saveRecurring() {
   localStorage.setItem(REC_KEY, JSON.stringify(recurring));
-  scheduleAutoSync();   // 定期タスクの変更もシート（→LINE）へ反映
+  scheduleSupabaseSync();
 }
 function todayISO() {
   const d = new Date(), p = n => String(n).padStart(2, "0");
@@ -1047,47 +1051,18 @@ async function doExport(kind) {
   if (kind === "copy") { await copyText(buildText()); alert("クリップボードにコピーしました"); }
   else if (kind === "txt") downloadFile(`tasks_${todayStamp()}.txt`, buildText(), "text/plain;charset=utf-8");
   else if (kind === "csv") downloadFile(`tasks_${todayStamp()}.csv`, buildCSV(), "text/csv;charset=utf-8");
-  else if (kind === "pull") pullFromSheets({ manual: true });
-  else if (kind === "sheet") await sendToSheet();
-  else if (kind === "config") configureSheetUrl();
+  else if (kind === "sync") { await pullFromSupabase(); await syncAllToSupabase(); toast("同期しました"); }
 }
 
-/* ---------- Googleスプレッドシート同期 ---------- */
+/* ---------- LINE Bot URL 設定（LINE取込用） ---------- */
 function configureSheetUrl() {
   const cur = localStorage.getItem(SHEET_URL_KEY) || "";
-  const url = prompt("GASウェブアプリのURL（.../exec）を貼り付けてください:", cur);
+  const url = prompt("LINE Bot GASのURL（.../exec）を入力してください:", cur);
   if (url === null) return;
   const trimmed = url.trim();
-  if (trimmed === "") { localStorage.removeItem(SHEET_URL_KEY); alert("送信先を解除しました"); return; }
-  if (!/^https:\/\/script\.google\.com\/.*\/exec$/.test(trimmed)) {
-    if (!confirm("URLの形式が想定と違います（.../exec で終わるはず）。このまま保存しますか?")) return;
-  }
+  if (trimmed === "") { localStorage.removeItem(SHEET_URL_KEY); alert("LINE Bot URLを解除しました"); return; }
   localStorage.setItem(SHEET_URL_KEY, trimmed);
-  alert("送信先を保存しました");
-}
-
-async function sendToSheet() {
-  const url = localStorage.getItem(SHEET_URL_KEY);
-  if (!url) {
-    alert("先に「⚙ 送信先を設定」でGASのURLを登録してください。");
-    configureSheetUrl();
-    return;
-  }
-  const body = JSON.stringify({ mode: "replace", tasks: exportRows(), recurring: exportRecurringRows() });
-  const opt = { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body };
-  try {
-    const res = await fetch(url, { ...opt, redirect: "follow" });
-    const data = await res.json();
-    if (data && data.ok) alert(`✅ 送信しました（${data.count}件）`);
-    else alert("送信しましたが、確認応答が想定と違います。スプレッドシートを確認してください。");
-  } catch {
-    try {
-      await fetch(url, { ...opt, mode: "no-cors" });
-      alert("送信しました。Googleスプレッドシートを確認してください。");
-    } catch {
-      alert("⚠ 送信に失敗しました。\n・「⚙ 送信先を設定」のURL\n・GASのデプロイ設定（アクセス: 全員）\nを確認してください。");
-    }
-  }
+  alert("LINE Bot URLを保存しました");
 }
 
 /* ---------- LINE取り込み（一元管理） ---------- */
@@ -1150,118 +1125,87 @@ function ackLineImported(ids) {
   fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body, mode: "no-cors" }).catch(() => {});
 }
 
-// 全タスクをスプレッドシートへ同期（フィルタ無視・通知の取りこぼし防止）
-function exportAllRows() {
-  return tasks.map(t => ({
-    id: t.id,
-    title: t.title, status: t.done ? "完了" : STATUS_LABEL[t.status],
-    priority: PRIO_LABEL[t.priority], due: t.due || "", note: t.note || "",
-    estimate: t.estimate || "", recurrence: RECUR_LABEL[t.recurrence] || "", tags: t.tags.join(" "),
-    deleted: t.deleted ? "true" : "false",
-    updated: t.updated || t.created || 0
-  }));
+/* ---------- Supabase 同期 ---------- */
+function taskToRow(t) {
+  return {
+    id: t.id, title: t.title,
+    status: t.status || 'todo', priority: t.priority || 'mid',
+    due: t.due || null, estimate: t.estimate || '',
+    recurrence: t.recurrence || 'none', note: t.note || '',
+    tags: t.tags || [], done: t.done || false,
+    deleted: t.deleted || false, from_line: t.fromLine || false,
+    updated_at: new Date(t.updated || Date.now()).toISOString()
+  };
 }
-function exportRecurringRows() {
-  return recurring.map(r => ({
-    title: r.title,
-    recurrence: recurDesc(r) || r.recurrence || "",
-    next: r.next || "",
-    priority: PRIO_LABEL[r.priority] || "",
-    estimate: r.estimate || ""
-  }));
+function rowToTask(row) {
+  return {
+    id: row.id, title: row.title,
+    status: row.status || 'todo', priority: row.priority || 'mid',
+    due: row.due || null, estimate: row.estimate || '',
+    recurrence: row.recurrence || 'none', note: row.note || '',
+    tags: row.tags || [], done: row.done || false,
+    deleted: row.deleted || false, fromLine: row.from_line || false,
+    created: new Date(row.created_at).getTime(),
+    updated: new Date(row.updated_at).getTime()
+  };
 }
-function autoSyncAll() {
-  const url = localStorage.getItem(SHEET_URL_KEY);
-  if (!url || (tasks.length === 0 && recurring.length === 0)) return;   // 空で上書きしない安全策
-  const body = JSON.stringify({ mode: "replace", tasks: exportAllRows(), recurring: exportRecurringRows() });
-  fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body, mode: "no-cors" }).catch(() => {});
+function scheduleSupabaseSync() {
+  clearTimeout(supabaseSyncTimer);
+  supabaseSyncTimer = setTimeout(syncAllToSupabase, 1500);
 }
-// 変更のたびに呼ばれる。連続変更をまとめて1.5秒後に1回だけ同期
-function scheduleAutoSync() {
-  if (!localStorage.getItem(SHEET_URL_KEY)) return;
-  clearTimeout(autoSyncTimer);
-  autoSyncTimer = setTimeout(autoSyncAll, 1500);
+async function syncAllToSupabase() {
+  try {
+    if (tasks.length) await db.from('tasks').upsert(tasks.map(taskToRow));
+    if (recurring.length) {
+      await db.from('recurring').upsert(recurring.map(r => ({
+        id: r.id, title: r.title, recurrence: r.recurrence,
+        weekday: r.weekday != null ? Number(r.weekday) : null,
+        monthday: r.monthday || null, next_date: r.next || null,
+        priority: r.priority || 'mid', estimate: r.estimate || ''
+      })));
+    }
+  } catch (e) { console.error('Supabase sync error:', e); }
 }
-
-/* ---------- Googleスプレッドシートからの読み込み（起動時同期） ---------- */
-const STATUS_FROM_JP = { "未着手": "todo", "着手中": "doing", "対応待ち": "waiting", "ペンディング": "pending", "完了": "done" };
-const PRIO_FROM_JP   = { "高": "high", "中": "mid", "低": "low" };
-const RECUR_FROM_JP  = { "": "none", "毎日": "daily", "毎週": "weekly", "毎月": "monthly" };
-
-function pullFromSheets(opts) {
-  opts = opts || {};
-  const url = localStorage.getItem(SHEET_URL_KEY);
-  if (!url) { if (opts.manual) { alert("先に「⚙ 送信先を設定」でGASのURLを登録してください。"); } return; }
-  const cb = "__onSheetsPull";
-  const script = document.createElement("script");
-  const done = () => { script.remove(); try { delete window[cb]; } catch { window[cb] = undefined; } };
-  window[cb] = data => { done(); mergeFromSheets(data, opts); };
-  script.onerror = () => { done(); if (opts.manual) toast("⚠ シートからの読み込みに失敗しました"); };
-  const sep = url.includes("?") ? "&" : "?";
-  script.src = `${url}${sep}action=all&callback=${cb}&t=${Date.now()}`;
-  document.body.appendChild(script);
-}
-
-function mergeFromSheets(data, opts) {
-  if (!data || !data.ok || !Array.isArray(data.tasks)) {
-    if (opts && opts.manual) toast("⚠ シートからの応答が想定外です");
-    return;
-  }
-  const localById = {};
-  tasks.forEach(t => { if (t.id) localById[t.id] = t; });
-
-  let changed = false;
-  for (const rt of data.tasks) {
-    if (!rt.id) continue;
-    const remoteUpdated = Number(rt.updated) || 0;
-    const isRemoteDeleted = rt.deleted === "true";
-    const remoteStatusKey = STATUS_FROM_JP[rt.status] || "todo";
-    const remoteDone = rt.status === "完了";
-
-    const local = localById[rt.id];
-    if (local) {
-      const localUpdated = local.updated || local.created || 0;
-      if (remoteUpdated > localUpdated) {
-        if (isRemoteDeleted) {
-          local.deleted = true;
+async function pullFromSupabase() {
+  try {
+    const [{ data: taskData }, { data: recData }] = await Promise.all([
+      db.from('tasks').select('*'),
+      db.from('recurring').select('*')
+    ]);
+    let changed = false;
+    if (taskData && taskData.length) {
+      const localById = {};
+      tasks.forEach(t => { localById[t.id] = t; });
+      for (const row of taskData) {
+        const remoteUpdated = new Date(row.updated_at).getTime();
+        const local = localById[row.id];
+        if (local) {
+          if (remoteUpdated > (local.updated || local.created || 0)) {
+            Object.assign(local, rowToTask(row));
+            changed = true;
+          }
         } else {
-          local.title      = rt.title;
-          local.status     = remoteDone ? (local.status || "todo") : remoteStatusKey;
-          local.done       = remoteDone;
-          local.priority   = PRIO_FROM_JP[rt.priority] || "mid";
-          local.due        = rt.due || null;
-          local.estimate   = rt.estimate || "";
-          local.recurrence = RECUR_FROM_JP[rt.recurrence] ?? "none";
-          local.note       = rt.note || "";
-          local.tags       = rt.tags ? rt.tags.split(" ").filter(Boolean) : [];
-          local.deleted    = false;
+          tasks.push(rowToTask(row));
+          changed = true;
         }
-        local.updated = remoteUpdated;
-        changed = true;
       }
-    } else if (!isRemoteDeleted) {
-      tasks.push({
-        id: rt.id, title: rt.title,
-        status: remoteDone ? "todo" : remoteStatusKey,
-        done: remoteDone,
-        priority: PRIO_FROM_JP[rt.priority] || "mid",
-        due: rt.due || null, estimate: rt.estimate || "",
-        recurrence: RECUR_FROM_JP[rt.recurrence] ?? "none",
-        note: rt.note || "",
-        tags: rt.tags ? rt.tags.split(" ").filter(Boolean) : [],
-        created: remoteUpdated || Date.now(), updated: remoteUpdated, deleted: false
-      });
+    }
+    if (recData && recData.length >= recurring.length && recData.length > 0) {
+      recurring = recData.map(r => ({
+        id: r.id, title: r.title, recurrence: r.recurrence,
+        weekday: r.weekday, monthday: r.monthday, next: r.next_date,
+        priority: r.priority || 'mid', estimate: r.estimate || '',
+        created: new Date(r.created_at).getTime()
+      }));
       changed = true;
     }
-  }
-
-  if (changed) {
-    save(); render();
-    if (opts && opts.manual) toast("シートと同期しました");
-    else toast("シートからタスクを更新しました");
-  } else if (opts && opts.manual) {
-    toast("シートと差異なし");
-  }
+    if (changed) {
+      localStorage.setItem(STORE_KEY, JSON.stringify(tasks));
+      localStorage.setItem(REC_KEY, JSON.stringify(recurring));
+      render(); renderRecurring();
+      toast('クラウドから同期しました');
+    }
+  } catch (e) { console.error('Supabase pull error:', e); }
 }
 
 // 画面下に一時的な通知を出す
@@ -1408,9 +1352,8 @@ initRecForm();
 generateDue();      // 今日来た定期タスクをボードへ
 render();
 renderRecurring();
-pullFromLine();      // LINEで追加した分を自動取り込み（送信先が未設定なら何もしない）
-pullFromSheets();    // 起動時にシートから全タスクを取得してマージ
-scheduleAutoSync();  // 起動時にシートを最新化（定期タスクのタブも反映）
+pullFromLine();       // LINEで追加した分を自動取り込み（GAS URL未設定なら何もしない）
+pullFromSupabase();  // 起動時にSupabaseからタスクを取得してマージ
 </script>
 </body>
 </html>
