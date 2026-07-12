@@ -1,0 +1,32 @@
+
+<svg width="2500" height="843" viewBox="0 0 2500 843" xmlns="http://www.w3.org/2000/svg">
+  <rect width="2500" height="843" fill="#F7F8FB"/>
+  
+    
+    <circle cx="416.6666666666667" cy="330" r="150" fill="#4F46E5"/>
+    <circle cx="338.6666666666667" cy="260" r="13" fill="#fff"/><rect x="368.6666666666667" y="249" width="150" height="22" rx="11" fill="#fff"/><circle cx="338.6666666666667" cy="330" r="13" fill="#fff"/><rect x="368.6666666666667" y="319" width="150" height="22" rx="11" fill="#fff"/><circle cx="338.6666666666667" cy="400" r="13" fill="#fff"/><rect x="368.6666666666667" y="389" width="150" height="22" rx="11" fill="#fff"/>
+    <text x="416.6666666666667" y="640" font-family="'Yu Gothic','YuGothic','Meiryo','BIZ UDGothic','MS PGothic',sans-serif" font-size="104" font-weight="800"
+          fill="#1F2430" text-anchor="middle">一覧</text>
+    <text x="416.6666666666667" y="712" font-family="'Yu Gothic','YuGothic','Meiryo','BIZ UDGothic','MS PGothic',sans-serif" font-size="46" font-weight="500"
+          fill="#8A90A0" text-anchor="middle">タスクを見る</text>
+    <rect x="831.3333333333334" y="120" width="4" height="603" rx="2" fill="#E6E9F0"/>
+    <circle cx="1250" cy="330" r="150" fill="#0EA5E9"/>
+    
+      <path d="M1250 238
+        c -55 0 -82 38 -82 92 c 0 64 -22 80 -36 100 l 236 0
+        c -14 -20 -36 -36 -36 -100 c 0 -54 -27 -92 -82 -92 z"
+        fill="#fff"/>
+      <circle cx="1250" cy="450" r="26" fill="#fff"/>
+    <text x="1250" y="640" font-family="'Yu Gothic','YuGothic','Meiryo','BIZ UDGothic','MS PGothic',sans-serif" font-size="104" font-weight="800"
+          fill="#1F2430" text-anchor="middle">通知</text>
+    <text x="1250" y="712" font-family="'Yu Gothic','YuGothic','Meiryo','BIZ UDGothic','MS PGothic',sans-serif" font-size="46" font-weight="500"
+          fill="#8A90A0" text-anchor="middle">期限を確認</text>
+    <rect x="1664.6666666666667" y="120" width="4" height="603" rx="2" fill="#E6E9F0"/>
+    <circle cx="2083.3333333333335" cy="330" r="150" fill="#14B8A6"/>
+    <text x="2083.3333333333335" y="388" font-family="'Yu Gothic','YuGothic','Meiryo','BIZ UDGothic','MS PGothic',sans-serif" font-size="200" font-weight="800"
+            fill="#fff" text-anchor="middle">?</text>
+    <text x="2083.3333333333335" y="640" font-family="'Yu Gothic','YuGothic','Meiryo','BIZ UDGothic','MS PGothic',sans-serif" font-size="104" font-weight="800"
+          fill="#1F2430" text-anchor="middle">ヘルプ</text>
+    <text x="2083.3333333333335" y="712" font-family="'Yu Gothic','YuGothic','Meiryo','BIZ UDGothic','MS PGothic',sans-serif" font-size="46" font-weight="500"
+          fill="#8A90A0" text-anchor="middle">使い方</text>
+</svg>

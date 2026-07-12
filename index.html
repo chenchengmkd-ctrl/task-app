@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タスク管理</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1f2933;
+    --muted: #7b8794;
+    --border: #e4e7eb;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --high: #ef4444;
+    --mid: #f59e0b;
+    --low: #10b981;
+    --shadow: 0 1px 2px rgba(0,0,0,.06);
+    --tag-bg: #ede9fe; --tag-fg: #6d28d9;
+    --due-bg: #eef2f7;
+    --chip-fg:#52606d;
+    --col-bg:#e9ebef;
+    --hi-bg:#fee2e2; --hi-fg:#ef4444;
+    --mi-bg:#fef3c7; --mi-fg:#b45309;
+    --lo-bg:#d1fae5; --lo-fg:#047857;
+    --est-bg:#e0f2fe; --est-fg:#0369a1;
+    --rec-bg:#fce7f3; --rec-fg:#be185d;
+    --field-bg:#ffffff;
+    --track:#e4e7eb;
+  }
+  [data-theme="dark"] {
+    --bg: #0f1419;
+    --card: #1a2029;
+    --text: #e2e8f0;
+    --muted: #8a97a8;
+    --border: #2d3643;
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --shadow: 0 1px 2px rgba(0,0,0,.3);
+    --tag-bg:#2e2a45; --tag-fg:#c4b5fd;
+    --due-bg:#222b38;
+    --chip-fg:#aab4c0;
+    --col-bg:#141a21;
+    --hi-bg:#3b1f22; --hi-fg:#f87171;
+    --mi-bg:#3a2f1a; --mi-fg:#fbbf24;
+    --lo-bg:#10301f; --lo-fg:#34d399;
+    --est-bg:#102a3b; --est-fg:#7dd3fc;
+    --rec-bg:#3a1a2c; --rec-fg:#f9a8d4;
+    --field-bg:#222b38;
+    --track:#2d3643;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.45;
+    font-size: 14px;
+    padding: 14px 14px 28px;
+    transition: background .2s, color .2s;
+  }
+  .container { max-width: 1280px; margin: 0 auto; }
+  header { margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+  h1 { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex: 1; }
+  h1 .count {
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    background: var(--card); padding: 2px 9px; border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .theme-toggle {
+    font: inherit; font-size: 17px; cursor: pointer; background: var(--card);
+    border: 1px solid var(--border); border-radius: 9px; width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center; transition: all .15s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); }
+
+  /* タブ（ボード / 定期タスク） */
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tab {
+    font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+    padding: 7px 16px; border: 1px solid var(--border); background: var(--card);
+    color: var(--muted); border-radius: 9px; transition: all .15s;
+  }
+  .tab:hover { border-color: var(--accent); }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* 入力フォーム */
+  .add-form {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 11px; padding: 11px; box-shadow: var(--shadow);
+    margin-bottom: 12px;
+  }
+  .add-form .row { display: flex; gap: 7px; margin-bottom: 7px; }
+  .add-form .row:last-child { margin-bottom: 0; }
+  input[type="text"], input[type="date"], select {
+    font: inherit; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--field-bg); color: var(--text); outline: none;
+    transition: border-color .15s;
+  }
+  input[type="date"] { color-scheme: light dark; }
+  input:focus, select:focus { border-color: var(--accent); }
+  #title { flex: 1; }
+  #tags { flex: 1; }
+  .add-form #estimate { max-width: 150px; }
+  .btn {
+    font: inherit; font-weight: 600; cursor: pointer; border: none;
+    border-radius: 8px; padding: 8px 16px; background: var(--accent); color: #fff;
+    transition: background .15s;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn.ghost:hover { border-color: var(--accent); color: var(--text); }
+
+  /* フィルタバー */
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+    margin-bottom: 11px;
+  }
+  .chip {
+    font: inherit; font-size: 13px; cursor: pointer; padding: 5px 12px;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--card);
+    color: var(--muted); transition: all .15s;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .toolbar .spacer { flex: 1; }
+  .toolbar select { padding: 5px 9px; font-size: 13px; }
+  .toolbar .search {
+    padding: 6px 10px; font-size: 13px; min-width: 150px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: var(--field-bg); color: var(--text);
+  }
+  .toolbar .search:focus { border-color: var(--accent); outline: none; }
+
+  /* 書き出しメニュー */
+  .export-wrap { position: relative; }
+  .export-menu {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 20;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.12); padding: 6px; min-width: 230px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .export-menu[hidden] { display: none; }
+  .export-menu button {
+    font: inherit; text-align: left; background: none; border: none; color: var(--text);
+    padding: 9px 12px; border-radius: 7px; cursor: pointer;
+  }
+  .export-menu button:hover { background: var(--due-bg); }
+  .export-sep { border: none; border-top: 1px solid var(--border); margin: 4px 2px; }
+  .export-menu .menu-title { font-size: 11px; color: var(--muted); padding: 4px 12px 2px; }
+  .export-menu label.col-toggle-item {
+    display: flex; align-items: center; gap: 9px; padding: 7px 12px;
+    border-radius: 7px; cursor: pointer; color: var(--text); font-size: 13px;
+  }
+  .export-menu label.col-toggle-item:hover { background: var(--due-bg); }
+  .export-menu label.col-toggle-item input { width: 15px; height: 15px; cursor: pointer; }
+
+  /* カンバンボード（状態ごとの列） */
+  #board {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 8px; align-items: start;
+  }
+  .col {
+    background: var(--col-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 7px; transition: outline .12s;
+  }
+  .col.over { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  .col-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 4px 6px;
+  }
+  .col-title { font-weight: 700; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  .col-count {
+    font-size: 11px; color: var(--muted); background: var(--card);
+    border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; min-width: 20px; text-align: center;
+  }
+  .col-list { list-style: none; display: flex; flex-direction: column; gap: 5px; min-height: 36px; }
+  .col-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 8px 4px; opacity: .7; }
+
+  /* 定期タスク一覧 */
+  .rec-hint {
+    font-size: 12px; color: var(--muted); background: var(--due-bg);
+    border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; max-width: 720px;
+  }
+  #recList { list-style: none; display: flex; flex-direction: column; gap: 7px; max-width: 720px; }
+  .rec-item {
+    display: flex; align-items: center; gap: 10px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px;
+    box-shadow: var(--shadow);
+  }
+  .rec-body { flex: 1; min-width: 0; }
+  .rec-title { font-weight: 600; word-break: break-word; }
+  .rec-next { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .rec-item .btn { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+
+  .task {
+    display: flex; align-items: flex-start; gap: 7px;
+    background: var(--card); border: 1px solid var(--border);
+    border-left: 4px solid var(--border);
+    border-radius: 9px; padding: 6px 9px;
+    box-shadow: var(--shadow); transition: opacity .2s, box-shadow .15s;
+  }
+  /* 左の色帯は「高」優先度だけ。中・低は無色でドットのみ */
+  .task.prio-high { border-left-color: var(--high); }
+  .task.done { opacity: .5; }
+  .task.done .task-title { text-decoration: line-through; color: var(--muted); }
+  .task.dragging { opacity: .4; }
+  .task.drag-over { box-shadow: 0 0 0 2px var(--accent); }
+
+  .drag-handle {
+    cursor: grab; color: var(--muted); font-size: 15px; line-height: 1; margin-top: 3px;
+    user-select: none; padding: 1px;
+  }
+  .drag-handle:active { cursor: grabbing; }
+  .drag-handle.disabled { opacity: .25; cursor: not-allowed; }
+
+  .checkbox {
+    appearance: none; width: 18px; height: 18px; min-width: 18px; margin-top: 2px;
+    border: 2px solid var(--muted); border-radius: 5px; cursor: pointer;
+    position: relative; transition: all .15s;
+  }
+  .checkbox:checked { background: var(--accent); border-color: var(--accent); }
+  .checkbox:checked::after {
+    content: "✓"; color: #fff; font-size: 12px; font-weight: bold;
+    position: absolute; top: -2px; left: 2px;
+  }
+
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-weight: 600; font-size: 13.5px; line-height: 1.35; word-break: break-word; cursor: text; }
+  .task-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; align-items: center; }
+  /* バッジは背景を統一し、色は小さなドットだけで表現 */
+  .badge {
+    font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+    display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+    background: var(--due-bg); color: var(--chip-fg);
+  }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .dot-high { background: var(--high); }
+  .dot-mid  { background: var(--mid); }
+  .dot-low  { background: var(--low); }
+  .dot-todo { background: #9aa5b1; }
+  .dot-doing { background: var(--accent); }
+  .dot-waiting { background: #a78bfa; }
+  .dot-pending { background: var(--mid); }
+  .dot-done { background: var(--low); }
+  .dot-rec { background: var(--rec-fg); }
+  .dot-recurring { background: var(--rec-fg); }
+  /* 定期タスク列のカード内アクション */
+  .rec-card-actions { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  .rec-card-actions .btn { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+  .rec-card .rec-next { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .badge.due.overdue { background: var(--hi-bg); color: var(--hi-fg); }
+  .status-toggle { cursor: pointer; }
+  .status-toggle:hover { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+  /* 進捗メモ */
+  .task-note {
+    margin-top: 5px; font-size: 12px; color: var(--muted);
+    background: var(--due-bg); border-radius: 6px; padding: 4px 9px;
+    white-space: pre-wrap; word-break: break-word; cursor: text;
+  }
+  .add-note {
+    margin-top: 4px; font: inherit; font-size: 12px; color: var(--muted);
+    background: none; border: 1px dashed var(--border); border-radius: 6px;
+    padding: 2px 9px; cursor: pointer; transition: all .15s;
+    display: none;   /* 普段は隠す */
+  }
+  .task:hover .add-note { display: inline-block; }
+  .add-note:hover { color: var(--accent); border-color: var(--accent); }
+
+  .actions { display: flex; gap: 1px; }
+  .icon-btn {
+    background: none; border: none; cursor: pointer; color: var(--muted);
+    font-size: 15px; padding: 3px 6px; border-radius: 6px; line-height: 1;
+    transition: all .15s;
+  }
+  .icon-btn:hover { background: var(--due-bg); color: var(--text); }
+  .icon-btn.delete:hover { background: var(--hi-bg); color: var(--hi-fg); }
+
+  /* 編集フォーム */
+  .edit-form { display: flex; flex-direction: column; gap: 7px; width: 100%; }
+  .edit-form input[type="text"] { width: 100%; }
+  .edit-row { display: flex; gap: 7px; flex-wrap: wrap; }
+  .edit-row > * { flex: 1; min-width: 110px; }
+  .edit-form textarea {
+    font: inherit; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--field-bg); color: var(--text);
+    outline: none; resize: vertical; width: 100%; min-height: 56px;
+  }
+  .edit-form textarea:focus { border-color: var(--accent); }
+  .edit-actions { display: flex; gap: 8px; }
+  .edit-actions .btn { padding: 6px 14px; }
+
+  .empty {
+    text-align: center; color: var(--muted); padding: 36px 16px;
+    background: var(--card); border: 1px dashed var(--border); border-radius: 11px;
+  }
+  .empty .emoji { font-size: 34px; display: block; margin-bottom: 6px; }
+
+  footer { margin-top: 14px; text-align: center; color: var(--muted); font-size: 12px; }
+  footer button {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    text-decoration: underline; font: inherit;
+  }
+  footer button:hover { color: var(--high); }
+
+  @media (max-width: 600px) {
+    .add-form .row { flex-wrap: wrap; }
+    #title, #tags { flex-basis: 100%; }
+    .add-form #estimate { max-width: none; }
+    .toolbar .search { flex: 1; min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>📋 タスク管理 <span class="count" id="count"></span></h1>
+  </header>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-view="board">📋 ボード</button>
+    <button type="button" class="tab" data-view="recurring">🔁 定期タスク</button>
+  </div>
+
+  <section id="boardView">
+  <!-- タスク追加フォーム -->
+  <form class="add-form" id="addForm" autocomplete="off">
+    <div class="row">
+      <input type="text" id="title" placeholder="新しいタスクを入力…" required>
+      <button type="submit" class="btn">追加</button>
+    </div>
+    <div class="row">
+      <select id="status" title="状態">
+        <option value="todo">未着手</option>
+        <option value="doing">着手中</option>
+        <option value="waiting">対応待ち</option>
+        <option value="pending">ペンディング</option>
+      </select>
+      <select id="priority" title="優先度">
+        <option value="mid">優先度: 中</option>
+        <option value="high">優先度: 高</option>
+        <option value="low">優先度: 低</option>
+      </select>
+      <input type="date" id="due" title="期限">
+      <input type="text" id="estimate" placeholder="見積り (例: 30分)" title="見積もり時間">
+    </div>
+  </form>
+
+  <!-- フィルタ・並べ替え -->
+  <div class="toolbar">
+    <button class="chip active" data-filter="all">すべて</button>
+    <button class="chip" data-filter="active">未完了</button>
+    <button class="chip" data-filter="done">完了</button>
+    <input type="search" id="search" class="search" placeholder="🔍 検索…">
+    <span class="spacer"></span>
+    <select id="sort" title="並べ替え">
+      <option value="custom">カスタム順 (ドラッグ可)</option>
+      <option value="due">期限順</option>
+      <option value="priority">優先度順</option>
+    </select>
+    <div class="export-wrap">
+      <button type="button" class="chip" id="colToggleBtn" title="列の表示/非表示">🗂 列</button>
+      <div class="export-menu" id="colToggleMenu" hidden></div>
+    </div>
+    <button type="button" class="chip" id="lineImportBtn" title="LINEで追加したタスクを取り込む">🔄 LINE取込</button>
+    <div class="export-wrap">
+      <button type="button" class="chip" id="exportBtn">📤 書き出し</button>
+      <div class="export-menu" id="exportMenu" hidden>
+        <button type="button" data-export="copy">📋 テキストをコピー</button>
+        <button type="button" data-export="txt">📄 テキスト保存 (.txt)</button>
+        <button type="button" data-export="csv">📊 CSV保存 (.csv)</button>
+        <hr class="export-sep">
+        <button type="button" data-export="pull">📥 シートから読み込む</button>
+        <button type="button" data-export="sheet">☁️ スプレッドシートに送信</button>
+        <button type="button" data-export="config">⚙ 送信先を設定</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="board"></div>
+  </section>
+
+  <section id="recurringView" hidden>
+    <form class="add-form" id="recForm" autocomplete="off">
+      <div class="row">
+        <input type="text" id="recTitle" placeholder="定期タスク名…（例: 日報を書く）" required>
+        <button type="submit" class="btn">追加</button>
+      </div>
+      <div class="row">
+        <select id="recInterval" title="周期">
+          <option value="daily">毎日</option>
+          <option value="weekly">毎週</option>
+          <option value="monthly">毎月</option>
+        </select>
+        <select id="recWeekday" title="曜日" hidden>
+          <option value="0">日曜</option>
+          <option value="1">月曜</option>
+          <option value="2">火曜</option>
+          <option value="3">水曜</option>
+          <option value="4">木曜</option>
+          <option value="5">金曜</option>
+          <option value="6">土曜</option>
+        </select>
+        <select id="recMonthday" title="日にち" hidden></select>
+        <select id="recPriority" title="優先度">
+          <option value="mid">優先度: 中</option>
+          <option value="high">優先度: 高</option>
+          <option value="low">優先度: 低</option>
+        </select>
+        <input type="text" id="recEstimate" placeholder="見積り (例: 30分)">
+        <input type="date" id="recStart" title="開始日">
+      </div>
+    </form>
+    <p class="rec-hint">💡 登録すると、開始日以降に <b>毎日 / 毎週◯曜 / 毎月◯日</b> のペースで「ボード」の<b>未着手</b>へ自動追加されます（アプリを開いた時にその日の分を作成）。「今すぐ作成」で手動追加も可能です。</p>
+    <ul id="recList"></ul>
+  </section>
+
+  <footer>
+    <span id="footerText"></span>
+    <button id="clearDone">完了したタスクを削除</button>
+  </footer>
+</div>
+
+<script>
+const STORE_KEY = "task-app.tasks.v1";
+const THEME_KEY = "task-app.theme";
+const SHEET_URL_KEY = "task-app.sheetUrl";
+const REC_KEY = "task-app.recurring.v1";
+const LINE_IMPORTED_KEY = "task-app.lineImported.v1";   // 取り込み済みLINEタスクのID
+const HIDDEN_COLS_KEY = "task-app.hiddenCols.v1";       // 非表示にしている列
+let tasks = [];
+let recurring = [];   // 定期タスクのテンプレート
+let lineImported = [];   // 取り込み済みのLINEタスクIDリスト（重複防止）
+let hiddenCols = [];     // 非表示にしている列のキー
+let autoSyncTimer = null;   // 変更後に自動同期するためのタイマー
+let filter = "all";
+let sortBy = "custom";
+let searchText = "";
+let editingId = null;
+let editFocus = null;   // 編集を開いたときに最初にフォーカスする項目
+
+const PRIO_LABEL = { high: "高", mid: "中", low: "低" };
+const PRIO_ORDER = { high: 0, mid: 1, low: 2 };
+const RECUR_LABEL = { none: "", daily: "毎日", weekly: "毎週", monthly: "毎月" };
+const STATUS_LABEL = { todo: "未着手", doing: "着手中", waiting: "対応待ち", pending: "ペンディング" };
+const STATUS_CYCLE = ["todo", "doing", "waiting", "pending"];
+
+/* ---------- 永続化 ---------- */
+function load() {
+  let parsed = [];
+  try { parsed = JSON.parse(localStorage.getItem(STORE_KEY)) || []; }
+  catch { parsed = []; }
+  // 旧データに新しい項目の初期値を補完
+  tasks = parsed.map(t => ({
+    note: "", estimate: "", recurrence: "none", status: "todo", deleted: false,
+    ...t,
+    tags: Array.isArray(t.tags) ? t.tags : [],
+    updated: t.updated || t.created || 0
+  }));
+}
+function save() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(tasks));
+  scheduleAutoSync();   // 変更したら少し待って自動でシートへ同期
+}
+function newId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+/* ---------- 定期タスク ---------- */
+const WEEKDAY_JP = ["日", "月", "火", "水", "木", "金", "土"];
+function isoOf(d) { const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+// その月の monthday（数値 or "last"）に当たる日（月末を超えないよう調整）
+function monthdayFor(y, m, monthday) {
+  const last = new Date(y, m + 1, 0).getDate();
+  return monthday === "last" ? last : Math.min(Number(monthday), last);
+}
+// 開始日以降で最初に weekday になる日
+function firstWeekly(startISO, weekday) {
+  const d = new Date(startISO + "T00:00:00"); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + ((Number(weekday) - d.getDay() + 7) % 7));
+  return isoOf(d);
+}
+// 開始日以降で最初に monthday になる日
+function firstMonthly(startISO, monthday) {
+  const s = new Date(startISO + "T00:00:00"); s.setHours(0, 0, 0, 0);
+  let y = s.getFullYear(), m = s.getMonth();
+  let cand = new Date(y, m, monthdayFor(y, m, monthday));
+  if (cand < s) { m++; if (m > 11) { m = 0; y++; } cand = new Date(y, m, monthdayFor(y, m, monthday)); }
+  return isoOf(cand);
+}
+// 表示用ラベル（毎週水曜 / 毎月15日 / 毎月末日 など）
+function recurDesc(r) {
+  if (r.recurrence === "weekly" && r.weekday != null && r.weekday !== "") return `毎週${WEEKDAY_JP[Number(r.weekday)]}曜`;
+  if (r.recurrence === "monthly" && r.monthday != null && r.monthday !== "") return r.monthday === "last" ? "毎月末日" : `毎月${r.monthday}日`;
+  return RECUR_LABEL[r.recurrence] || "";
+}
+function loadRecurring() {
+  try { recurring = JSON.parse(localStorage.getItem(REC_KEY)) || []; }
+  catch { recurring = []; }
+}
+function saveRecurring() {
+  localStorage.setItem(REC_KEY, JSON.stringify(recurring));
+  scheduleAutoSync();   // 定期タスクの変更もシート（→LINE）へ反映
+}
+function todayISO() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+// テンプレートから実タスク（普通の単発タスク）を作る
+function makeTaskFromTemplate(r, dueDate) {
+  return {
+    id: newId(), title: r.title, priority: r.priority, due: dueDate || null,
+    estimate: r.estimate || "", recurrence: "none", tags: (r.tags || []).slice(),
+    note: "", status: "todo", done: false, created: Date.now(), updated: Date.now(), fromRecurring: r.id
+  };
+}
+function addRecurring(f) {
+  const start = f.start || todayISO();
+  let next = start, weekday = null, monthday = null;
+  if (f.interval === "weekly")  { weekday = String(f.weekday); next = firstWeekly(start, weekday); }
+  else if (f.interval === "monthly") { monthday = String(f.monthday); next = firstMonthly(start, monthday); }
+  recurring.push({
+    id: newId(), title: f.title, recurrence: f.interval,
+    priority: f.priority, estimate: f.estimate || "", tags: parseTags(f.tags),
+    weekday, monthday, next, created: Date.now()
+  });
+  saveRecurring();
+  generateDue();          // 開始日が今日以前なら即作成
+  render(); renderRecurring();
+}
+function deleteRecurring(id) {
+  recurring = recurring.filter(r => r.id !== id);
+  saveRecurring(); renderRecurring(); render();
+}
+// 今すぐ1件をボードへ（スケジュールは変えない）
+function generateNow(id) {
+  const r = recurring.find(r => r.id === id);
+  if (!r) return;
+  tasks.push(makeTaskFromTemplate(r, todayISO()));
+  save(); render();
+  alert(`「${r.title}」をボードの未着手に追加しました`);
+}
+// 予定日が来た分をボードへ自動生成（開いた時に呼ぶ）
+function generateDue() {
+  const today = todayISO();
+  let created = 0;
+  recurring.forEach(r => {
+    if (!r.next) r.next = today;
+    if (r.next <= today) {
+      tasks.push(makeTaskFromTemplate(r, r.next));
+      created++;
+      let n = r.next;
+      do { n = nextDue(n, r); } while (n <= today);  // 次の予定日へ
+      r.next = n;
+    }
+  });
+  if (created) { save(); saveRecurring(); }
+  return created;
+}
+function fmtDateJP(iso) {
+  if (!iso) return "-";
+  const [y, m, d] = iso.split("-");
+  return `${y}/${Number(m)}/${Number(d)}`;
+}
+function renderRecurring() {
+  const list = document.getElementById("recList");
+  list.innerHTML = "";
+  if (recurring.length === 0) {
+    list.innerHTML = `<li class="col-empty">定期タスクはまだありません。上のフォームから登録してください。</li>`;
+    return;
+  }
+  recurring.forEach(r => {
+    const li = document.createElement("li");
+    li.className = "rec-item";
+    let meta = `<span class="badge"><i class="dot dot-rec"></i>${recurDesc(r)}</span>`;
+    meta += `<span class="badge"><i class="dot dot-${r.priority}"></i>${PRIO_LABEL[r.priority]}</span>`;
+    if (r.estimate) meta += `<span class="badge">⏱ ${escapeHtml(r.estimate)}</span>`;
+    li.innerHTML = `
+      <div class="rec-body">
+        <div class="rec-title">${escapeHtml(r.title)}</div>
+        <div class="task-meta">${meta}</div>
+        <div class="rec-next">次回作成: ${fmtDateJP(r.next)}</div>
+      </div>
+      <button type="button" class="btn ghost rec-now">今すぐ作成</button>
+      <button type="button" class="icon-btn delete rec-del" title="削除">×</button>
+    `;
+    li.querySelector(".rec-now").addEventListener("click", () => generateNow(r.id));
+    li.querySelector(".rec-del").addEventListener("click", () => {
+      if (confirm(`定期タスク「${r.title}」を削除しますか?\n（すでにボードに作成済みのタスクは残ります）`)) deleteRecurring(r.id);
+    });
+    list.appendChild(li);
+  });
+}
+
+/* ---------- テーマ（常にダークモード固定） ---------- */
+function initTheme() {
+  document.documentElement.setAttribute("data-theme", "dark");
+}
+
+/* ---------- 操作 ---------- */
+function addTask(fields) {
+  tasks.push({
+    id: newId(),
+    title: fields.title,
+    priority: fields.priority,
+    due: fields.due || null,
+    estimate: fields.estimate || "",
+    recurrence: fields.recurrence || "none",
+    tags: parseTags(fields.tags),
+    note: "",
+    status: fields.status || "todo",
+    done: false,
+    created: Date.now(),
+    updated: Date.now()
+  });
+  save(); render();
+}
+function parseTags(str) {
+  return String(str || "").split(",").map(t => t.trim()).filter(Boolean);
+}
+function toggleTask(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  t.done = !t.done;
+  t.updated = Date.now();
+  save(); render();
+}
+function nextDue(due, r) {
+  const rec = (typeof r === "string") ? r : r.recurrence;
+  const base = due ? new Date(due + "T00:00:00") : new Date();
+  base.setHours(0, 0, 0, 0);
+  if (rec === "weekly") { base.setDate(base.getDate() + 7); return isoOf(base); }
+  if (rec === "monthly") {
+    // 翌月の指定日（無ければ現在の日付）。月末を超えないよう調整
+    const md = (typeof r === "object" && r.monthday != null && r.monthday !== "") ? r.monthday : base.getDate();
+    let y = base.getFullYear(), m = base.getMonth() + 1;
+    if (m > 11) { m = 0; y++; }
+    return isoOf(new Date(y, m, monthdayFor(y, m, md)));
+  }
+  // daily（その他）
+  base.setDate(base.getDate() + 1);
+  return isoOf(base);
+}
+function deleteTask(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  if (editingId === id) editingId = null;
+  t.deleted = true;
+  t.updated = Date.now();
+  save(); render();
+}
+function cycleStatus(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  const i = STATUS_CYCLE.indexOf(t.status);
+  t.status = STATUS_CYCLE[(i + 1) % STATUS_CYCLE.length];
+  t.updated = Date.now();
+  save(); render();
+}
+function updateTask(id, fields) {
+  const t = tasks.find(t => t.id === id);
+  if (t) { Object.assign(t, fields, { updated: Date.now() }); save(); }
+}
+// タスクの上にドロップ：その列の状態に変え、そのタスクの直前へ並べ替え
+function dropOnTask(draggedId, targetId) {
+  const dragged = tasks.find(t => t.id === draggedId);
+  const target = tasks.find(t => t.id === targetId);
+  if (!dragged || !target || draggedId === targetId) return;
+  dragged.status = target.status;
+  dragged.done = target.done;
+  dragged.updated = Date.now();
+  tasks.splice(tasks.findIndex(t => t.id === draggedId), 1);
+  tasks.splice(tasks.findIndex(t => t.id === targetId), 0, dragged);
+  save(); render();
+}
+// 列（の空きスペース）にドロップ：その列の状態に変え、末尾へ
+function dropOnColumn(draggedId, col) {
+  const dragged = tasks.find(t => t.id === draggedId);
+  if (!dragged) return;
+  if (col.done) { dragged.done = true; }
+  else { dragged.done = false; dragged.status = col.key; }
+  dragged.updated = Date.now();
+  const [moved] = tasks.splice(tasks.findIndex(t => t.id === draggedId), 1);
+  tasks.push(moved);
+  save(); render();
+}
+
+/* ---------- 表示 ---------- */
+function allTags() {
+  return [...new Set(tasks.flatMap(t => t.tags))].sort();
+}
+function visibleTasks() {
+  let list = tasks.filter(t => !t.deleted);
+  if (filter === "active") list = list.filter(t => !t.done);
+  if (filter === "done")   list = list.filter(t => t.done);
+  if (searchText) {
+    const q = searchText.toLowerCase();
+    list = list.filter(t => t.title.toLowerCase().includes(q));
+  }
+
+  if (sortBy === "due") {
+    list.sort((a, b) => { if (!a.due) return 1; if (!b.due) return -1; return a.due.localeCompare(b.due); });
+  } else if (sortBy === "priority") {
+    list.sort((a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority]);
+  }
+  return list;
+}
+
+function fmtDue(due) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(due + "T00:00:00");
+  const diff = Math.round((d - today) / 86400000);
+  const base = `${d.getMonth()+1}/${d.getDate()}`;
+  if (diff === 0) return { text: base + " (今日)", overdue: false };
+  if (diff === 1) return { text: base + " (明日)", overdue: false };
+  if (diff < 0)   return { text: base + ` (${-diff}日超過)`, overdue: true };
+  return { text: base, overdue: false };
+}
+
+const COLUMNS = [
+  { key: "todo",      label: "未着手",      done: false },
+  { key: "doing",     label: "着手中",      done: false },
+  { key: "waiting",   label: "対応待ち",    done: false },
+  { key: "pending",   label: "ペンディング", done: false },
+  { key: "done",      label: "完了",        done: true  },
+  { key: "recurring", label: "定期タスク",  recurring: true }
+];
+
+function render() {
+  const board = document.getElementById("board");
+  const items = visibleTasks();
+  board.innerHTML = "";
+
+  for (const col of COLUMNS) {
+    if (hiddenCols.includes(col.key)) continue;   // 非表示の列はスキップ
+
+    // 定期タスク列：通常タスクではなく定期テンプレートを表示
+    if (col.recurring) {
+      const colEl = document.createElement("div");
+      colEl.className = "col";
+      colEl.innerHTML = `
+        <div class="col-head">
+          <span class="col-title"><i class="dot dot-recurring"></i>${col.label}</span>
+          <span class="col-count">${recurring.length}</span>
+        </div>
+        <ul class="col-list"></ul>`;
+      const recList = colEl.querySelector(".col-list");
+      if (recurring.length === 0) {
+        recList.innerHTML = `<li class="col-empty">「🔁 定期タスク」タブで登録</li>`;
+      }
+      for (const r of recurring) {
+        const li = document.createElement("li");
+        li.className = "task rec-card";
+        recList.appendChild(buildRecCard(li, r));
+      }
+      board.appendChild(colEl);
+      continue;   // 定期列はドロップ対象外
+    }
+
+    const colTasks = items.filter(t => col.done ? t.done : (!t.done && (t.status || "todo") === col.key));
+
+    const colEl = document.createElement("div");
+    colEl.className = "col";
+    colEl.dataset.status = col.key;
+    colEl.innerHTML = `
+      <div class="col-head">
+        <span class="col-title"><i class="dot dot-${col.done ? "done" : col.key}"></i>${col.label}</span>
+        <span class="col-count">${colTasks.length}</span>
+      </div>
+      <ul class="col-list"></ul>
+    `;
+    const listEl = colEl.querySelector(".col-list");
+
+    if (colTasks.length === 0) {
+      listEl.innerHTML = `<li class="col-empty">ここにドラッグ</li>`;
+    }
+    for (const t of colTasks) {
+      const li = document.createElement("li");
+      li.className = "task prio-" + t.priority + (t.done ? " done" : "");
+      li.dataset.id = t.id;
+      if (editingId === t.id) {
+        li.appendChild(buildEditForm(t));
+      } else {
+        buildTaskView(li, t, true);
+        attachDrag(li, t.id);
+      }
+      listEl.appendChild(li);
+    }
+
+    attachColumnDrop(colEl, col);
+    board.appendChild(colEl);
+  }
+
+  // 件数・フッター
+  const active = tasks.filter(t => !t.deleted);
+  const remaining = active.filter(t => !t.done).length;
+  document.getElementById("count").textContent = `残り ${remaining}`;
+  document.getElementById("footerText").textContent = `全 ${active.length} 件 / 完了 ${active.length - remaining} 件　`;
+}
+
+/* 定期タスク列のカードを組み立て */
+function buildRecCard(li, r) {
+  let meta = `<span class="badge"><i class="dot dot-rec"></i>${recurDesc(r)}</span>`;
+  meta += `<span class="badge"><i class="dot dot-${r.priority}"></i>${PRIO_LABEL[r.priority]}</span>`;
+  if (r.estimate) meta += `<span class="badge">⏱ ${escapeHtml(r.estimate)}</span>`;
+  li.innerHTML = `
+    <div class="task-body">
+      <div class="task-title">${escapeHtml(r.title)}</div>
+      <div class="task-meta">${meta}</div>
+      <div class="rec-next">次回作成: ${fmtDateJP(r.next)}</div>
+      <div class="rec-card-actions">
+        <button type="button" class="btn ghost rec-now">今すぐ作成</button>
+        <button type="button" class="icon-btn delete rec-del" title="この定期タスクを削除">×</button>
+      </div>
+    </div>`;
+  li.querySelector(".rec-now").addEventListener("click", () => generateNow(r.id));
+  li.querySelector(".rec-del").addEventListener("click", () => {
+    if (confirm(`定期タスク「${r.title}」を削除しますか?\n（すでにボードに作成済みのタスクは残ります）`)) deleteRecurring(r.id);
+  });
+  return li;
+}
+
+/* タスク表示行を組み立て */
+function buildTaskView(li, t, canDrag) {
+  let meta = "";
+  // 状態（完了 or 未着手/着手中/ペンディング。色は小さなドットで表現）
+  if (t.done) {
+    meta += `<span class="badge"><i class="dot dot-done"></i>完了</span>`;
+  } else {
+    meta += `<span class="badge status-toggle" title="クリックで状態を切り替え（未着手→着手中→対応待ち→ペンディング）"><i class="dot dot-${t.status}"></i>${STATUS_LABEL[t.status]}</span>`;
+  }
+  // 優先度（左の色帯＋小ドット）
+  meta += `<span class="badge" title="優先度"><i class="dot dot-${t.priority}"></i>${PRIO_LABEL[t.priority]}</span>`;
+  if (t.due) {
+    const f = fmtDue(t.due);
+    meta += `<span class="badge due${f.overdue && !t.done ? " overdue" : ""}">📅 ${f.text}</span>`;
+  }
+  if (t.estimate) meta += `<span class="badge">⏱ ${escapeHtml(t.estimate)}</span>`;
+  if (t.fromLine) meta += `<span class="badge" title="LINEから追加">💬 LINE</span>`;
+
+  // 進捗メモ（あれば本文表示、なければ追加リンク）
+  const noteHtml = t.note
+    ? `<div class="task-note" title="クリックで編集">📝 ${escapeHtml(t.note)}</div>`
+    : `<button type="button" class="add-note">＋ 進捗メモ</button>`;
+
+  li.innerHTML = `
+    <span class="drag-handle ${canDrag ? "" : "disabled"}" title="${canDrag ? "ドラッグで並べ替え" : "「カスタム順」かつ検索なしのとき並べ替え可"}">⠿</span>
+    <input type="checkbox" class="checkbox" ${t.done ? "checked" : ""}>
+    <div class="task-body">
+      <div class="task-title" title="クリックで編集">${escapeHtml(t.title)}</div>
+      <div class="task-meta">${meta}</div>
+      ${noteHtml}
+    </div>
+    <div class="actions">
+      <button class="icon-btn edit" title="編集">✎</button>
+      <button class="icon-btn delete" title="削除">×</button>
+    </div>
+  `;
+  const openEdit = (focus) => { editingId = t.id; editFocus = focus || null; render(); };
+  li.querySelector(".checkbox").addEventListener("change", () => toggleTask(t.id));
+  li.querySelector(".edit").addEventListener("click", () => openEdit());
+  li.querySelector(".task-title").addEventListener("click", () => openEdit());
+  li.querySelector(".delete").addEventListener("click", () => deleteTask(t.id));
+  // メモ部分をクリックしたらメモ欄にフォーカスして編集
+  const noteEl = li.querySelector(".task-note") || li.querySelector(".add-note");
+  if (noteEl) noteEl.addEventListener("click", () => openEdit("note"));
+  // 状態バッジをクリックで切り替え
+  const stEl = li.querySelector(".status-toggle");
+  if (stEl) stEl.addEventListener("click", () => cycleStatus(t.id));
+}
+
+/* 編集フォームを組み立て */
+function buildEditForm(t) {
+  const form = document.createElement("form");
+  form.className = "edit-form";
+  form.innerHTML = `
+    <input type="text" class="e-title" value="${escapeHtml(t.title)}" required>
+    <div class="edit-row">
+      <select class="e-status">
+        <option value="todo">未着手</option>
+        <option value="doing">着手中</option>
+        <option value="waiting">対応待ち</option>
+        <option value="pending">ペンディング</option>
+      </select>
+      <select class="e-prio">
+        <option value="high">優先度: 高</option>
+        <option value="mid">優先度: 中</option>
+        <option value="low">優先度: 低</option>
+      </select>
+      <input type="date" class="e-due" value="${t.due || ""}">
+      <input type="text" class="e-est" placeholder="見積り (例: 30分)" value="${escapeHtml(t.estimate || "")}">
+    </div>
+    <textarea class="e-note" placeholder="進捗メモ（例: 今日ここまで進んだ / 〇〇待ち / 残りは確認のみ）">${escapeHtml(t.note || "")}</textarea>
+    <div class="edit-actions">
+      <button type="submit" class="btn">保存</button>
+      <button type="button" class="btn ghost e-cancel">キャンセル</button>
+    </div>
+  `;
+  form.querySelector(".e-prio").value = t.priority;
+  form.querySelector(".e-status").value = t.status || "todo";
+
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const title = form.querySelector(".e-title").value.trim();
+    if (!title) return;
+    updateTask(t.id, {
+      title,
+      status: form.querySelector(".e-status").value,
+      priority: form.querySelector(".e-prio").value,
+      due: form.querySelector(".e-due").value || null,
+      estimate: form.querySelector(".e-est").value.trim(),
+      note: form.querySelector(".e-note").value.trim()
+    });
+    editingId = null;
+    render();
+  });
+  form.querySelector(".e-cancel").addEventListener("click", () => { editingId = null; render(); });
+  // 開いたときのフォーカス（メモから開いたらメモ欄、それ以外はタイトル末尾）
+  setTimeout(() => {
+    const target = editFocus === "note" ? form.querySelector(".e-note") : form.querySelector(".e-title");
+    target.focus();
+    if (target.setSelectionRange) target.setSelectionRange(target.value.length, target.value.length);
+    editFocus = null;
+  }, 0);
+  return form;
+}
+
+/* ドラッグ&ドロップ */
+function attachDrag(li, id) {
+  const handle = li.querySelector(".drag-handle");
+  handle.addEventListener("mousedown", () => { li.setAttribute("draggable", "true"); });
+  li.addEventListener("mouseup", () => li.removeAttribute("draggable"));
+
+  li.addEventListener("dragstart", e => {
+    li.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+  });
+  li.addEventListener("dragend", () => {
+    li.classList.remove("dragging");
+    li.removeAttribute("draggable");
+    document.querySelectorAll(".task.drag-over").forEach(el => el.classList.remove("drag-over"));
+  });
+  li.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); li.classList.add("drag-over"); });
+  li.addEventListener("dragleave", () => li.classList.remove("drag-over"));
+  li.addEventListener("drop", e => {
+    e.preventDefault();
+    e.stopPropagation();   // 列のドロップは発火させない
+    li.classList.remove("drag-over");
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId && draggedId !== id) dropOnTask(draggedId, id);
+  });
+}
+
+/* 列（カンバン）へのドロップ＝状態の変更 */
+function attachColumnDrop(colEl, col) {
+  colEl.addEventListener("dragover", e => { e.preventDefault(); colEl.classList.add("over"); });
+  colEl.addEventListener("dragleave", e => {
+    if (!colEl.contains(e.relatedTarget)) colEl.classList.remove("over");
+  });
+  colEl.addEventListener("drop", e => {
+    e.preventDefault();
+    colEl.classList.remove("over");
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId) dropOnColumn(draggedId, col);
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+/* ---------- 書き出し ---------- */
+function exportRows() {
+  return visibleTasks().map(t => ({
+    title: t.title,
+    status: t.done ? "完了" : STATUS_LABEL[t.status],
+    priority: PRIO_LABEL[t.priority],
+    due: t.due || "",
+    note: t.note || "",
+    estimate: t.estimate || "",
+    recurrence: RECUR_LABEL[t.recurrence] || "",
+    tags: t.tags.join(" ")
+  }));
+}
+
+function todayStamp() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;
+}
+
+// テキスト形式
+function buildText() {
+  const rows = exportRows();
+  const d = new Date();
+  let out = `タスク一覧 (${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} 時点)\n\n`;
+  if (rows.length === 0) return out + "（表示中のタスクはありません）";
+  out += rows.map(r => {
+    const box = r.status === "完了" ? "[x]" : "[ ]";
+    const extra = [];
+    if (r.due) extra.push(`期限:${r.due}`);
+    extra.push(`優先度:${r.priority}`);
+    if (r.estimate) extra.push(`見積:${r.estimate}`);
+    if (r.recurrence) extra.push(`🔁${r.recurrence}`);
+    if (r.note) extra.push(`メモ:${r.note}`);
+    if (r.tags) extra.push(r.tags.split(" ").map(t => "#" + t).join(" "));
+    return `${box} ${r.title}  (${extra.join(" / ")})`;
+  }).join("\n");
+  return out;
+}
+
+// CSV形式（Excel用にBOM付き）
+function buildCSV() {
+  const rows = exportRows();
+  const esc = v => `"${String(v).replace(/"/g, '""')}"`;
+  const header = ["タイトル", "状態", "優先度", "期限", "見積もり", "繰り返し", "進捗メモ", "タグ"];
+  const lines = [header.map(esc).join(",")];
+  rows.forEach(r => lines.push(
+    [r.title, r.status, r.priority, r.due, r.estimate, r.recurrence, r.note, r.tags].map(esc).join(",")
+  ));
+  return "﻿" + lines.join("\r\n");
+}
+
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove();
+  }
+}
+
+async function doExport(kind) {
+  if (kind === "copy") { await copyText(buildText()); alert("クリップボードにコピーしました"); }
+  else if (kind === "txt") downloadFile(`tasks_${todayStamp()}.txt`, buildText(), "text/plain;charset=utf-8");
+  else if (kind === "csv") downloadFile(`tasks_${todayStamp()}.csv`, buildCSV(), "text/csv;charset=utf-8");
+  else if (kind === "pull") pullFromSheets({ manual: true });
+  else if (kind === "sheet") await sendToSheet();
+  else if (kind === "config") configureSheetUrl();
+}
+
+/* ---------- Googleスプレッドシート同期 ---------- */
+function configureSheetUrl() {
+  const cur = localStorage.getItem(SHEET_URL_KEY) || "";
+  const url = prompt("GASウェブアプリのURL（.../exec）を貼り付けてください:", cur);
+  if (url === null) return;
+  const trimmed = url.trim();
+  if (trimmed === "") { localStorage.removeItem(SHEET_URL_KEY); alert("送信先を解除しました"); return; }
+  if (!/^https:\/\/script\.google\.com\/.*\/exec$/.test(trimmed)) {
+    if (!confirm("URLの形式が想定と違います（.../exec で終わるはず）。このまま保存しますか?")) return;
+  }
+  localStorage.setItem(SHEET_URL_KEY, trimmed);
+  alert("送信先を保存しました");
+}
+
+async function sendToSheet() {
+  const url = localStorage.getItem(SHEET_URL_KEY);
+  if (!url) {
+    alert("先に「⚙ 送信先を設定」でGASのURLを登録してください。");
+    configureSheetUrl();
+    return;
+  }
+  const body = JSON.stringify({ mode: "replace", tasks: exportRows(), recurring: exportRecurringRows() });
+  const opt = { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body };
+  try {
+    const res = await fetch(url, { ...opt, redirect: "follow" });
+    const data = await res.json();
+    if (data && data.ok) alert(`✅ 送信しました（${data.count}件）`);
+    else alert("送信しましたが、確認応答が想定と違います。スプレッドシートを確認してください。");
+  } catch {
+    try {
+      await fetch(url, { ...opt, mode: "no-cors" });
+      alert("送信しました。Googleスプレッドシートを確認してください。");
+    } catch {
+      alert("⚠ 送信に失敗しました。\n・「⚙ 送信先を設定」のURL\n・GASのデプロイ設定（アクセス: 全員）\nを確認してください。");
+    }
+  }
+}
+
+/* ---------- LINE取り込み（一元管理） ---------- */
+function loadLineImported() {
+  try { lineImported = JSON.parse(localStorage.getItem(LINE_IMPORTED_KEY)) || []; }
+  catch { lineImported = []; }
+}
+function saveLineImported() {
+  localStorage.setItem(LINE_IMPORTED_KEY, JSON.stringify(lineImported));
+}
+
+// LINEで追加したタスクを取り込む（JSONPでGASから取得 → CORSを回避）
+function pullFromLine(opts) {
+  opts = opts || {};
+  const url = localStorage.getItem(SHEET_URL_KEY);
+  if (!url) {
+    if (opts.manual) { alert("先に「⚙ 送信先を設定」でGASのURLを登録してください。"); configureSheetUrl(); }
+    return;
+  }
+  const cb = "__onLinePull";
+  const script = document.createElement("script");
+  const done = () => { script.remove(); try { delete window[cb]; } catch { window[cb] = undefined; } };
+  window[cb] = data => { done(); handleLinePull(data, opts); };
+  script.onerror = () => { done(); if (opts.manual) alert("⚠ LINEの取り込みに失敗しました。\n・送信先URL\n・GASの再デプロイ（取り込み対応版）\nを確認してください。"); };
+  const sep = url.includes("?") ? "&" : "?";
+  script.src = `${url}${sep}action=pull&callback=${cb}&t=${Date.now()}`;
+  document.body.appendChild(script);
+}
+
+function handleLinePull(data, opts) {
+  if (!data || !data.ok || !Array.isArray(data.tasks)) {
+    if (opts.manual) alert("LINEの取り込み応答が想定と違います。GASが取り込み対応版か確認してください。");
+    return;
+  }
+  const newIds = [];
+  for (const lt of data.tasks) {
+    if (!lt.id || lineImported.includes(lt.id)) continue;   // 取り込み済みは飛ばす
+    tasks.push({
+      id: newId(), title: lt.title || "(無題)", priority: "mid",
+      due: lt.due || null, estimate: "", recurrence: "none", tags: [],
+      note: "", status: "todo", done: false, created: Date.now(), fromLine: true
+    });
+    lineImported.push(lt.id);
+    newIds.push(lt.id);
+  }
+  if (newIds.length) {
+    save(); saveLineImported(); render();   // save() が自動同期もスケジュール
+    ackLineImported(newIds);   // LINE側の受信箱から外す（done化）
+    toast(`LINEから ${newIds.length} 件取り込みました`);
+  } else if (opts.manual) {
+    toast("新しいLINEタスクはありません");
+  }
+}
+
+// 取り込んだLINEタスクを「処理済み」にする（送るだけ・応答は読まない）
+function ackLineImported(ids) {
+  const url = localStorage.getItem(SHEET_URL_KEY);
+  if (!url || !ids.length) return;
+  const body = JSON.stringify({ action: "ack", ids });
+  fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body, mode: "no-cors" }).catch(() => {});
+}
+
+// 全タスクをスプレッドシートへ同期（フィルタ無視・通知の取りこぼし防止）
+function exportAllRows() {
+  return tasks.map(t => ({
+    id: t.id,
+    title: t.title, status: t.done ? "完了" : STATUS_LABEL[t.status],
+    priority: PRIO_LABEL[t.priority], due: t.due || "", note: t.note || "",
+    estimate: t.estimate || "", recurrence: RECUR_LABEL[t.recurrence] || "", tags: t.tags.join(" "),
+    deleted: t.deleted ? "true" : "false",
+    updated: t.updated || t.created || 0
+  }));
+}
+function exportRecurringRows() {
+  return recurring.map(r => ({
+    title: r.title,
+    recurrence: recurDesc(r) || r.recurrence || "",
+    next: r.next || "",
+    priority: PRIO_LABEL[r.priority] || "",
+    estimate: r.estimate || ""
+  }));
+}
+function autoSyncAll() {
+  const url = localStorage.getItem(SHEET_URL_KEY);
+  if (!url || (tasks.length === 0 && recurring.length === 0)) return;   // 空で上書きしない安全策
+  const body = JSON.stringify({ mode: "replace", tasks: exportAllRows(), recurring: exportRecurringRows() });
+  fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body, mode: "no-cors" }).catch(() => {});
+}
+// 変更のたびに呼ばれる。連続変更をまとめて1.5秒後に1回だけ同期
+function scheduleAutoSync() {
+  if (!localStorage.getItem(SHEET_URL_KEY)) return;
+  clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(autoSyncAll, 1500);
+}
+
+/* ---------- Googleスプレッドシートからの読み込み（起動時同期） ---------- */
+const STATUS_FROM_JP = { "未着手": "todo", "着手中": "doing", "対応待ち": "waiting", "ペンディング": "pending", "完了": "done" };
+const PRIO_FROM_JP   = { "高": "high", "中": "mid", "低": "low" };
+const RECUR_FROM_JP  = { "": "none", "毎日": "daily", "毎週": "weekly", "毎月": "monthly" };
+
+function pullFromSheets(opts) {
+  opts = opts || {};
+  const url = localStorage.getItem(SHEET_URL_KEY);
+  if (!url) { if (opts.manual) { alert("先に「⚙ 送信先を設定」でGASのURLを登録してください。"); } return; }
+  const cb = "__onSheetsPull";
+  const script = document.createElement("script");
+  const done = () => { script.remove(); try { delete window[cb]; } catch { window[cb] = undefined; } };
+  window[cb] = data => { done(); mergeFromSheets(data, opts); };
+  script.onerror = () => { done(); if (opts.manual) toast("⚠ シートからの読み込みに失敗しました"); };
+  const sep = url.includes("?") ? "&" : "?";
+  script.src = `${url}${sep}action=all&callback=${cb}&t=${Date.now()}`;
+  document.body.appendChild(script);
+}
+
+function mergeFromSheets(data, opts) {
+  if (!data || !data.ok || !Array.isArray(data.tasks)) {
+    if (opts && opts.manual) toast("⚠ シートからの応答が想定外です");
+    return;
+  }
+  const localById = {};
+  tasks.forEach(t => { if (t.id) localById[t.id] = t; });
+
+  let changed = false;
+  for (const rt of data.tasks) {
+    if (!rt.id) continue;
+    const remoteUpdated = Number(rt.updated) || 0;
+    const isRemoteDeleted = rt.deleted === "true";
+    const remoteStatusKey = STATUS_FROM_JP[rt.status] || "todo";
+    const remoteDone = rt.status === "完了";
+
+    const local = localById[rt.id];
+    if (local) {
+      const localUpdated = local.updated || local.created || 0;
+      if (remoteUpdated > localUpdated) {
+        if (isRemoteDeleted) {
+          local.deleted = true;
+        } else {
+          local.title      = rt.title;
+          local.status     = remoteDone ? (local.status || "todo") : remoteStatusKey;
+          local.done       = remoteDone;
+          local.priority   = PRIO_FROM_JP[rt.priority] || "mid";
+          local.due        = rt.due || null;
+          local.estimate   = rt.estimate || "";
+          local.recurrence = RECUR_FROM_JP[rt.recurrence] ?? "none";
+          local.note       = rt.note || "";
+          local.tags       = rt.tags ? rt.tags.split(" ").filter(Boolean) : [];
+          local.deleted    = false;
+        }
+        local.updated = remoteUpdated;
+        changed = true;
+      }
+    } else if (!isRemoteDeleted) {
+      tasks.push({
+        id: rt.id, title: rt.title,
+        status: remoteDone ? "todo" : remoteStatusKey,
+        done: remoteDone,
+        priority: PRIO_FROM_JP[rt.priority] || "mid",
+        due: rt.due || null, estimate: rt.estimate || "",
+        recurrence: RECUR_FROM_JP[rt.recurrence] ?? "none",
+        note: rt.note || "",
+        tags: rt.tags ? rt.tags.split(" ").filter(Boolean) : [],
+        created: remoteUpdated || Date.now(), updated: remoteUpdated, deleted: false
+      });
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    save(); render();
+    if (opts && opts.manual) toast("シートと同期しました");
+    else toast("シートからタスクを更新しました");
+  } else if (opts && opts.manual) {
+    toast("シートと差異なし");
+  }
+}
+
+// 画面下に一時的な通知を出す
+function toast(msg) {
+  const el = document.createElement("div");
+  el.textContent = msg;
+  el.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#323232;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.3);opacity:0;transition:opacity .2s";
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = "1"; });
+  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 300); }, 2500);
+}
+
+/* ---------- 列の表示/非表示 ---------- */
+function loadHiddenCols() {
+  try { hiddenCols = JSON.parse(localStorage.getItem(HIDDEN_COLS_KEY)) || []; }
+  catch { hiddenCols = []; }
+}
+function saveHiddenCols() {
+  localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify(hiddenCols));
+}
+function buildColToggleMenu() {
+  const menu = document.getElementById("colToggleMenu");
+  menu.innerHTML = `<div class="menu-title">表示する列</div>` +
+    COLUMNS.map(c => `<label class="col-toggle-item"><input type="checkbox" data-col="${c.key}" ${hiddenCols.includes(c.key) ? "" : "checked"}>${c.label}</label>`).join("");
+  menu.querySelectorAll("input[data-col]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      const k = inp.dataset.col;
+      if (inp.checked) hiddenCols = hiddenCols.filter(x => x !== k);
+      else if (!hiddenCols.includes(k)) hiddenCols.push(k);
+      saveHiddenCols(); render();
+    });
+  });
+}
+
+/* ---------- イベント ---------- */
+document.getElementById("lineImportBtn").addEventListener("click", () => pullFromLine({ manual: true }));
+
+const colToggleBtn = document.getElementById("colToggleBtn");
+const colToggleMenu = document.getElementById("colToggleMenu");
+colToggleBtn.addEventListener("click", e => { e.stopPropagation(); colToggleMenu.hidden = !colToggleMenu.hidden; });
+document.addEventListener("click", e => {
+  if (!colToggleMenu.hidden && !colToggleMenu.contains(e.target) && e.target !== colToggleBtn) colToggleMenu.hidden = true;
+});
+
+document.getElementById("addForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const title = document.getElementById("title").value.trim();
+  if (!title) return;
+  addTask({
+    title,
+    status: document.getElementById("status").value,
+    priority: document.getElementById("priority").value,
+    due: document.getElementById("due").value,
+    estimate: document.getElementById("estimate").value.trim()
+  });
+  e.target.reset();
+  document.getElementById("title").focus();
+});
+
+document.querySelectorAll(".chip[data-filter]").forEach(chip => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll(".chip[data-filter]").forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    filter = chip.dataset.filter;
+    render();
+  });
+});
+
+document.getElementById("search").addEventListener("input", e => { searchText = e.target.value.trim(); render(); });
+document.getElementById("sort").addEventListener("change", e => { sortBy = e.target.value; render(); });
+
+// 書き出しメニューの開閉と実行
+const exportBtn = document.getElementById("exportBtn");
+const exportMenu = document.getElementById("exportMenu");
+exportBtn.addEventListener("click", e => { e.stopPropagation(); exportMenu.hidden = !exportMenu.hidden; });
+exportMenu.querySelectorAll("button").forEach(b =>
+  b.addEventListener("click", () => { exportMenu.hidden = true; doExport(b.dataset.export); })
+);
+document.addEventListener("click", e => {
+  if (!exportMenu.hidden && !exportMenu.contains(e.target) && e.target !== exportBtn) exportMenu.hidden = true;
+});
+
+document.getElementById("clearDone").addEventListener("click", () => {
+  if (tasks.some(t => t.done) && confirm("完了したタスクをすべて削除しますか?")) {
+    tasks = tasks.filter(t => !t.done); save(); render();
+  }
+});
+
+// タブ切り替え（ボード / 定期タスク）
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    const v = tab.dataset.view;
+    document.getElementById("boardView").hidden = (v !== "board");
+    document.getElementById("recurringView").hidden = (v !== "recurring");
+  });
+});
+
+// 周期に応じて「曜日 / 日にち」欄を出し分け
+function initRecForm() {
+  const md = document.getElementById("recMonthday");
+  md.innerHTML = Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}日</option>`).join("") +
+    `<option value="last">末日</option>`;
+  const now = new Date();
+  document.getElementById("recWeekday").value = String(now.getDay());
+  md.value = String(now.getDate());
+  document.getElementById("recInterval").addEventListener("change", updateRecFields);
+  updateRecFields();
+}
+function updateRecFields() {
+  const v = document.getElementById("recInterval").value;
+  document.getElementById("recWeekday").hidden = (v !== "weekly");
+  document.getElementById("recMonthday").hidden = (v !== "monthly");
+}
+
+// 定期タスクの追加
+document.getElementById("recForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const title = document.getElementById("recTitle").value.trim();
+  if (!title) return;
+  addRecurring({
+    title,
+    interval: document.getElementById("recInterval").value,
+    weekday: document.getElementById("recWeekday").value,
+    monthday: document.getElementById("recMonthday").value,
+    priority: document.getElementById("recPriority").value,
+    estimate: document.getElementById("recEstimate").value.trim(),
+    start: document.getElementById("recStart").value
+  });
+  e.target.reset();
+  updateRecFields();   // resetで毎日に戻るので欄も戻す
+  document.getElementById("recTitle").focus();
+});
+
+/* ---------- 起動 ---------- */
+initTheme();
+load();
+loadRecurring();
+loadLineImported();
+loadHiddenCols();
+buildColToggleMenu();
+initRecForm();
+generateDue();      // 今日来た定期タスクをボードへ
+render();
+renderRecurring();
+pullFromLine();      // LINEで追加した分を自動取り込み（送信先が未設定なら何もしない）
+pullFromSheets();    // 起動時にシートから全タスクを取得してマージ
+scheduleAutoSync();  // 起動時にシートを最新化（定期タスクのタブも反映）
+</script>
+</body>
+</html>
