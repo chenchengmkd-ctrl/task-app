@@ -19,6 +19,8 @@
 // ===== ① 自分の値を入れる =========================================
 const CHANNEL_ACCESS_TOKEN = 'ここにチャネルアクセストークンを貼り付け';
 const SPREADSHEET_ID       = 'アプリの送信先と同じスプレッドシートIDを貼り付け';
+const SUPABASE_URL         = 'https://xldkfkhgazpugfuscpqt.supabase.co';
+const SUPABASE_ANON_KEY    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZGtma2hnYXpwdWdmdXNjcHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NDg3MzgsImV4cCI6MjA5OTQyNDczOH0.C3_TYQI8R3HeXYWTzca9erUMjpTWm2sneB7hk5Bre8Y';
 const APP_SHEET   = 'tasks';        // アプリが同期する表（読むだけ）
 const LINE_SHEET  = 'line_tasks';   // LINEから追加した分
 const REC_SHEET   = 'recurring';    // 定期タスク（アプリが同期）
@@ -77,9 +79,12 @@ function lineSheet() {
   return sh;
 }
 function addLine(userId, text) {
-  // 末尾の「M/D」を期限として取り出す（任意）
-  let title = text, due = '';
-  const dm = text.match(/^(.*?)\s+(\d{1,2})\/(\d{1,2})$/);
+  let title = text, due = '', projName = '';
+  // [プロジェクト名] タスク名 の形式を検出（タイトルには[]をそのまま残す）
+  const projMatch = title.match(/^\[(.+?)\]/);
+  if (projMatch) projName = projMatch[1];
+  // 末尾の「M/D」を期限として取り出す
+  const dm = title.match(/^(.*?)\s+(\d{1,2})\/(\d{1,2})$/);
   if (dm) { title = dm[1].trim(); due = toISOThisYear(dm[2], dm[3]); }
 
   lineSheet().appendRow([
@@ -87,7 +92,11 @@ function addLine(userId, text) {
     userId, title, due, false, new Date().toISOString()
   ]);
   const cnt = getLineTasks(userId, true).length;
-  return `✅ 追加しました\n「${title}」${due ? '\n📅 ' + jp(due) : ''}\n\n未完了: ${cnt}件（「一覧」で確認）`;
+  let msg = `✅ 追加しました\n「${projName ? title.replace(/^\[.+?\]\s*/, '') : title}」`;
+  if (projName) msg += `\n📁 ${projName}`;
+  if (due) msg += `\n📅 ${jp(due)}`;
+  msg += `\n\n未完了: ${cnt}件`;
+  return msg;
 }
 function getLineTasks(userId, onlyActive) {
   const rows = lineSheet().getDataRange().getValues();
@@ -323,6 +332,80 @@ function toISOThisYear(mm, dd) {
 function jp(iso) { const d = parseDate(iso); return d ? (d.getMonth() + 1) + '/' + d.getDate() : iso; }
 function jp2(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
 
+/* ============ Supabase ヘルパー ============ */
+function getSupabase(table, params) {
+  const url = SUPABASE_URL + '/rest/v1/' + table + '?' + params;
+  const res = UrlFetchApp.fetch(url, {
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'Accept': 'application/json'
+    },
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) {
+    console.error('Supabase error', res.getResponseCode(), res.getContentText());
+    return [];
+  }
+  return JSON.parse(res.getContentText());
+}
+
+/* ============ 週次レポート ============ */
+function sendWeeklyReport() {
+  const today = new Date();
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const since = weekAgo.toISOString().slice(0, 10);
+
+  // 先週完了したタスク（updated_at >= 7日前 AND done=true）
+  const doneTasks = getSupabase('tasks',
+    'done=eq.true&deleted=eq.false&updated_at=gte.' + since + '&select=title,project_id,updated_at&order=updated_at.desc');
+
+  // 先週の日次ログ
+  const logs = getSupabase('daily_logs',
+    'log_date=gte.' + since + '&select=log_date,content&order=log_date.desc');
+
+  // プロジェクト名マップ
+  const projects = getSupabase('projects', 'select=id,name');
+  const projMap = {};
+  projects.forEach(p => { projMap[p.id] = p.name; });
+
+  const m = today.getMonth() + 1, d = today.getDate();
+  let msg = `📊 週次レポート（${m}/${d}）\n`;
+
+  // 完了タスク
+  msg += `\n✅ 先週の完了タスク（${doneTasks.length}件）`;
+  if (doneTasks.length) {
+    msg += '\n' + doneTasks.map(t => {
+      const proj = t.project_id && projMap[t.project_id] ? '📁' + projMap[t.project_id] + ' ' : '';
+      return '・' + proj + t.title;
+    }).join('\n');
+  } else {
+    msg += '\nなし';
+  }
+
+  // 日次ログ
+  msg += `\n\n📓 振り返りログ（${logs.length}件）`;
+  if (logs.length) {
+    msg += '\n' + logs.map(l => {
+      const ld = new Date(l.log_date);
+      const label = (ld.getMonth() + 1) + '/' + ld.getDate();
+      const excerpt = l.content ? l.content.slice(0, 60).replace(/\n/g, ' ') + (l.content.length > 60 ? '…' : '') : '（内容なし）';
+      return label + '：' + excerpt;
+    }).join('\n');
+  } else {
+    msg += '\nなし';
+  }
+
+  if (doneTasks.length === 0 && logs.length === 0) {
+    msg += '\n\n今週もお疲れ様でした！来週も頑張りましょう💪';
+  } else {
+    msg += '\n\n今週もお疲れ様でした！';
+  }
+
+  getUsers().forEach(uid => pushText(uid, msg));
+}
+
 /* ============ セットアップ（1回だけ実行）============ */
 // 毎朝の自動通知トリガーを作成
 function installDailyTrigger() {
@@ -332,9 +415,23 @@ function installDailyTrigger() {
   ScriptApp.newTrigger('sendReminders').timeBased()
     .atHour(REMIND_HOUR).nearMinute(REMIND_MINUTE).everyDays(1).create();
 }
+// 毎週月曜 9時に週次レポートを送るトリガーを作成
+function installWeeklyTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'sendWeeklyReport') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('sendWeeklyReport').timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).create();
+}
 // テスト：今すぐ自分に通知を送る（先にLINEから1回メッセージを送っておくこと）
 function testReminder() {
   if (!getUsers().length) { Logger.log('ユーザー未登録：先にLINEからBotへメッセージを送ってください。'); return; }
   sendReminders();
   Logger.log('送信しました（対象があれば届きます）');
+}
+// テスト：今すぐ週次レポートを送る
+function testWeeklyReport() {
+  if (!getUsers().length) { Logger.log('ユーザー未登録：先にLINEからBotへメッセージを送ってください。'); return; }
+  sendWeeklyReport();
+  Logger.log('週次レポートを送信しました');
 }

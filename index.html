@@ -1225,11 +1225,21 @@ function handleLinePull(data, opts) {
   }
   const newIds = [];
   for (const lt of data.tasks) {
-    if (!lt.id || lineImported.includes(lt.id)) continue;   // 取り込み済みは飛ばす
+    if (!lt.id || lineImported.includes(lt.id)) continue;
+    let title = lt.title || "(無題)";
+    let projectId = null;
+    // [プロジェクト名] タスク名 の形式を解析
+    const projMatch = title.match(/^\[(.+?)\]\s*/);
+    if (projMatch) {
+      title = title.slice(projMatch[0].length);
+      const proj = projects.find(p => p.name === projMatch[1]);
+      if (proj) projectId = proj.id;
+    }
     tasks.push({
-      id: newId(), title: lt.title || "(無題)", priority: "mid",
+      id: newId(), title, priority: "mid",
       due: lt.due || null, estimate: "", recurrence: "none", tags: [],
-      note: "", status: "todo", done: false, created: Date.now(), fromLine: true
+      note: "", status: "todo", done: false, created: Date.now(),
+      fromLine: true, projectId
     });
     lineImported.push(lt.id);
     newIds.push(lt.id);
@@ -1502,14 +1512,21 @@ function renderProjectsView() {
   projects.forEach(p => {
     const li = document.createElement('li');
     li.className = 'proj-item';
-    const cnt = tasks.filter(t => !t.deleted && t.projectId === p.id).length;
+    const all  = tasks.filter(t => !t.deleted && t.projectId === p.id);
+    const done = all.filter(t => t.done).length;
+    const total = all.length;
+    const pct = total ? Math.round(done / total * 100) : 0;
     li.innerHTML = `
       <div class="proj-body">
-        <div class="proj-name">${escapeHtml(p.name)} <span style="font-size:11px;color:var(--muted)">(${cnt}件)</span></div>
+        <div class="proj-name">${escapeHtml(p.name)}</div>
         ${p.direction ? `<div class="proj-dir">${escapeHtml(p.direction)}</div>` : ''}
+        <div style="margin-top:6px;background:var(--border);border-radius:999px;height:6px;overflow:hidden">
+          <div style="background:var(--accent);height:100%;width:${pct}%;transition:width .3s"></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">${done}/${total}件完了（${pct}%）</div>
       </div>
       <span class="badge"><i class="dot dot-${p.urgency}"></i>${PRIO_LABEL[p.urgency]}</span>
-      <button type="button" class="chip" style="font-size:12px" data-pid="${p.id}">このPJで絞込</button>
+      <button type="button" class="chip" style="font-size:12px" data-pid="${p.id}">絞込</button>
       <button type="button" class="icon-btn delete" data-pid="${p.id}" title="削除">×</button>
     `;
     li.querySelector('[data-pid].chip').addEventListener('click', () => {
