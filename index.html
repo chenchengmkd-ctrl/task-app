@@ -68,13 +68,6 @@
     background: var(--card); padding: 2px 9px; border-radius: 999px;
     border: 1px solid var(--border);
   }
-  .theme-toggle {
-    font: inherit; font-size: 17px; cursor: pointer; background: var(--card);
-    border: 1px solid var(--border); border-radius: 9px; width: 36px; height: 36px;
-    display: flex; align-items: center; justify-content: center; transition: all .15s;
-  }
-  .theme-toggle:hover { border-color: var(--accent); }
-
   /* タブ（ボード / 定期タスク） */
   .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
   .tab {
@@ -408,6 +401,7 @@
         <option value="low">優先度: 低</option>
       </select>
       <input type="date" id="due" title="期限">
+      <input type="time" id="dueTime" title="時刻（任意）">
       <input type="text" id="estimate" placeholder="見積り (例: 30分)" title="見積もり時間">
       <select id="taskProject" title="プロジェクト">
         <option value="">プロジェクトなし</option>
@@ -434,7 +428,6 @@
       <button type="button" class="chip" id="colToggleBtn" title="列の表示/非表示">🗂 列</button>
       <div class="export-menu" id="colToggleMenu" hidden></div>
     </div>
-    <button type="button" class="chip" id="lineImportBtn" title="LINEで追加したタスクを取り込む">🔄 LINE取込</button>
     <div class="export-wrap">
       <button type="button" class="chip" id="exportBtn">📤 書き出し</button>
       <div class="export-menu" id="exportMenu" hidden>
@@ -536,16 +529,12 @@
 
 <script>
 const STORE_KEY = "task-app.tasks.v1";
-const THEME_KEY = "task-app.theme";
-const SHEET_URL_KEY = "task-app.sheetUrl";
 const REC_KEY = "task-app.recurring.v1";
-const LINE_IMPORTED_KEY = "task-app.lineImported.v1";   // 取り込み済みLINEタスクのID
 const HIDDEN_COLS_KEY = "task-app.hiddenCols.v1";
 const PROJ_KEY = "task-app.projects.v1";
 let tasks = [];
 let recurring = [];
 let projects = [];
-let lineImported = [];
 let hiddenCols = [];
 let supabaseSyncTimer = null;
 let selectedProjectId = '';
@@ -573,7 +562,7 @@ function load() {
   catch { parsed = []; }
   // 旧データに新しい項目の初期値を補完
   tasks = parsed.map(t => ({
-    note: "", estimate: "", recurrence: "none", status: "todo", deleted: false,
+    note: "", estimate: "", recurrence: "none", status: "todo", deleted: false, dueTime: "",
     ...t,
     tags: Array.isArray(t.tags) ? t.tags : [],
     updated: t.updated || t.created || 0
@@ -725,6 +714,7 @@ function addTask(fields) {
     title: fields.title,
     priority: fields.priority,
     due: fields.due || null,
+    dueTime: fields.dueTime || "",
     estimate: fields.estimate || "",
     recurrence: fields.recurrence || "none",
     tags: parseTags(fields.tags),
@@ -808,9 +798,6 @@ function dropOnColumn(draggedId, col) {
 }
 
 /* ---------- 表示 ---------- */
-function allTags() {
-  return [...new Set(tasks.flatMap(t => t.tags))].sort();
-}
 function visibleTasks() {
   let list = tasks.filter(t => !t.deleted);
   if (filter === "active") list = list.filter(t => !t.done);
@@ -955,7 +942,7 @@ function buildTaskView(li, t, canDrag) {
   meta += `<span class="badge" title="優先度"><i class="dot dot-${t.priority}"></i>${PRIO_LABEL[t.priority]}</span>`;
   if (t.due) {
     const f = fmtDue(t.due);
-    meta += `<span class="badge due${f.overdue && !t.done ? " overdue" : ""}">📅 ${f.text}</span>`;
+    meta += `<span class="badge due${f.overdue && !t.done ? " overdue" : ""}">📅 ${f.text}${t.dueTime ? " " + escapeHtml(t.dueTime) : ""}</span>`;
   }
   if (t.estimate) meta += `<span class="badge">⏱ ${escapeHtml(t.estimate)}</span>`;
   if (t.fromLine) meta += `<span class="badge" title="LINEから追加">💬 LINE</span>`;
@@ -1014,6 +1001,7 @@ function buildEditForm(t) {
         <option value="low">優先度: 低</option>
       </select>
       <input type="date" class="e-due" value="${t.due || ""}">
+      <input type="time" class="e-due-time" title="時刻（任意）" value="${escapeHtml(t.dueTime || "")}">
       <input type="text" class="e-est" placeholder="見積り (例: 30分)" value="${escapeHtml(t.estimate || "")}">
       <select class="e-proj">
         <option value="">プロジェクトなし</option>
@@ -1039,6 +1027,7 @@ function buildEditForm(t) {
       status: form.querySelector(".e-status").value,
       priority: form.querySelector(".e-prio").value,
       due: form.querySelector(".e-due").value || null,
+      dueTime: form.querySelector(".e-due-time").value || "",
       estimate: form.querySelector(".e-est").value.trim(),
       note: form.querySelector(".e-note").value.trim(),
       projectId: form.querySelector(".e-proj").value || null
@@ -1180,93 +1169,12 @@ async function doExport(kind) {
   else if (kind === "sync") { await pullFromSupabase(); await syncAllToSupabase(); toast("同期しました"); }
 }
 
-/* ---------- LINE Bot URL 設定（LINE取込用） ---------- */
-function configureSheetUrl() {
-  const cur = localStorage.getItem(SHEET_URL_KEY) || "";
-  const url = prompt("LINE Bot GASのURL（.../exec）を入力してください:", cur);
-  if (url === null) return;
-  const trimmed = url.trim();
-  if (trimmed === "") { localStorage.removeItem(SHEET_URL_KEY); alert("LINE Bot URLを解除しました"); return; }
-  localStorage.setItem(SHEET_URL_KEY, trimmed);
-  alert("LINE Bot URLを保存しました");
-}
-
-/* ---------- LINE取り込み（一元管理） ---------- */
-function loadLineImported() {
-  try { lineImported = JSON.parse(localStorage.getItem(LINE_IMPORTED_KEY)) || []; }
-  catch { lineImported = []; }
-}
-function saveLineImported() {
-  localStorage.setItem(LINE_IMPORTED_KEY, JSON.stringify(lineImported));
-}
-
-// LINEで追加したタスクを取り込む（JSONPでGASから取得 → CORSを回避）
-function pullFromLine(opts) {
-  opts = opts || {};
-  const url = localStorage.getItem(SHEET_URL_KEY);
-  if (!url) {
-    if (opts.manual) { alert("先に「⚙ 送信先を設定」でGASのURLを登録してください。"); configureSheetUrl(); }
-    return;
-  }
-  const cb = "__onLinePull";
-  const script = document.createElement("script");
-  const done = () => { script.remove(); try { delete window[cb]; } catch { window[cb] = undefined; } };
-  window[cb] = data => { done(); handleLinePull(data, opts); };
-  script.onerror = () => { done(); if (opts.manual) alert("⚠ LINEの取り込みに失敗しました。\n・送信先URL\n・GASの再デプロイ（取り込み対応版）\nを確認してください。"); };
-  const sep = url.includes("?") ? "&" : "?";
-  script.src = `${url}${sep}action=pull&callback=${cb}&t=${Date.now()}`;
-  document.body.appendChild(script);
-}
-
-function handleLinePull(data, opts) {
-  if (!data || !data.ok || !Array.isArray(data.tasks)) {
-    if (opts.manual) alert("LINEの取り込み応答が想定と違います。GASが取り込み対応版か確認してください。");
-    return;
-  }
-  const newIds = [];
-  for (const lt of data.tasks) {
-    if (!lt.id || lineImported.includes(lt.id)) continue;
-    let title = lt.title || "(無題)";
-    let projectId = null;
-    // [プロジェクト名] タスク名 の形式を解析
-    const projMatch = title.match(/^\[(.+?)\]\s*/);
-    if (projMatch) {
-      title = title.slice(projMatch[0].length);
-      const proj = projects.find(p => p.name === projMatch[1]);
-      if (proj) projectId = proj.id;
-    }
-    tasks.push({
-      id: newId(), title, priority: "mid",
-      due: lt.due || null, estimate: "", recurrence: "none", tags: [],
-      note: "", status: "todo", done: false, created: Date.now(),
-      fromLine: true, projectId
-    });
-    lineImported.push(lt.id);
-    newIds.push(lt.id);
-  }
-  if (newIds.length) {
-    save(); saveLineImported(); render();   // save() が自動同期もスケジュール
-    ackLineImported(newIds);   // LINE側の受信箱から外す（done化）
-    toast(`LINEから ${newIds.length} 件取り込みました`);
-  } else if (opts.manual) {
-    toast("新しいLINEタスクはありません");
-  }
-}
-
-// 取り込んだLINEタスクを「処理済み」にする（送るだけ・応答は読まない）
-function ackLineImported(ids) {
-  const url = localStorage.getItem(SHEET_URL_KEY);
-  if (!url || !ids.length) return;
-  const body = JSON.stringify({ action: "ack", ids });
-  fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body, mode: "no-cors" }).catch(() => {});
-}
-
 /* ---------- Supabase 同期 ---------- */
 function taskToRow(t) {
   return {
     id: t.id, title: t.title,
     status: t.status || 'todo', priority: t.priority || 'mid',
-    due: t.due || null, estimate: t.estimate || '',
+    due: t.due || null, due_time: t.dueTime || null, estimate: t.estimate || '',
     recurrence: t.recurrence || 'none', note: t.note || '',
     tags: t.tags || [], done: t.done || false,
     deleted: t.deleted || false, from_line: t.fromLine || false,
@@ -1278,7 +1186,7 @@ function rowToTask(row) {
   return {
     id: row.id, title: row.title,
     status: row.status || 'todo', priority: row.priority || 'mid',
-    due: row.due || null, estimate: row.estimate || '',
+    due: row.due || null, dueTime: row.due_time || '', estimate: row.estimate || '',
     recurrence: row.recurrence || 'none', note: row.note || '',
     tags: row.tags || [], done: row.done || false,
     deleted: row.deleted || false, fromLine: row.from_line || false,
@@ -1306,9 +1214,10 @@ async function syncAllToSupabase() {
 }
 async function pullFromSupabase() {
   try {
-    const [{ data: taskData }, { data: recData }] = await Promise.all([
+    const [{ data: taskData }, { data: recData }, { data: projData }] = await Promise.all([
       db.from('tasks').select('*'),
-      db.from('recurring').select('*')
+      db.from('recurring').select('*'),
+      db.from('projects').select('*')
     ]);
     let changed = false;
     if (taskData && taskData.length) {
@@ -1336,6 +1245,10 @@ async function pullFromSupabase() {
         created: new Date(r.created_at).getTime()
       }));
       changed = true;
+    }
+    if (projData && projData.length > projects.length) {
+      projects = projData.map(p => ({ id: p.id, name: p.name, direction: p.direction || '', urgency: p.urgency || 'mid', created: new Date(p.created_at).getTime() }));
+      saveProjects(); renderProjectSelects();
     }
     if (changed) {
       localStorage.setItem(STORE_KEY, JSON.stringify(tasks));
@@ -1379,8 +1292,6 @@ function buildColToggleMenu() {
 }
 
 /* ---------- イベント ---------- */
-document.getElementById("lineImportBtn").addEventListener("click", () => pullFromLine({ manual: true }));
-
 const colToggleBtn = document.getElementById("colToggleBtn");
 const colToggleMenu = document.getElementById("colToggleMenu");
 colToggleBtn.addEventListener("click", e => { e.stopPropagation(); colToggleMenu.hidden = !colToggleMenu.hidden; });
@@ -1397,6 +1308,7 @@ document.getElementById("addForm").addEventListener("submit", e => {
     status: document.getElementById("status").value,
     priority: document.getElementById("priority").value,
     due: document.getElementById("due").value,
+    dueTime: document.getElementById("dueTime").value,
     estimate: document.getElementById("estimate").value.trim(),
     projectId: document.getElementById("taskProject").value || null
   });
@@ -1650,23 +1562,23 @@ document.getElementById('aiCopyBtn').addEventListener('click', async () => {
   renderAiView();
 });
 
-/* ---------- pullFromSupabase拡張（プロジェクト含む） ---------- */
-const _origPull = pullFromSupabase;
-async function pullFromSupabase() {
-  await _origPull();
-  const { data } = await db.from('projects').select('*').catch(() => ({ data: null }));
-  if (data && data.length > projects.length) {
-    projects = data.map(p => ({ id: p.id, name: p.name, direction: p.direction || '', urgency: p.urgency || 'mid', created: new Date(p.created_at).getTime() }));
-    saveProjects(); renderProjectSelects();
-  }
+/* ---------- リアルタイム自動同期（LINEなど他から変更があった時に自動反映） ---------- */
+let realtimePullTimer = null;
+function scheduleRealtimePull() {
+  clearTimeout(realtimePullTimer);
+  realtimePullTimer = setTimeout(pullFromSupabase, 800);
 }
+db.channel('task-app-realtime')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, scheduleRealtimePull)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'recurring' }, scheduleRealtimePull)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, scheduleRealtimePull)
+  .subscribe();
 
 /* ---------- 起動 ---------- */
 initTheme();
 load();
 loadRecurring();
 loadProjects();
-loadLineImported();
 loadHiddenCols();
 buildColToggleMenu();
 initRecForm();
@@ -1674,7 +1586,6 @@ renderProjectSelects();
 generateDue();
 render();
 renderRecurring();
-pullFromLine();
 pullFromSupabase();
 </script>
 </body>
