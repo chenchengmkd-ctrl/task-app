@@ -78,11 +78,21 @@ function routeCommand(userId, text) {
   const pendingReprioritize = handlePendingReprioritizeReply(userId, text);
   if (pendingReprioritize !== null) return pendingReprioritize;
 
-  if (/^(一覧|リスト|list)$/i.test(text)) return listAll();
+  if (/^(一覧|リスト|list)$/i.test(text)) return listAll(userId);
   if (/^(通知|リマインド|今日)$/i.test(text)) return buildReminder() || '📭 期限が近い（超過・今日・明日）のタスクはありません。';
   if (/^(ヘルプ|使い方|help)$/i.test(text)) return helpText();
   if (/^(相談|アドバイス)$/i.test(text)) return askAgent(userId, '最近のタスク状況について、率直な進捗評価とアドバイスをください。');
   if (/^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$/.test(text)) return proposeReprioritization_(userId);
+
+  // 「3番を完了にして」のような番号指定を、直前の一覧を元に実際のタイトルへ変換する
+  const numMatch = text.match(/^(\d+)番(目)?(を|の)?\s*([\s\S]*)$/);
+  if (numMatch) {
+    const resolved = resolveNumberedTask_(userId, Number(numMatch[1]));
+    if (!resolved) return '番号に対応するタスクが見つかりませんでした。「一覧」で番号を確認してから、もう一度お試しください。';
+    const rest = numMatch[4].trim();
+    if (!rest) return `${numMatch[1]}番：「${resolved.title}」`;
+    text = `「${resolved.title}」${numMatch[4]}`;
+  }
   if (/^(資料一覧|資料リスト)$/.test(text)) return listMaterials_();
   const materialMatch = text.match(/^資料[:：]\s*([\s\S]+)$/);
   if (materialMatch) return addMaterialFromText_(materialMatch[1].trim());
@@ -97,7 +107,7 @@ function isQuestionLike(text) {
   if (/[?？]$/.test(text)) return true;
   if (/(か|かな|かしら)[。.!！]?$/.test(text)) return true;
   if (/(完了しました|完了した|終わりました|終わった|できました|やりました)[。.!！]?$/.test(text)) return true;
-  if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に)/.test(text)) return true;
+  if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に|書き換えて|タイトルを|名前を)/.test(text)) return true;
   return false;
 }
 
@@ -143,37 +153,59 @@ function addLine(userId, text) {
   msg += `\n\n未完了: ${cnt}件`;
   return msg;
 }
-// 未完了タスク＋定期タスクを「進捗状況ごと」に表示
-function listAll() {
+// 未完了タスク＋定期タスクを「進捗状況ごと」に表示。番号を振り、後で「3番を〜」と指定できるよう記憶しておく
+function listAll(userId) {
   const app = getAppTasksAll();
   const rec = getRecurring();
   if (!app.length && !rec.length) return '🎉 未完了のタスクはありません。';
 
   let msg = '📋 タスク一覧\n';
+  const numbered = [];
+  let n = 0;
 
-  // 進捗状況ごとにグループ表示
+  // 進捗状況ごとにグループ表示（番号つき）
   STATUS_ORDER.forEach(st => {
     const arr = app.filter(t => t.status === st);
     if (!arr.length) return;
     msg += '\n' + STATUS_ICON[st] + ' ' + st + '（' + arr.length + '）\n' +
-      arr.map(t => '・' + t.title + (t.due ? '（' + jp(t.due) + '）' : '')).join('\n') + '\n';
+      arr.map(t => {
+        n++;
+        numbered.push({ num: n, id: t.id, title: t.title });
+        return n + '. ' + t.title + (t.due ? '（' + jp(t.due) + '）' : '');
+      }).join('\n') + '\n';
   });
 
-  // 定期タスク
+  // 定期タスク（番号は振らない）
   if (rec.length) {
     msg += '\n🔁 定期タスク（' + rec.length + '）\n' +
       rec.map(r => '・' + r.title + '（' + r.recurrence + (r.next ? '・次回 ' + jp2(r.next) : '') + '）').join('\n') + '\n';
+  }
+
+  if (numbered.length && userId) {
+    PropertiesService.getScriptProperties().setProperty('LAST_LIST_' + userId,
+      JSON.stringify({ items: numbered, createdAt: Date.now() }));
+    msg += '\n番号で「3番を完了にして」のように操作できます。';
   }
   return msg.trim();
 }
 // アプリの未完了タスクを全部取得（状態つき・期限の有無は問わない）※Supabase参照
 function getAppTasksAll() {
-  const rows = getSupabase('tasks', 'done=eq.false&deleted=eq.false&select=title,status,due');
+  const rows = getSupabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title,status,due');
   return rows.map(r => ({
+    id: r.id,
     title: String(r.title),
     due: r.due || '',
     status: STATUS_LABEL_JP[r.status] || r.status || '未着手'
   }));
+}
+// 直前の「一覧」で表示した番号から、実際のタスク（id・title）を引き当てる。該当なし/期限切れはnull
+function resolveNumberedTask_(userId, num) {
+  const raw = PropertiesService.getScriptProperties().getProperty('LAST_LIST_' + userId);
+  if (!raw) return null;
+  let data;
+  try { data = JSON.parse(raw); } catch (e) { return null; }
+  if ((Date.now() - data.createdAt) / 60000 > 60) return null;
+  return (data.items || []).find(it => it.num === num) || null;
 }
 // 定期タスクを取得 ※Supabase参照
 function getRecurring() {
@@ -372,7 +404,8 @@ function helpText() {
     '　例）会議の準備 6/25 15:00  ← 日付＋時刻もつけられる',
     '　例）今日17時に小室くんにチラシの件伝える  ← 自然な文中の日付・時刻もOK',
     '　（今日／明日／明後日、HH時MM分／HH時／HH:MM に対応）',
-    '・一覧 → 未完了タスクをまとめて表示',
+    '・一覧 → 未完了タスクを番号つきで表示',
+    '　例）3番を完了にして／3番の期限を7/1にして／3番を削除して　→ 一覧の番号でそのまま操作（1時間有効）',
     '・通知 → 今の期限リマインドを表示',
     '・相談・アドバイス → AIコーチに進捗評価を聞く',
     '　（「〜どう？」のような疑問文もAIコーチが拾って回答します）',
@@ -382,6 +415,8 @@ function helpText() {
     '　例）牛乳を買うを削除して　→ その場で削除',
     '　例）牛乳を買うの優先度を上げて　→ その場で優先度を変更',
     '　例）牛乳を買うの期限を7/1にして　→ その場で期限を変更',
+    '　例）牛乳を買うを牛乳とパンを買うに書き換えて　→ その場でタスク内容を変更',
+    '　（対象タスクはタイトルを全部書かなくてもOK。「うなぎの方完了にして」のようにキーワードだけでも、候補が1つに絞れればAIが判断します）',
     '　例）このタスクやる意味ある？　→ 率直な意見を返します',
     '　例）要約して／言い換えて　→ タスク状況を簡潔にまとめて返します',
     '・優先順位を整理して　→ AIが全体を見直して並べ替え案を提示（「はい」で適用）',
@@ -539,7 +574,7 @@ const AGENT_TOOLS = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          parent_task_title: { type: 'STRING', description: '分解対象タスクのタイトル（タスク一覧の名称と完全一致）' },
+          parent_task_title: { type: 'STRING', description: '分解対象タスクのタイトル（正式なタイトル。ユーザーが一部の言葉やキーワードだけで指定していても、渡されたタスク一覧から該当するものを選び、その一覧にある通りの完全なタイトルをここに入れること）' },
           subtasks: { type: 'ARRAY', items: { type: 'STRING' }, description: '3〜5個程度の、具体的で実行しやすいサブタスクのタイトル' }
         },
         required: ['parent_task_title', 'subtasks']
@@ -551,7 +586,7 @@ const AGENT_TOOLS = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          task_title: { type: 'STRING', description: '状態変更の対象タスクのタイトル（タスク一覧の名称と完全一致）' },
+          task_title: { type: 'STRING', description: '状態変更の対象タスクのタイトル（正式なタイトル。ユーザーが一部の言葉やキーワードだけで指定していても、渡されたタスク一覧から該当するものを選び、その一覧にある通りの完全なタイトルをここに入れること）' },
           new_status: { type: 'STRING', enum: ['todo', 'doing', 'waiting', 'pending', 'done'], description: '変更後の状態。完了にする場合は done' }
         },
         required: ['task_title', 'new_status']
@@ -563,7 +598,7 @@ const AGENT_TOOLS = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          task_title: { type: 'STRING', description: '削除対象タスクのタイトル（タスク一覧の名称と完全一致）' }
+          task_title: { type: 'STRING', description: '削除対象タスクのタイトル（正式なタイトル。ユーザーが一部の言葉やキーワードだけで指定していても、渡されたタスク一覧から該当するものを選び、その一覧にある通りの完全なタイトルをここに入れること）' }
         },
         required: ['task_title']
       }
@@ -574,7 +609,7 @@ const AGENT_TOOLS = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          task_title: { type: 'STRING', description: '優先度変更の対象タスクのタイトル（タスク一覧の名称と完全一致）' },
+          task_title: { type: 'STRING', description: '優先度変更の対象タスクのタイトル（正式なタイトル。ユーザーが一部の言葉やキーワードだけで指定していても、渡されたタスク一覧から該当するものを選び、その一覧にある通りの完全なタイトルをここに入れること）' },
           new_priority: { type: 'STRING', enum: ['high', 'mid', 'low'], description: '変更後の優先度' }
         },
         required: ['task_title', 'new_priority']
@@ -586,11 +621,23 @@ const AGENT_TOOLS = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          task_title: { type: 'STRING', description: '期限変更の対象タスクのタイトル（タスク一覧の名称と完全一致）' },
+          task_title: { type: 'STRING', description: '期限変更の対象タスクのタイトル（正式なタイトル。ユーザーが一部の言葉やキーワードだけで指定していても、渡されたタスク一覧から該当するものを選び、その一覧にある通りの完全なタイトルをここに入れること）' },
           due: { type: 'STRING', description: 'YYYY-MM-DD形式の新しい期限' },
           due_time: { type: 'STRING', description: 'HH:MM形式の時刻（分かる場合のみ、無ければ省略）' }
         },
         required: ['task_title', 'due']
+      }
+    },
+    {
+      name: 'update_task_title',
+      description: 'ユーザーが「〇〇を△△に書き換えて」「〇〇のタイトルを△△に変更して」のように、既存タスクの内容・タイトルそのものの変更を明確に依頼した場合に使う。渡されたタスク一覧の中でタイトルが一意に特定できる場合のみ使うこと。',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          task_title: { type: 'STRING', description: '変更対象タスクの現在のタイトル（正式なタイトル。ユーザーが一部の言葉やキーワードだけで指定していても、渡されたタスク一覧から該当するものを選び、その一覧にある通りの完全なタイトルをここに入れること）' },
+          new_title: { type: 'STRING', description: '変更後の新しいタイトル' }
+        },
+        required: ['task_title', 'new_title']
       }
     }
   ]
@@ -789,8 +836,10 @@ function askAgent(userId, userText) {
     '「〜を完了にして」のように状態変更が明確に依頼された場合はupdate_task_statusツールを、' +
     '「〜を削除して」のように削除が明確に依頼された場合はdelete_taskツールを、' +
     '「〜の優先度を上げて/下げて」のように優先度変更が明確に依頼された場合はupdate_task_priorityツールを、' +
-    '「〜の期限を6/30にして」のように特定タスクの期限変更が明確に依頼された場合はupdate_task_dueツールを使ってください。\n' +
+    '「〜の期限を6/30にして」のように特定タスクの期限変更が明確に依頼された場合はupdate_task_dueツールを、' +
+    '「〜を△△に書き換えて」のようにタスクの内容・タイトルそのものの変更が明確に依頼された場合はupdate_task_titleツールを使ってください。\n' +
     '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n' +
+    'ユーザーはタスク名を毎回全部書かず、一部の言葉やキーワードだけで指定することが多いです。「未完了タスク一覧」を見て該当するタスクが1つに絞れる場合は、正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、ツールを使わず候補を挙げて確認してください。\n' +
     '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n' +
     '「ユーザーが登録した参考資料」に関連する内容があれば、一般論より優先して、その資料の内容を踏まえて具体的に助言してください。\n\n' +
     context + '\n\n【ユーザーの相談】\n' + userText,
@@ -808,6 +857,7 @@ function askAgent(userId, userText) {
   else if (funcPart && funcPart.functionCall.name === 'delete_task') reply = handleDeleteTask(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'update_task_priority') reply = handleUpdateTaskPriority(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'update_task_due') reply = handleUpdateTaskDue(funcPart.functionCall.args, intro);
+  else if (funcPart && funcPart.functionCall.name === 'update_task_title') reply = handleUpdateTaskTitle(funcPart.functionCall.args, intro);
   else reply = intro || '⚠️ AIエージェントの応答取得に失敗しました。';
 
   logAgentInteraction_(userId, userText, reply);
@@ -938,6 +988,24 @@ function handleUpdateTaskDue(input, intro) {
   if (!updated) return `⚠️「${title}」の更新に失敗しました。`;
 
   return (intro ? intro + '\n\n' : '') + `✅「${title}」の期限を ${jp(due)}` + (dueTime ? ' ' + dueTime : '') + ' に変更しました。';
+}
+
+// タスクの内容（タイトル）変更を実行（タイトルが一意に特定できる場合のみ）
+function handleUpdateTaskTitle(input, intro) {
+  const title = String((input || {}).task_title || '').trim();
+  const newTitle = String((input || {}).new_title || '').trim();
+  if (!title || !newTitle) return '⚠️ 書き換え内容を理解できませんでした。';
+
+  const matches = getSupabase('tasks',
+    'deleted=eq.false&title=eq.' + encodeURIComponent(title) + '&select=id,title');
+  if (!matches.length) return `⚠️「${title}」に一致するタスクが見つかりませんでした。`;
+  if (matches.length > 1) return `⚠️「${title}」に一致するタスクが複数あります。アプリ側で確認・変更してください。`;
+
+  const updated = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(matches[0].id),
+    { title: newTitle, updated_at: new Date().toISOString() });
+  if (!updated) return `⚠️「${title}」の更新に失敗しました。`;
+
+  return (intro ? intro + '\n\n' : '') + `✅「${title}」を「${newTitle}」に書き換えました。`;
 }
 
 // pending中の期限確認（単発追加時／夜間の棚卸し）への返信を処理。該当なしはnullを返す
