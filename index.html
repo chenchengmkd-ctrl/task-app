@@ -140,7 +140,6 @@
     padding: 9px 12px; border-radius: 7px; cursor: pointer;
   }
   .export-menu button:hover { background: var(--due-bg); }
-  .export-sep { border: none; border-top: 1px solid var(--border); margin: 4px 2px; }
   .export-menu .menu-title { font-size: 11px; color: var(--muted); padding: 4px 12px 2px; }
   .export-menu label.col-toggle-item {
     display: flex; align-items: center; gap: 9px; padding: 7px 12px;
@@ -305,65 +304,6 @@
     .toolbar .search { flex: 1; min-width: 0; }
   }
 
-  /* プロジェクト */
-  .proj-badge {
-    font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 5px;
-    background: var(--tag-bg); color: var(--tag-fg); white-space: nowrap;
-  }
-  .proj-list { list-style: none; display: flex; flex-direction: column; gap: 7px; max-width: 720px; margin-top: 12px; }
-  .proj-item {
-    display: flex; align-items: center; gap: 10px; background: var(--card);
-    border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; box-shadow: var(--shadow);
-  }
-  .proj-body { flex: 1; min-width: 0; }
-  .proj-name { font-weight: 600; }
-  .proj-dir { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-  /* 日次ログ */
-  .log-view { max-width: 720px; }
-  .log-today {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 11px; padding: 14px; box-shadow: var(--shadow); margin-bottom: 14px;
-  }
-  .log-today h2 { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
-  .log-count { font-size: 28px; font-weight: 800; color: var(--accent); margin-bottom: 10px; }
-  .log-count span { font-size: 13px; font-weight: 400; color: var(--muted); }
-  .log-today textarea {
-    font: inherit; width: 100%; min-height: 80px; padding: 9px 11px;
-    border: 1px solid var(--border); border-radius: 8px;
-    background: var(--field-bg); color: var(--text); outline: none; resize: vertical; margin-bottom: 8px;
-  }
-  .log-today textarea:focus { border-color: var(--accent); }
-  .log-history { display: flex; flex-direction: column; gap: 8px; }
-  .log-entry {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 9px; padding: 10px 14px; box-shadow: var(--shadow);
-  }
-  .log-entry-date { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-  .log-entry-note { font-size: 13px; white-space: pre-wrap; word-break: break-word; }
-  .log-entry-count { font-size: 11px; color: var(--accent); margin-top: 4px; }
-
-  /* AI相談 */
-  .ai-view { max-width: 720px; }
-  .ai-box {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 11px; padding: 14px; box-shadow: var(--shadow); margin-bottom: 14px;
-  }
-  .ai-box h2 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
-  .ai-box pre {
-    font: inherit; font-size: 12px; color: var(--muted); white-space: pre-wrap;
-    word-break: break-word; background: var(--col-bg); border-radius: 7px;
-    padding: 10px 12px; max-height: 260px; overflow-y: auto; margin-bottom: 10px;
-  }
-  .ai-hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
-  .ai-hint a { color: var(--accent); }
-  .ai-history { display: flex; flex-direction: column; gap: 8px; }
-  .ai-entry {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 9px; padding: 10px 14px; box-shadow: var(--shadow);
-  }
-  .ai-entry-date { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-  .ai-entry-content { font-size: 13px; white-space: pre-wrap; word-break: break-word; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
@@ -376,9 +316,6 @@
   <div class="tabs">
     <button type="button" class="tab active" data-view="board">📋 ボード</button>
     <button type="button" class="tab" data-view="recurring">🔁 定期タスク</button>
-    <button type="button" class="tab" data-view="projects">📁 プロジェクト</button>
-    <button type="button" class="tab" data-view="logs">📔 日次ログ</button>
-    <button type="button" class="tab" data-view="ai">🤖 AI相談</button>
   </div>
 
   <section id="boardView">
@@ -403,9 +340,6 @@
       <input type="date" id="due" title="期限">
       <input type="time" id="dueTime" title="時刻（任意）">
       <input type="text" id="estimate" placeholder="見積り (例: 30分)" title="見積もり時間">
-      <select id="taskProject" title="プロジェクト">
-        <option value="">プロジェクトなし</option>
-      </select>
     </div>
   </form>
 
@@ -415,9 +349,6 @@
     <button class="chip" data-filter="active">未完了</button>
     <button class="chip" data-filter="done">完了</button>
     <input type="search" id="search" class="search" placeholder="🔍 検索…">
-    <select id="projectFilter" title="プロジェクト" style="font-size:13px;padding:5px 9px;">
-      <option value="">📁 全プロジェクト</option>
-    </select>
     <span class="spacer"></span>
     <select id="sort" title="並べ替え">
       <option value="custom">カスタム順 (ドラッグ可)</option>
@@ -428,16 +359,7 @@
       <button type="button" class="chip" id="colToggleBtn" title="列の表示/非表示">🗂 列</button>
       <div class="export-menu" id="colToggleMenu" hidden></div>
     </div>
-    <div class="export-wrap">
-      <button type="button" class="chip" id="exportBtn">📤 書き出し</button>
-      <div class="export-menu" id="exportMenu" hidden>
-        <button type="button" data-export="copy">📋 テキストをコピー</button>
-        <button type="button" data-export="txt">📄 テキスト保存 (.txt)</button>
-        <button type="button" data-export="csv">📊 CSV保存 (.csv)</button>
-        <hr class="export-sep">
-        <button type="button" data-export="sync">☁️ 今すぐ同期</button>
-      </div>
-    </div>
+    <button type="button" class="chip" id="syncBtn">☁️ 今すぐ同期</button>
   </div>
 
   <div id="board"></div>
@@ -478,49 +400,6 @@
     <ul id="recList"></ul>
   </section>
 
-  <!-- プロジェクト管理 -->
-  <section id="projectsView" hidden>
-    <form class="add-form" id="projForm" autocomplete="off">
-      <div class="row">
-        <input type="text" id="projName" placeholder="プロジェクト名…" required>
-        <input type="text" id="projDir" placeholder="方針・メモ（任意）">
-        <select id="projUrgency" title="重要度">
-          <option value="mid">重要度: 中</option>
-          <option value="high">重要度: 高</option>
-          <option value="low">重要度: 低</option>
-        </select>
-        <button type="submit" class="btn">追加</button>
-      </div>
-    </form>
-    <ul id="projList" class="proj-list"></ul>
-  </section>
-
-  <!-- 日次ログ -->
-  <section id="logsView" hidden>
-    <div class="log-view">
-      <div class="log-today">
-        <h2>📔 今日の振り返り（<span id="logDateLabel"></span>）</h2>
-        <div class="log-count" id="logCount">0 <span>件完了</span></div>
-        <textarea id="logNote" placeholder="今日の振り返り・気づき・明日への一言…"></textarea>
-        <button type="button" class="btn" id="logSaveBtn">保存</button>
-      </div>
-      <div id="logHistory" class="log-history"></div>
-    </div>
-  </section>
-
-  <!-- AI相談 -->
-  <section id="aiView" hidden>
-    <div class="ai-view">
-      <div class="ai-box">
-        <h2>🤖 AI相談（Claude.ai 用プロンプト）</h2>
-        <pre id="aiPromptText"></pre>
-        <button type="button" class="btn" id="aiCopyBtn">📋 プロンプトをコピー</button>
-        <p class="ai-hint">↑ コピーして <a href="https://claude.ai" target="_blank">Claude.ai</a> に貼り付けてください。</p>
-      </div>
-      <div id="aiHistory" class="ai-history"></div>
-    </div>
-  </section>
-
   <footer>
     <span id="footerText"></span>
     <button id="clearDone">完了したタスクを削除</button>
@@ -531,13 +410,10 @@
 const STORE_KEY = "task-app.tasks.v1";
 const REC_KEY = "task-app.recurring.v1";
 const HIDDEN_COLS_KEY = "task-app.hiddenCols.v1";
-const PROJ_KEY = "task-app.projects.v1";
 let tasks = [];
 let recurring = [];
-let projects = [];
 let hiddenCols = [];
 let supabaseSyncTimer = null;
-let selectedProjectId = '';
 
 /* ---------- Supabase ---------- */
 const SUPABASE_URL = 'https://xldkfkhgazpugfuscpqt.supabase.co';
@@ -720,7 +596,6 @@ function addTask(fields) {
     tags: parseTags(fields.tags),
     note: "",
     status: fields.status || "todo",
-    projectId: fields.projectId || null,
     done: false,
     created: Date.now(),
     updated: Date.now()
@@ -802,7 +677,6 @@ function visibleTasks() {
   let list = tasks.filter(t => !t.deleted);
   if (filter === "active") list = list.filter(t => !t.done);
   if (filter === "done")   list = list.filter(t => t.done);
-  if (selectedProjectId)   list = list.filter(t => t.projectId === selectedProjectId);
   if (searchText) {
     const q = searchText.toLowerCase();
     list = list.filter(t => t.title.toLowerCase().includes(q));
@@ -946,10 +820,6 @@ function buildTaskView(li, t, canDrag) {
   }
   if (t.estimate) meta += `<span class="badge">⏱ ${escapeHtml(t.estimate)}</span>`;
   if (t.fromLine) meta += `<span class="badge" title="LINEから追加">💬 LINE</span>`;
-  if (t.projectId) {
-    const proj = projects.find(p => p.id === t.projectId);
-    if (proj) meta += `<span class="proj-badge">📁 ${escapeHtml(proj.name)}</span>`;
-  }
 
   // 進捗メモ（あれば本文表示、なければ追加リンク）
   const noteHtml = t.note
@@ -1003,10 +873,6 @@ function buildEditForm(t) {
       <input type="date" class="e-due" value="${t.due || ""}">
       <input type="time" class="e-due-time" title="時刻（任意）" value="${escapeHtml(t.dueTime || "")}">
       <input type="text" class="e-est" placeholder="見積り (例: 30分)" value="${escapeHtml(t.estimate || "")}">
-      <select class="e-proj">
-        <option value="">プロジェクトなし</option>
-        ${projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
-      </select>
     </div>
     <textarea class="e-note" placeholder="進捗メモ（例: 今日ここまで進んだ / 〇〇待ち / 残りは確認のみ）">${escapeHtml(t.note || "")}</textarea>
     <div class="edit-actions">
@@ -1016,7 +882,6 @@ function buildEditForm(t) {
   `;
   form.querySelector(".e-prio").value = t.priority;
   form.querySelector(".e-status").value = t.status || "todo";
-  form.querySelector(".e-proj").value = t.projectId || "";
 
   form.addEventListener("submit", e => {
     e.preventDefault();
@@ -1029,8 +894,7 @@ function buildEditForm(t) {
       due: form.querySelector(".e-due").value || null,
       dueTime: form.querySelector(".e-due-time").value || "",
       estimate: form.querySelector(".e-est").value.trim(),
-      note: form.querySelector(".e-note").value.trim(),
-      projectId: form.querySelector(".e-proj").value || null
+      note: form.querySelector(".e-note").value.trim()
     });
     editingId = null;
     render();
@@ -1091,84 +955,6 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 }
 
-/* ---------- 書き出し ---------- */
-function exportRows() {
-  return visibleTasks().map(t => ({
-    title: t.title,
-    status: t.done ? "完了" : STATUS_LABEL[t.status],
-    priority: PRIO_LABEL[t.priority],
-    due: t.due || "",
-    note: t.note || "",
-    estimate: t.estimate || "",
-    recurrence: RECUR_LABEL[t.recurrence] || "",
-    tags: t.tags.join(" ")
-  }));
-}
-
-function todayStamp() {
-  const d = new Date(), p = n => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;
-}
-
-// テキスト形式
-function buildText() {
-  const rows = exportRows();
-  const d = new Date();
-  let out = `タスク一覧 (${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} 時点)\n\n`;
-  if (rows.length === 0) return out + "（表示中のタスクはありません）";
-  out += rows.map(r => {
-    const box = r.status === "完了" ? "[x]" : "[ ]";
-    const extra = [];
-    if (r.due) extra.push(`期限:${r.due}`);
-    extra.push(`優先度:${r.priority}`);
-    if (r.estimate) extra.push(`見積:${r.estimate}`);
-    if (r.recurrence) extra.push(`🔁${r.recurrence}`);
-    if (r.note) extra.push(`メモ:${r.note}`);
-    if (r.tags) extra.push(r.tags.split(" ").map(t => "#" + t).join(" "));
-    return `${box} ${r.title}  (${extra.join(" / ")})`;
-  }).join("\n");
-  return out;
-}
-
-// CSV形式（Excel用にBOM付き）
-function buildCSV() {
-  const rows = exportRows();
-  const esc = v => `"${String(v).replace(/"/g, '""')}"`;
-  const header = ["タイトル", "状態", "優先度", "期限", "見積もり", "繰り返し", "進捗メモ", "タグ"];
-  const lines = [header.map(esc).join(",")];
-  rows.forEach(r => lines.push(
-    [r.title, r.status, r.priority, r.due, r.estimate, r.recurrence, r.note, r.tags].map(esc).join(",")
-  ));
-  return "﻿" + lines.join("\r\n");
-}
-
-function downloadFile(filename, content, mime) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement("textarea");
-    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
-    document.body.appendChild(ta); ta.select();
-    document.execCommand("copy"); ta.remove();
-  }
-}
-
-async function doExport(kind) {
-  if (kind === "copy") { await copyText(buildText()); alert("クリップボードにコピーしました"); }
-  else if (kind === "txt") downloadFile(`tasks_${todayStamp()}.txt`, buildText(), "text/plain;charset=utf-8");
-  else if (kind === "csv") downloadFile(`tasks_${todayStamp()}.csv`, buildCSV(), "text/csv;charset=utf-8");
-  else if (kind === "sync") { await pullFromSupabase(); await syncAllToSupabase(); toast("同期しました"); }
-}
-
 /* ---------- Supabase 同期 ---------- */
 function taskToRow(t) {
   return {
@@ -1178,7 +964,6 @@ function taskToRow(t) {
     recurrence: t.recurrence || 'none', note: t.note || '',
     tags: t.tags || [], done: t.done || false,
     deleted: t.deleted || false, from_line: t.fromLine || false,
-    project_id: t.projectId || null,
     updated_at: new Date(t.updated || Date.now()).toISOString()
   };
 }
@@ -1190,7 +975,6 @@ function rowToTask(row) {
     recurrence: row.recurrence || 'none', note: row.note || '',
     tags: row.tags || [], done: row.done || false,
     deleted: row.deleted || false, fromLine: row.from_line || false,
-    projectId: row.project_id || null,
     created: new Date(row.created_at).getTime(),
     updated: new Date(row.updated_at).getTime()
   };
@@ -1214,10 +998,9 @@ async function syncAllToSupabase() {
 }
 async function pullFromSupabase() {
   try {
-    const [{ data: taskData }, { data: recData }, { data: projData }] = await Promise.all([
+    const [{ data: taskData }, { data: recData }] = await Promise.all([
       db.from('tasks').select('*'),
-      db.from('recurring').select('*'),
-      db.from('projects').select('*')
+      db.from('recurring').select('*')
     ]);
     let changed = false;
     if (taskData && taskData.length) {
@@ -1245,10 +1028,6 @@ async function pullFromSupabase() {
         created: new Date(r.created_at).getTime()
       }));
       changed = true;
-    }
-    if (projData && projData.length > projects.length) {
-      projects = projData.map(p => ({ id: p.id, name: p.name, direction: p.direction || '', urgency: p.urgency || 'mid', created: new Date(p.created_at).getTime() }));
-      saveProjects(); renderProjectSelects();
     }
     if (changed) {
       localStorage.setItem(STORE_KEY, JSON.stringify(tasks));
@@ -1309,8 +1088,7 @@ document.getElementById("addForm").addEventListener("submit", e => {
     priority: document.getElementById("priority").value,
     due: document.getElementById("due").value,
     dueTime: document.getElementById("dueTime").value,
-    estimate: document.getElementById("estimate").value.trim(),
-    projectId: document.getElementById("taskProject").value || null
+    estimate: document.getElementById("estimate").value.trim()
   });
   e.target.reset();
   document.getElementById("title").focus();
@@ -1328,15 +1106,10 @@ document.querySelectorAll(".chip[data-filter]").forEach(chip => {
 document.getElementById("search").addEventListener("input", e => { searchText = e.target.value.trim(); render(); });
 document.getElementById("sort").addEventListener("change", e => { sortBy = e.target.value; render(); });
 
-// 書き出しメニューの開閉と実行
-const exportBtn = document.getElementById("exportBtn");
-const exportMenu = document.getElementById("exportMenu");
-exportBtn.addEventListener("click", e => { e.stopPropagation(); exportMenu.hidden = !exportMenu.hidden; });
-exportMenu.querySelectorAll("button").forEach(b =>
-  b.addEventListener("click", () => { exportMenu.hidden = true; doExport(b.dataset.export); })
-);
-document.addEventListener("click", e => {
-  if (!exportMenu.hidden && !exportMenu.contains(e.target) && e.target !== exportBtn) exportMenu.hidden = true;
+document.getElementById("syncBtn").addEventListener("click", async () => {
+  await pullFromSupabase();
+  await syncAllToSupabase();
+  toast("同期しました");
 });
 
 document.getElementById("clearDone").addEventListener("click", () => {
@@ -1345,13 +1118,8 @@ document.getElementById("clearDone").addEventListener("click", () => {
   }
 });
 
-document.getElementById("projectFilter").addEventListener("change", e => {
-  selectedProjectId = e.target.value;
-  render();
-});
-
 // タブ切り替え
-const VIEW_IDS = ["boardView", "recurringView", "projectsView", "logsView", "aiView"];
+const VIEW_IDS = ["boardView", "recurringView"];
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
@@ -1359,8 +1127,6 @@ document.querySelectorAll(".tab").forEach(tab => {
     const v = tab.dataset.view;
     VIEW_IDS.forEach(id => { document.getElementById(id).hidden = true; });
     document.getElementById(v + "View").hidden = false;
-    if (v === "logs") renderLogsView();
-    if (v === "ai")   renderAiView();
   });
 });
 
@@ -1400,168 +1166,6 @@ document.getElementById("recForm").addEventListener("submit", e => {
   document.getElementById("recTitle").focus();
 });
 
-/* ---------- プロジェクト ---------- */
-function loadProjects() {
-  try { projects = JSON.parse(localStorage.getItem(PROJ_KEY)) || []; }
-  catch { projects = []; }
-}
-function saveProjects() { localStorage.setItem(PROJ_KEY, JSON.stringify(projects)); }
-function renderProjectSelects() {
-  const opts = projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-  document.getElementById('taskProject').innerHTML = '<option value="">プロジェクトなし</option>' + opts;
-  document.getElementById('projectFilter').innerHTML =
-    '<option value="">📁 全プロジェクト</option>' +
-    projects.map(p => `<option value="${p.id}">📁 ${escapeHtml(p.name)}</option>`).join('');
-  if (selectedProjectId) document.getElementById('projectFilter').value = selectedProjectId;
-}
-function renderProjectsView() {
-  const list = document.getElementById('projList');
-  list.innerHTML = '';
-  if (!projects.length) {
-    list.innerHTML = '<li class="col-empty" style="padding:16px">プロジェクトはまだありません。上のフォームから追加してください。</li>';
-    return;
-  }
-  projects.forEach(p => {
-    const li = document.createElement('li');
-    li.className = 'proj-item';
-    const all  = tasks.filter(t => !t.deleted && t.projectId === p.id);
-    const done = all.filter(t => t.done).length;
-    const total = all.length;
-    const pct = total ? Math.round(done / total * 100) : 0;
-    li.innerHTML = `
-      <div class="proj-body">
-        <div class="proj-name">${escapeHtml(p.name)}</div>
-        ${p.direction ? `<div class="proj-dir">${escapeHtml(p.direction)}</div>` : ''}
-        <div style="margin-top:6px;background:var(--border);border-radius:999px;height:6px;overflow:hidden">
-          <div style="background:var(--accent);height:100%;width:${pct}%;transition:width .3s"></div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:3px">${done}/${total}件完了（${pct}%）</div>
-      </div>
-      <span class="badge"><i class="dot dot-${p.urgency}"></i>${PRIO_LABEL[p.urgency]}</span>
-      <button type="button" class="chip" style="font-size:12px" data-pid="${p.id}">絞込</button>
-      <button type="button" class="icon-btn delete" data-pid="${p.id}" title="削除">×</button>
-    `;
-    li.querySelector('[data-pid].chip').addEventListener('click', () => {
-      selectedProjectId = p.id;
-      renderProjectSelects();
-      document.querySelector('[data-view="board"]').click();
-    });
-    li.querySelector('.icon-btn.delete').addEventListener('click', () => {
-      if (confirm(`「${p.name}」を削除しますか？\n（タスクのプロジェクト紐付けは解除されます）`)) {
-        tasks.forEach(t => { if (t.projectId === p.id) { t.projectId = null; t.updated = Date.now(); } });
-        projects = projects.filter(x => x.id !== p.id);
-        saveProjects(); save();
-        db.from('projects').delete().eq('id', p.id).catch(() => {});
-        renderProjectSelects(); renderProjectsView();
-      }
-    });
-    list.appendChild(li);
-  });
-}
-document.getElementById('projForm').addEventListener('submit', e => {
-  e.preventDefault();
-  const name = document.getElementById('projName').value.trim();
-  if (!name) return;
-  const proj = {
-    id: crypto.randomUUID(), name,
-    direction: document.getElementById('projDir').value.trim(),
-    urgency: document.getElementById('projUrgency').value,
-    created: Date.now()
-  };
-  projects.push(proj);
-  saveProjects();
-  db.from('projects').upsert([{ id: proj.id, name: proj.name, direction: proj.direction || null, urgency: proj.urgency }]).catch(() => {});
-  renderProjectSelects(); renderProjectsView();
-  e.target.reset();
-  document.getElementById('projName').focus();
-});
-
-/* ---------- 日次ログ ---------- */
-let dailyLogs = [];
-async function renderLogsView() {
-  const today = todayISO();
-  document.getElementById('logDateLabel').textContent = fmtDateJP(today);
-  const doneCnt = tasks.filter(t => t.done && !t.deleted).length;
-  document.getElementById('logCount').innerHTML = `${doneCnt} <span>件完了（全期間）</span>`;
-  const { data } = await db.from('daily_logs').select('*').order('log_date', { ascending: false }).limit(30);
-  dailyLogs = data || [];
-  const todayLog = dailyLogs.find(l => l.log_date === today);
-  if (todayLog) document.getElementById('logNote').value = todayLog.note || '';
-  const hist = document.getElementById('logHistory');
-  const past = dailyLogs.filter(l => l.log_date !== today);
-  hist.innerHTML = past.length ? '<div style="font-weight:700;font-size:13px;margin-bottom:6px">過去の記録</div>' : '';
-  past.forEach(l => {
-    const d = document.createElement('div');
-    d.className = 'log-entry';
-    d.innerHTML = `<div class="log-entry-date">${fmtDateJP(l.log_date)}</div>
-      <div class="log-entry-note">${escapeHtml(l.note || '（メモなし）')}</div>
-      <div class="log-entry-count">完了 ${l.completed_count} 件</div>`;
-    hist.appendChild(d);
-  });
-}
-document.getElementById('logSaveBtn').addEventListener('click', async () => {
-  const today = todayISO();
-  const note = document.getElementById('logNote').value.trim();
-  const doneCnt = tasks.filter(t => t.done && !t.deleted).length;
-  await db.from('daily_logs').upsert([{ log_date: today, note, completed_count: doneCnt }], { onConflict: 'log_date' });
-  toast('振り返りを保存しました');
-  renderLogsView();
-});
-
-/* ---------- AI相談 ---------- */
-async function renderAiView() {
-  const prompt = buildAiPrompt();
-  document.getElementById('aiPromptText').textContent = prompt;
-  const { data } = await db.from('ai_conversations').select('*').order('created_at', { ascending: false }).limit(10);
-  const hist = document.getElementById('aiHistory');
-  hist.innerHTML = (data && data.length) ? '<div style="font-weight:700;font-size:13px;margin-bottom:6px">過去の相談</div>' : '';
-  (data || []).forEach(c => {
-    const d = document.createElement('div');
-    d.className = 'ai-entry';
-    const dt = new Date(c.created_at);
-    d.innerHTML = `<div class="ai-entry-date">${dt.getMonth()+1}/${dt.getDate()} ${dt.getHours()}:${String(dt.getMinutes()).padStart(2,'0')}</div>
-      <div class="ai-entry-content">${escapeHtml(String(c.content?.summary || ''))}</div>`;
-    hist.appendChild(d);
-  });
-}
-function buildAiPrompt() {
-  const active = tasks.filter(t => !t.done && !t.deleted);
-  const done = tasks.filter(t => t.done && !t.deleted);
-  const lines = [
-    '# 現在のタスク状況',
-    `未完了: ${active.length}件 / 完了済み: ${done.length}件`,
-    ''
-  ];
-  ['高', '中', '低'].forEach(lbl => {
-    const key = Object.keys(PRIO_LABEL).find(k => PRIO_LABEL[k] === lbl);
-    const group = active.filter(t => t.priority === key);
-    if (!group.length) return;
-    lines.push(`## 優先度：${lbl}`);
-    group.forEach(t => {
-      const proj = t.projectId ? projects.find(p => p.id === t.projectId) : null;
-      const due = t.due ? ` 期限:${t.due}` : '';
-      const p = proj ? ` [${proj.name}]` : '';
-      lines.push(`- [${STATUS_LABEL[t.status]}] ${t.title}${p}${due}`);
-    });
-    lines.push('');
-  });
-  if (recurring.length) {
-    lines.push('## 定期タスク');
-    recurring.forEach(r => lines.push(`- ${r.title}（${recurDesc(r)}・次回:${r.next || '-'}）`));
-    lines.push('');
-  }
-  lines.push('---');
-  lines.push('上記のタスク状況を見て、今日集中すべきことと、優先度の見直しアドバイスをください。');
-  return lines.join('\n');
-}
-document.getElementById('aiCopyBtn').addEventListener('click', async () => {
-  const text = document.getElementById('aiPromptText').textContent;
-  await copyText(text);
-  await db.from('ai_conversations').insert([{ type: 'prompt', content: { summary: text.slice(0, 200) } }]).catch(() => {});
-  toast('コピーしました。Claude.aiに貼り付けてください。');
-  renderAiView();
-});
-
 /* ---------- リアルタイム自動同期（LINEなど他から変更があった時に自動反映） ---------- */
 let realtimePullTimer = null;
 function scheduleRealtimePull() {
@@ -1571,18 +1175,15 @@ function scheduleRealtimePull() {
 db.channel('task-app-realtime')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, scheduleRealtimePull)
   .on('postgres_changes', { event: '*', schema: 'public', table: 'recurring' }, scheduleRealtimePull)
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, scheduleRealtimePull)
   .subscribe();
 
 /* ---------- 起動 ---------- */
 initTheme();
 load();
 loadRecurring();
-loadProjects();
 loadHiddenCols();
 buildColToggleMenu();
 initRecForm();
-renderProjectSelects();
 generateDue();
 render();
 renderRecurring();
