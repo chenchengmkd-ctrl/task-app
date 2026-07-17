@@ -1026,7 +1026,11 @@ function handlePendingDueReply(userId, text) {
 
   if (pending.mode === 'single') {
     const parsed = extractDateTime_(t);
-    if (!parsed.due) return '日付を認識できませんでした。「6/30」「今日」のように送ってください（設定しない場合は「なし」）。';
+    if (!parsed.due) {
+      // 明らかに日付の返信ではなさそうな長文・複数行は、期限確認を諦めて通常ルーティングへ流す
+      if (t.length > 15 || /\n/.test(t)) { p.deleteProperty(key); return null; }
+      return '日付を認識できませんでした。「6/30」「今日」のように送ってください（設定しない場合は「なし」）。';
+    }
     const task = pending.tasks[0];
     const updated = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(task.id),
       { due: parsed.due, due_time: parsed.dueTime || null, updated_at: new Date().toISOString() });
@@ -1046,7 +1050,11 @@ function handlePendingDueReply(userId, text) {
   const parts = res && (((res.candidates || [])[0] || {}).content || {}).parts;
   const funcPart = parts && parts.find(pp => pp.functionCall);
   const assignments = funcPart && Array.isArray(funcPart.functionCall.args.assignments) ? funcPart.functionCall.args.assignments : [];
-  if (!assignments.length) return '反映できませんでした。個別に「〇〇の期限を6/30にして」のように送ってください。';
+  if (!assignments.length) {
+    // 期限の話ではなさそうな長文・複数行は、諦めて通常ルーティングへ流す
+    if (t.length > 15 || /\n/.test(t)) return null;
+    return '反映できませんでした。個別に「〇〇の期限を6/30にして」のように送ってください。';
+  }
 
   const applied = [];
   assignments.forEach(a => {
