@@ -38,12 +38,14 @@ const STATUS_ICON  = { '未着手': '⚪', '着手中': '🔵', '対応待ち': 
 // Supabase（英語status）→ 表示用日本語
 const STATUS_LABEL_JP = { todo: '未着手', doing: '着手中', waiting: '対応待ち', pending: 'ペンディング' };
 
-// AIエージェントの人格（厳しめのプロマネ）
+// AIエージェントの人格（厳しめのプロマネ＋各分野のスペシャリスト）
 const AGENT_PERSONA = [
   'あなたは経験豊富な、やや厳しめのプロジェクトマネージャーです。',
   'ユーザーのタスク管理データ（進捗状況・期限・最終更新からの経過日数・振り返りログ・直近の完了実績・過去の会話履歴）を分析し、率直かつ具体的にコメントします。',
   '進捗が悪いタスク、期限超過、長期間放置されているタスクは遠慮なく指摘してください。順調な進捗は簡潔に認めます。',
   '一般論ではなく、渡されたデータに含まれる具体的なタスク名・経過日数・期限をもとに指摘してください。',
+  'タスクの進め方や成功のさせ方について聞かれた場合は、単なる励ましや進捗評価にとどまらず、そのタスクの分野に詳しいスペシャリストとして、具体的な進め方・実務上の注意点・コツを提示してください。',
+  '必要に応じてGoogle検索ツールで最新の情報や実践的な方法論を調べたうえで、裏付けのある助言をしてください。',
   '常に日本語で、LINEのトーク画面に収まる分量（300字程度まで）に収め、絵文字は使っても最小限にし、要点を箇条書き中心でまとめてください。'
 ].join('\n');
 
@@ -81,6 +83,11 @@ function routeCommand(userId, text) {
   if (/^(ヘルプ|使い方|help)$/i.test(text)) return helpText();
   if (/^(相談|アドバイス)$/i.test(text)) return askAgent(userId, '最近のタスク状況について、率直な進捗評価とアドバイスをください。');
   if (/^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$/.test(text)) return proposeReprioritization_(userId);
+  if (/^(資料一覧|資料リスト)$/.test(text)) return listMaterials_();
+  const materialMatch = text.match(/^資料[:：]\s*([\s\S]+)$/);
+  if (materialMatch) return addMaterialFromText_(materialMatch[1].trim());
+  const ytMatch = text.match(/(https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)[\w-]+|youtu\.be\/[\w-]+))/);
+  if (ytMatch) return addMaterialFromYoutube_(ytMatch[1]);
   if (!text) return '空メッセージです。「ヘルプ」で使い方を表示します。';
   if (isQuestionLike(text)) return askAgent(userId, text);
   return addLine(userId, text);
@@ -380,8 +387,10 @@ function helpText() {
     '・優先順位を整理して　→ AIが全体を見直して並べ替え案を提示（「はい」で適用）',
     '・長い文章や箇条書きを送ると、AIが要点だけのタスク名に整理して追加します',
     '・期限を指定せずに追加すると、その場で期限を聞かれます（不要なら「なし」）',
+    '・YouTubeのURLを送る、または「資料：本文」の形式でテキストを送ると、AIコーチが要点を要約して覚え、以降の相談で参考にします',
+    '・資料一覧 → 登録済みの資料を確認',
     '',
-    `毎朝${REMIND_HOUR}時に期限リマインド、毎晩${AGENT_HOUR}時にAIコーチの進捗チェックイン（期限未設定タスクの確認・優先順位見直し案つき）を自動送信します。`,
+    `毎朝${REMIND_HOUR}時に期限リマインド、毎晩${AGENT_HOUR}時にAIコーチの進捗チェックイン（今日完了したタスクの集計・期限未設定タスクの確認・優先順位見直し案つき）を自動送信します。`,
     `時刻つきタスクは、開始${TIME_LEAD_MINUTES}分前にも別途リマインドします。`
   ].join('\n');
 }
@@ -611,6 +620,8 @@ const TOOLS_SET_DUE_BATCH = [{
     }
   }]
 }];
+// Google検索によるグラウンディング（AIコーチがスペシャリストとして助言する際に、最新情報を調べられるようにする）
+const TOOL_GOOGLE_SEARCH = { google_search: {} };
 // 未完了タスク全体の優先順位見直し案を作るためのツール（毎晩のチェックイン／「優先順位を整理して」で使用）
 const TOOLS_REPRIORITIZE = [{
   functionDeclarations: [{
@@ -635,9 +646,9 @@ const TOOLS_REPRIORITIZE = [{
     }
   }]
 }];
-// Gemini APIを呼び出し、応答テキストを返す（失敗時はnull）
-function callGemini(systemPrompt, userText, maxTokens) {
-  const data = callGeminiRaw_(systemPrompt, userText, null, maxTokens);
+// Gemini APIを呼び出し、応答テキストを返す（失敗時はnull）。toolsを渡すとGoogle検索等も使える
+function callGemini(systemPrompt, userText, maxTokens, tools) {
+  const data = callGeminiRaw_(systemPrompt, userText, tools || null, maxTokens);
   if (!data) return null;
   const parts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
   const textPart = parts.find(p => p.text);
@@ -647,10 +658,12 @@ function callGemini(systemPrompt, userText, maxTokens) {
 function callGeminiWithTools(systemPrompt, userText, tools, maxTokens) {
   return callGeminiRaw_(systemPrompt, userText, tools, maxTokens);
 }
+// userTextは文字列（通常のテキスト）、または動画等を渡す場合はparts配列（例：[{file_data:{file_uri:url}},{text:'...'}]）
 function callGeminiRaw_(systemPrompt, userText, tools, maxTokens) {
+  const parts = Array.isArray(userText) ? userText : [{ text: userText }];
   const payload = {
     system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [{ role: 'user', parts: [{ text: userText }] }],
+    contents: [{ role: 'user', parts: parts }],
     generationConfig: { maxOutputTokens: maxTokens || 800 }
   };
   if (tools) payload.tools = tools;
@@ -698,15 +711,67 @@ function buildAgentContext() {
   const convoLines = convos.reverse().map(c =>
     '・' + jp2(new Date(c.created_at)) + ' ユーザー「' + trunc_(c.user_text, 60) + '」→ コーチ「' + trunc_(c.ai_reply, 80) + '」');
 
+  // ユーザーが登録した参考資料（動画・テキスト）の要約
+  const materials = getSupabase('materials', 'select=title,summary&order=created_at.desc&limit=10');
+  const materialLines = materials.map(m => '・' + m.title + '：' + trunc_(m.summary, 150));
+
   return [
     '【未完了タスク一覧】', taskLines.join('\n') || 'なし',
     '', '【直近14日で完了したタスク】', doneLines.join('\n') || 'なし',
     '', '【定期タスク】', recLines.join('\n') || 'なし',
     '', '【直近の振り返りログ】', logLines.join('\n') || 'なし',
-    '', '【直近のAIコーチとの会話】', convoLines.join('\n') || 'なし'
+    '', '【直近のAIコーチとの会話】', convoLines.join('\n') || 'なし',
+    '', '【ユーザーが登録した参考資料】', materialLines.join('\n') || 'なし'
   ].join('\n');
 }
 function trunc_(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
+
+/* ============ 参考資料（YouTube動画／テキスト）をAIコーチに学習させる ============ */
+// YouTube動画のURLを渡すと、Geminiが内容を要約して「資料」として保存する
+function addMaterialFromYoutube_(url) {
+  const parts = [
+    { file_data: { file_uri: url } },
+    { text: 'この動画の内容を、後でタスクの相談・アドバイスに役立てられるよう、実務で使える要点・具体的な方法論・注意点を中心に日本語800字程度で要約してください。' +
+      '1行目には「タイトル: 〇〇」の形式で20文字程度の短いタイトルだけを入れ、2行目以降に要約本文を書いてください。' }
+  ];
+  const reply = callGemini('あなたはタスク管理アシスタントのための資料要約担当です。', parts, 800);
+  if (!reply) return '⚠️ 動画の読み込みに失敗しました。URLが正しいか確認のうえ、時間をおいて再度お試しください。';
+  return saveMaterial_(reply, 'youtube', url);
+}
+// 貼り付けられたテキストを、後で参照しやすい形に整理して「資料」として保存する
+function addMaterialFromText_(text) {
+  if (!text) return '資料の内容が空です。「資料：」の後に本文も送ってください。';
+  const reply = callGemini(
+    'あなたはタスク管理アシスタントのための資料要約担当です。渡されたテキストの1行目に「タイトル: 〇〇」の形式で20文字程度の短いタイトルをつけてください。' +
+    '2行目以降に、後でタスクの相談・アドバイスに役立てられるよう要点を日本語600字程度で整理してください。元のテキストがすでに簡潔なら、大きく書き換えずそのまま活かして構いません。',
+    text, 600);
+  if (!reply) return '⚠️ 資料の整理に失敗しました。時間をおいて再度お試しください。';
+  return saveMaterial_(reply, 'text', null);
+}
+// AIの要約結果（1行目「タイトル: 〇〇」＋本文）をパースしてSupabaseに保存する
+function saveMaterial_(aiText, sourceType, sourceUrl) {
+  const titleMatch = aiText.match(/^タイトル[:：]\s*(.+)$/m);
+  const title = titleMatch ? titleMatch[1].trim() : trunc_(aiText, 20);
+  const summary = titleMatch ? aiText.replace(titleMatch[0], '').trim() : aiText;
+
+  const ok = postSupabase('materials', [{
+    title: trunc_(title, 60),
+    source_type: sourceType,
+    source_url: sourceUrl,
+    summary: trunc_(summary, 1500),
+    created_at: new Date().toISOString()
+  }]);
+  if (!ok) return '⚠️ 資料の保存に失敗しました。Supabaseにmaterialsテーブルがあるか確認してください。';
+
+  return `📚 資料として覚えました\n「${title}」\n\n` + trunc_(summary, 200) +
+    '\n\n以降の相談やチェックインで参考にします。「資料一覧」で登録済みの資料を確認できます。';
+}
+// 登録済みの資料一覧を表示する
+function listMaterials_() {
+  const rows = getSupabase('materials', 'select=title,source_type&order=created_at.desc&limit=20');
+  if (!rows.length) return '📚 登録済みの資料はまだありません。「資料：本文」やYouTubeのURLを送ると覚えます。';
+  return '📚 資料一覧\n' + rows.map(r => '・' + r.title + (r.source_type === 'youtube' ? '🎥' : '📝')).join('\n');
+}
 // AIコーチとのやり取りを記録する（次回以降の文脈把握のため。失敗しても致命的ではないので結果は無視する）
 function logAgentInteraction_(userId, userText, aiReply) {
   postSupabase('ai_log', [{
@@ -728,9 +793,10 @@ function askAgent(userId, userText) {
     '「〜の優先度を上げて/下げて」のように優先度変更が明確に依頼された場合はupdate_task_priorityツールを、' +
     '「〜の期限を6/30にして」のように特定タスクの期限変更が明確に依頼された場合はupdate_task_dueツールを使ってください。\n' +
     '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n' +
-    '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n\n' +
+    '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n' +
+    '「ユーザーが登録した参考資料」に関連する内容があれば、一般論やWeb検索の結果より優先して、その資料の内容を踏まえて具体的に助言してください。\n\n' +
     context + '\n\n【ユーザーの相談】\n' + userText,
-    AGENT_TOOLS, 700);
+    AGENT_TOOLS.concat([TOOL_GOOGLE_SEARCH]), 700);
   if (!res) return '⚠️ AIエージェントの応答取得に失敗しました。時間をおいて再度お試しください。';
 
   const parts = (((res.candidates || [])[0] || {}).content || {}).parts || [];
@@ -989,15 +1055,31 @@ function handlePendingReprioritizeReply(userId, text) {
   return null;
 }
 
+// 今日完了したタスクの集計（日次レポート・進捗チェックインに含める）
+function buildDailyReport_() {
+  const todayStr = todayISO_();
+  const doneToday = getSupabase('tasks',
+    'done=eq.true&deleted=eq.false&updated_at=gte.' + todayStr + '&select=title&order=updated_at.desc');
+  let msg = `✅ 今日完了したタスク（${doneToday.length}件）`;
+  if (doneToday.length) msg += '\n' + doneToday.map(t => '・' + t.title).join('\n');
+  return msg;
+}
+// テスト：今日完了したタスクの集計を確認する（LINE送信はせずログに出すだけ）
+function testDailyReport() {
+  Logger.log(buildDailyReport_());
+}
+
 // プッシュ型：毎晩の進捗チェックイン（毎朝のリマインドとは別に送信）
 function sendAgentCheckIn() {
   const context = buildAgentContext();
   const reply = callGemini(AGENT_PERSONA,
-    '以下は現在のタスク状況です。今日の進捗チェックインとして、①最優先で手をつけるべきタスク　②停滞・放置が気になる要注意タスク　③一言アドバイス、をまとめてください。\n\n' + context,
-    600);
+    '以下は現在のタスク状況です。今日の進捗チェックインとして、①最優先で手をつけるべきタスク　②停滞・放置が気になる要注意タスク　③一言アドバイス、をまとめてください。' +
+    '③のアドバイスは、単なる励ましではなく、そのタスクの分野に詳しいスペシャリストとしての具体的な進め方を含めてください。\n\n' + context,
+    600, [TOOL_GOOGLE_SEARCH]);
   if (!reply) return;
 
   let msg = '🧭 進捗チェックイン\n\n' + reply;
+  msg += '\n\n' + buildDailyReport_();
 
   // 期限未設定タスクの棚卸し（すでに確認待ちがあれば重複して聞かない）
   const p = PropertiesService.getScriptProperties();
