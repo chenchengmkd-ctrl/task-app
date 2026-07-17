@@ -107,7 +107,7 @@ function isQuestionLike(text) {
   if (/[?？]$/.test(text)) return true;
   if (/(か|かな|かしら)[。.!！]?$/.test(text)) return true;
   if (/(完了しました|完了した|終わりました|終わった|できました|やりました)[。.!！]?$/.test(text)) return true;
-  if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に|書き換えて|タイトルを|名前を)/.test(text)) return true;
+  if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に|書き換えて|タイトルを|名前を|修正して|直して)/.test(text)) return true;
   return false;
 }
 
@@ -424,6 +424,7 @@ function helpText() {
     '・期限を指定せずに追加すると、その場で期限を聞かれます（不要なら「なし」）',
     '・YouTubeのURLを送る、または「資料：本文」の形式でテキストを送ると、AIコーチが要点を要約して覚え、以降の相談で参考にします',
     '・資料一覧 → 登録済みの資料を確認',
+    '　例）〇〇の資料を△△に直して　→ 資料の内容をAIが書き直し（理解の相違があった時など）',
     '',
     `毎朝${REMIND_HOUR}時に期限リマインド、毎晩${AGENT_HOUR}時にAIコーチの進捗チェックイン（今日完了したタスクの集計・期限未設定タスクの確認・優先順位見直し案つき）を自動送信します。`,
     `時刻つきタスクは、開始${TIME_LEAD_MINUTES}分前にも別途リマインドします。`
@@ -639,6 +640,18 @@ const AGENT_TOOLS = [{
         },
         required: ['task_title', 'new_title']
       }
+    },
+    {
+      name: 'update_material',
+      description: 'ユーザーが「〇〇の資料を直して」「資料の2番をもっと具体的にして」のように、タスクではなく登録済みの参考資料（資料一覧にあるもの）の内容修正・書き直しを明確に依頼した場合に使う。ユーザーが「資料」という言葉で言及している場合はこちらを優先すること。',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          material_title: { type: 'STRING', description: '修正対象の資料の正式なタイトル（ユーザーが一部の言葉やキーワードだけで指定していても、「ユーザーが登録した参考資料」一覧から該当するものを選び、その一覧にある通りの完全なタイトルをここに入れること）' },
+          instruction: { type: 'STRING', description: 'ユーザーが伝えた修正内容・指示をそのまま入れる' }
+        },
+        required: ['material_title', 'instruction']
+      }
     }
   ]
 }];
@@ -808,14 +821,42 @@ function saveMaterial_(aiText, sourceType, sourceUrl) {
   }]);
   if (!ok) return '⚠️ 資料の保存に失敗しました。Supabaseにmaterialsテーブルがあるか確認してください。';
 
-  return `📚 資料として覚えました\n「${title}」\n\n` + trunc_(summary, 200) +
-    '\n\n以降の相談やチェックインで参考にします。「資料一覧」で登録済みの資料を確認できます。';
+  return `📚 資料として覚えました\n「${title}」\n\n` + summary +
+    '\n\n内容が違う場合は「〇〇の資料を△△に直して」のように送れば修正できます。';
 }
 // 登録済みの資料一覧を表示する
 function listMaterials_() {
   const rows = getSupabase('materials', 'select=title,source_type&order=created_at.desc&limit=20');
   if (!rows.length) return '📚 登録済みの資料はまだありません。「資料：本文」やYouTubeのURLを送ると覚えます。';
   return '📚 資料一覧\n' + rows.map(r => '・' + r.title + (r.source_type === 'youtube' ? '🎥' : '📝')).join('\n');
+}
+// 登録済み資料の内容修正を実行（タイトルが一意に特定できる場合のみ）。現在の要約に修正指示を反映して書き直す
+function handleUpdateMaterial(input, intro) {
+  const title = String((input || {}).material_title || '').trim();
+  const instruction = String((input || {}).instruction || '').trim();
+  if (!title || !instruction) return '⚠️ 資料の修正内容を理解できませんでした。';
+
+  const matches = getSupabase('materials', 'title=eq.' + encodeURIComponent(title) + '&select=id,title,summary');
+  if (!matches.length) return `⚠️「${title}」という資料が見つかりませんでした。「資料一覧」で確認してください。`;
+  if (matches.length > 1) return `⚠️「${title}」に一致する資料が複数あります。「資料一覧」で確認してください。`;
+
+  const target = matches[0];
+  const reply = callGemini(
+    'あなたはタスク管理アシスタントのための資料要約担当です。以下は現在保存されている資料の要約です。ユーザーの修正指示に従って書き換えてください。' +
+    '1行目に「タイトル: 〇〇」の形式で20文字程度の短いタイトルをつけてください（変更不要ならそのまま）。2行目以降に、修正後の要約を日本語600字程度で書いてください。',
+    '【現在の要約】\n' + target.summary + '\n\n【修正指示】\n' + instruction,
+    600);
+  if (!reply) return '⚠️ 資料の修正に失敗しました。時間をおいて再度お試しください。';
+
+  const titleMatch = reply.match(/^タイトル[:：]\s*(.+)$/m);
+  const newTitle = titleMatch ? titleMatch[1].trim() : target.title;
+  const newSummary = titleMatch ? reply.replace(titleMatch[0], '').trim() : reply;
+
+  const updated = patchSupabase('materials', 'id=eq.' + encodeURIComponent(target.id),
+    { title: trunc_(newTitle, 60), summary: trunc_(newSummary, 1500) });
+  if (!updated) return `⚠️「${title}」の修正に失敗しました。`;
+
+  return (intro ? intro + '\n\n' : '') + `📚「${newTitle}」を修正しました\n\n${newSummary}`;
 }
 // AIコーチとのやり取りを記録する（次回以降の文脈把握のため。失敗しても致命的ではないので結果は無視する）
 function logAgentInteraction_(userId, userText, aiReply) {
@@ -837,7 +878,8 @@ function askAgent(userId, userText) {
     '「〜を削除して」のように削除が明確に依頼された場合はdelete_taskツールを、' +
     '「〜の優先度を上げて/下げて」のように優先度変更が明確に依頼された場合はupdate_task_priorityツールを、' +
     '「〜の期限を6/30にして」のように特定タスクの期限変更が明確に依頼された場合はupdate_task_dueツールを、' +
-    '「〜を△△に書き換えて」のようにタスクの内容・タイトルそのものの変更が明確に依頼された場合はupdate_task_titleツールを使ってください。\n' +
+    '「〜を△△に書き換えて」のようにタスクの内容・タイトルそのものの変更が明確に依頼された場合はupdate_task_titleツールを、' +
+    '「資料を〜に直して」のように登録済みの参考資料の修正が明確に依頼された場合はupdate_materialツールを使ってください。\n' +
     '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n' +
     'ユーザーはタスク名を毎回全部書かず、一部の言葉やキーワードだけで指定することが多いです。「未完了タスク一覧」を見て該当するタスクが1つに絞れる場合は、正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、ツールを使わず候補を挙げて確認してください。\n' +
     '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n' +
@@ -858,6 +900,7 @@ function askAgent(userId, userText) {
   else if (funcPart && funcPart.functionCall.name === 'update_task_priority') reply = handleUpdateTaskPriority(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'update_task_due') reply = handleUpdateTaskDue(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'update_task_title') reply = handleUpdateTaskTitle(funcPart.functionCall.args, intro);
+  else if (funcPart && funcPart.functionCall.name === 'update_material') reply = handleUpdateMaterial(funcPart.functionCall.args, intro);
   else reply = intro || '⚠️ AIエージェントの応答取得に失敗しました。';
 
   logAgentInteraction_(userId, userText, reply);
