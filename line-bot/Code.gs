@@ -84,6 +84,7 @@ function routeCommand(userId, text) {
 function isQuestionLike(text) {
   if (/[?？]$/.test(text)) return true;
   if (/(か|かな|かしら)[。.!！]?$/.test(text)) return true;
+  if (/(完了しました|完了した|終わりました|終わった|できました|やりました)[。.!！]?$/.test(text)) return true;
   if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除して|消して)/.test(text)) return true;
   return false;
 }
