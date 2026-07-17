@@ -91,34 +91,22 @@ function isQuestionLike(text) {
 /* ============ タスク追加・一覧 ※すべてSupabase直接操作 ============ */
 // タスクをその場でSupabaseに追加する（受信箱を介さず即反映）
 function addLine(text) {
-  let title = text, projName = '';
-  // [プロジェクト名] タスク名 の形式を検出してプロジェクトIDに変換
-  const projMatch = title.match(/^\[(.+?)\]\s*/);
-  if (projMatch) { projName = projMatch[1]; title = title.slice(projMatch[0].length); }
-
   // 「今日17時に」「6/25 15:00」のような日付・時刻表現を検出して取り除く
-  const parsed = extractDateTime_(title);
-  title = parsed.title;
+  const parsed = extractDateTime_(text);
+  const title = parsed.title;
   const due = parsed.due, dueTime = parsed.dueTime;
-
-  let projectId = null;
-  if (projName) {
-    const projs = getSupabase('projects', 'name=eq.' + encodeURIComponent(projName) + '&select=id');
-    if (projs.length) projectId = projs[0].id;
-  }
 
   const row = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
     title, status: 'todo', priority: 'mid', due: due || null, due_time: dueTime || null,
     estimate: '', recurrence: 'none', note: '', tags: [],
     done: false, deleted: false, from_line: true,
-    project_id: projectId, updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString()
   };
   if (!postSupabase('tasks', [row])) return '⚠️ タスクの追加に失敗しました。時間をおいて再度お試しください。';
 
   const cnt = getSupabase('tasks', 'done=eq.false&deleted=eq.false&select=id').length;
   let msg = `✅ 追加しました\n「${title}」`;
-  if (projName) msg += projectId ? `\n📁 ${projName}` : `\n⚠️ プロジェクト「${projName}」が見つからず未設定`;
   if (due) msg += `\n📅 ${jp(due)}` + (dueTime ? ' ' + dueTime : '');
   msg += `\n\n未完了: ${cnt}件`;
   return msg;
@@ -490,7 +478,7 @@ const AGENT_TOOLS = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          parent_task_title: { type: 'STRING', description: '分解対象タスクのタイトル（タスク一覧の名称と完全一致。先頭の[プロジェクト名]の角括弧は含めない）' },
+          parent_task_title: { type: 'STRING', description: '分解対象タスクのタイトル（タスク一覧の名称と完全一致）' },
           subtasks: { type: 'ARRAY', items: { type: 'STRING' }, description: '3〜5個程度の、具体的で実行しやすいサブタスクのタイトル' }
         },
         required: ['parent_task_title', 'subtasks']
@@ -502,7 +490,7 @@ const AGENT_TOOLS = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          task_title: { type: 'STRING', description: '状態変更の対象タスクのタイトル（タスク一覧の名称と完全一致。先頭の[プロジェクト名]の角括弧は含めない）' },
+          task_title: { type: 'STRING', description: '状態変更の対象タスクのタイトル（タスク一覧の名称と完全一致）' },
           new_status: { type: 'STRING', enum: ['todo', 'doing', 'waiting', 'pending', 'done'], description: '変更後の状態。完了にする場合は done' }
         },
         required: ['task_title', 'new_status']
@@ -514,7 +502,7 @@ const AGENT_TOOLS = [{
       parameters: {
         type: 'OBJECT',
         properties: {
-          task_title: { type: 'STRING', description: '削除対象タスクのタイトル（タスク一覧の名称と完全一致。先頭の[プロジェクト名]の角括弧は含めない）' }
+          task_title: { type: 'STRING', description: '削除対象タスクのタイトル（タスク一覧の名称と完全一致）' }
         },
         required: ['task_title']
       }
@@ -557,18 +545,14 @@ function callGeminiRaw_(systemPrompt, userText, tools, maxTokens) {
 // タスク状況（Supabase）＋定期タスク（シート）＋直近の振り返りログをAI用にまとめる
 function buildAgentContext() {
   const tasks = getSupabase('tasks',
-    'done=eq.false&deleted=eq.false&select=title,status,priority,due,project_id,updated_at&order=updated_at.asc');
-  const projects = getSupabase('projects', 'select=id,name');
-  const projMap = {};
-  projects.forEach(p => { projMap[p.id] = p.name; });
+    'done=eq.false&deleted=eq.false&select=title,status,priority,due,updated_at&order=updated_at.asc');
   const now = Date.now();
 
   const taskLines = tasks.map(t => {
     const days = Math.floor((now - new Date(t.updated_at).getTime()) / 86400000);
-    const proj = t.project_id && projMap[t.project_id] ? '[' + projMap[t.project_id] + '] ' : '';
     const due = t.due ? ' 期限:' + t.due : '';
     const status = STATUS_LABEL_JP[t.status] || t.status;
-    return '・' + proj + t.title + '（状態:' + status + due + ' 優先度:' + t.priority + ' 最終更新:' + days + '日前）';
+    return '・' + t.title + '（状態:' + status + due + ' 優先度:' + t.priority + ' 最終更新:' + days + '日前）';
   });
 
   const rec = getRecurring();
@@ -623,16 +607,13 @@ function handleProposeSubtasks(userId, input, intro) {
 }
 // 「はい」の返信を受けて、保留中のサブタスク提案を実際にSupabaseへ追加
 function addSubtasksToApp_(parentTitle, subtasks) {
-  const parents = getSupabase('tasks',
-    'deleted=eq.false&title=eq.' + encodeURIComponent(parentTitle) + '&select=id,project_id');
-  const projectId = parents.length === 1 ? parents[0].project_id : null;
   const now = new Date().toISOString();
   const rows = subtasks.map(title => ({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
     title, status: 'todo', priority: 'mid', due: null, due_time: null,
     estimate: '', recurrence: 'none', note: '', tags: [],
     done: false, deleted: false, from_line: true,
-    project_id: projectId, updated_at: now
+    updated_at: now
   }));
   if (!postSupabase('tasks', rows)) return '⚠️ サブタスクの追加に失敗しました。';
   return `✅「${parentTitle}」に${subtasks.length}件のサブタスクを追加しました\n` +
@@ -731,16 +712,11 @@ function sendWeeklyReport() {
 
   // 先週完了したタスク（updated_at >= 7日前 AND done=true）
   const doneTasks = getSupabase('tasks',
-    'done=eq.true&deleted=eq.false&updated_at=gte.' + since + '&select=title,project_id,updated_at&order=updated_at.desc');
+    'done=eq.true&deleted=eq.false&updated_at=gte.' + since + '&select=title,updated_at&order=updated_at.desc');
 
   // 先週の日次ログ
   const logs = getSupabase('daily_logs',
     'log_date=gte.' + since + '&select=log_date,content&order=log_date.desc');
-
-  // プロジェクト名マップ
-  const projects = getSupabase('projects', 'select=id,name');
-  const projMap = {};
-  projects.forEach(p => { projMap[p.id] = p.name; });
 
   const m = today.getMonth() + 1, d = today.getDate();
   let msg = `📊 週次レポート（${m}/${d}）\n`;
@@ -748,10 +724,7 @@ function sendWeeklyReport() {
   // 完了タスク
   msg += `\n✅ 先週の完了タスク（${doneTasks.length}件）`;
   if (doneTasks.length) {
-    msg += '\n' + doneTasks.map(t => {
-      const proj = t.project_id && projMap[t.project_id] ? '📁' + projMap[t.project_id] + ' ' : '';
-      return '・' + proj + t.title;
-    }).join('\n');
+    msg += '\n' + doneTasks.map(t => '・' + t.title).join('\n');
   } else {
     msg += '\nなし';
   }
