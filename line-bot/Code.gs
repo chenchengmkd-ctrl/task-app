@@ -68,34 +68,52 @@ function handleEvent(ev) {
 }
 
 function routeCommand(userId, text) {
-  // 保留中のサブタスク提案への「はい/いいえ」を最優先で処理
-  const pendingReply = handlePendingSubtaskReply(userId, text);
-  if (pendingReply !== null) return pendingReply;
+  // 保留中の返信（サブタスク提案／期限確認／優先順位見直し案）への「はい/いいえ」等を最優先で処理
+  const pendingSubtask = handlePendingSubtaskReply(userId, text);
+  if (pendingSubtask !== null) return pendingSubtask;
+  const pendingDue = handlePendingDueReply(userId, text);
+  if (pendingDue !== null) return pendingDue;
+  const pendingReprioritize = handlePendingReprioritizeReply(userId, text);
+  if (pendingReprioritize !== null) return pendingReprioritize;
 
   if (/^(一覧|リスト|list)$/i.test(text)) return listAll();
   if (/^(通知|リマインド|今日)$/i.test(text)) return buildReminder() || '📭 期限が近い（超過・今日・明日）のタスクはありません。';
   if (/^(ヘルプ|使い方|help)$/i.test(text)) return helpText();
   if (/^(相談|アドバイス)$/i.test(text)) return askAgent(userId, '最近のタスク状況について、率直な進捗評価とアドバイスをください。');
+  if (/^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$/.test(text)) return proposeReprioritization_(userId);
   if (!text) return '空メッセージです。「ヘルプ」で使い方を表示します。';
   if (isQuestionLike(text)) return askAgent(userId, text);
-  return addLine(text);
+  return addLine(userId, text);
 }
-// 疑問文・相談・タスク分解／状態変更／削除の依頼っぽい文かどうかをざっくり判定（タスク追加との区別用）
+// 疑問文・相談・タスク分解／状態変更／削除／要約／優先度／期限変更の依頼っぽい文かどうかをざっくり判定（タスク追加との区別用）
 function isQuestionLike(text) {
   if (/[?？]$/.test(text)) return true;
   if (/(か|かな|かしら)[。.!！]?$/.test(text)) return true;
   if (/(完了しました|完了した|終わりました|終わった|できました|やりました)[。.!！]?$/.test(text)) return true;
-  if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して)/.test(text)) return true;
+  if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に)/.test(text)) return true;
   return false;
 }
 
 /* ============ タスク追加・一覧 ※すべてSupabase直接操作 ============ */
 // タスクをその場でSupabaseに追加する（受信箱を介さず即反映）
-function addLine(text) {
+function addLine(userId, text) {
   // 「今日17時に」「6/25 15:00」のような日付・時刻表現を検出して取り除く
   const parsed = extractDateTime_(text);
-  const title = parsed.title;
-  const due = parsed.due, dueTime = parsed.dueTime;
+  let title = parsed.title;
+  let due = parsed.due;
+  const dueTime = parsed.dueTime;
+
+  // 規則で日付が拾えず、それでも日付っぽい表現が残っていればAIで補って解釈する
+  if (!due && /(来週|再来週|今週中|今月中|来月|月末|週末|月曜|火曜|水曜|木曜|金曜|土曜|日曜)/.test(title)) {
+    const aiDue = aiParseDate_(title);
+    if (aiDue) due = aiDue;
+  }
+
+  // 長い・改行を含む・箇条書きっぽい文章は、AIで簡潔なタスク名に整理する
+  if (title.length > 20 || /\n|・|^[0-9]+[.、)]/.test(title)) {
+    const cleaned = cleanupTaskText_(title);
+    if (cleaned) title = cleaned;
+  }
 
   const row = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
@@ -108,7 +126,13 @@ function addLine(text) {
 
   const cnt = getSupabase('tasks', 'done=eq.false&deleted=eq.false&select=id').length;
   let msg = `✅ 追加しました\n「${title}」`;
-  if (due) msg += `\n📅 ${jp(due)}` + (dueTime ? ' ' + dueTime : '');
+  if (due) {
+    msg += `\n📅 ${jp(due)}` + (dueTime ? ' ' + dueTime : '');
+  } else {
+    PropertiesService.getScriptProperties().setProperty('PENDING_DUE_' + userId,
+      JSON.stringify({ mode: 'single', tasks: [{ id: row.id, title }], createdAt: Date.now() }));
+    msg += '\n\n📅 期限はいつにしますか？（例：6/30、今日、なし）';
+  }
   msg += `\n\n未完了: ${cnt}件`;
   return msg;
 }
@@ -345,13 +369,19 @@ function helpText() {
     '・通知 → 今の期限リマインドを表示',
     '・相談・アドバイス → AIコーチに進捗評価を聞く',
     '　（「〜どう？」のような疑問文もAIコーチが拾って回答します）',
-    '・AIコーチにはタスクの分解・状態変更・削除も頼めます',
+    '・AIコーチにはタスクの分解・状態変更・削除・優先度変更・期限変更も頼めます',
     '　例）会議資料の準備を分解して　→ 提案が来たら「はい」で追加',
     '　例）牛乳を買うを完了にして　→ その場で状態を変更',
     '　例）牛乳を買うを削除して　→ その場で削除',
+    '　例）牛乳を買うの優先度を上げて　→ その場で優先度を変更',
+    '　例）牛乳を買うの期限を7/1にして　→ その場で期限を変更',
     '　例）このタスクやる意味ある？　→ 率直な意見を返します',
+    '　例）要約して／言い換えて　→ タスク状況を簡潔にまとめて返します',
+    '・優先順位を整理して　→ AIが全体を見直して並べ替え案を提示（「はい」で適用）',
+    '・長い文章や箇条書きを送ると、AIが要点だけのタスク名に整理して追加します',
+    '・期限を指定せずに追加すると、その場で期限を聞かれます（不要なら「なし」）',
     '',
-    `毎朝${REMIND_HOUR}時に期限リマインド、毎晩${AGENT_HOUR}時にAIコーチの進捗チェックインを自動送信します。`,
+    `毎朝${REMIND_HOUR}時に期限リマインド、毎晩${AGENT_HOUR}時にAIコーチの進捗チェックイン（期限未設定タスクの確認・優先順位見直し案つき）を自動送信します。`,
     `時刻つきタスクは、開始${TIME_LEAD_MINUTES}分前にも別途リマインドします。`
   ].join('\n');
 }
@@ -411,6 +441,27 @@ function extractDateTime_(text) {
 
   title = title.replace(/^[、,\s]+/, '').replace(/[、,\s]+$/, '').replace(/\s{2,}/g, ' ').trim();
   return { title, due, dueTime };
+}
+
+// 長い/雑多な文章から、実際のタスク名だけを簡潔に抽出する（AI機能・失敗時はnullを返し元の文章を使う）
+function cleanupTaskText_(text) {
+  const reply = callGemini(
+    'あなたはタスク管理アシスタントです。渡された文章から、実際にやるべきタスクの内容だけを抽出し、20文字程度までの簡潔な日本語のタスク名として1行で返してください。' +
+    '説明・前置き・箇条書き記号・敬語表現は不要です。タスク名だけを返してください。',
+    text, 60);
+  if (!reply) return null;
+  const cleaned = reply.trim().split('\n')[0].replace(/^[・\-\d.、)]+\s*/, '').trim();
+  return cleaned || null;
+}
+// 「来週」「月末」のような曖昧な日付表現をAIでYYYY-MM-DDに変換する（失敗時はnull）
+function aiParseDate_(text) {
+  const reply = callGemini(
+    '今日の日付は' + todayISO_() + '（YYYY-MM-DD）です。渡された文章に含まれる日付表現を、YYYY-MM-DD形式の1行だけで返してください。' +
+    '日付表現が無い・特定できない場合は「なし」とだけ返してください。説明は不要です。',
+    text, 20);
+  if (!reply) return null;
+  const m = reply.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m ? m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') : null;
 }
 
 /* ============ Supabase ヘルパー ============ */
@@ -507,8 +558,82 @@ const AGENT_TOOLS = [{
         },
         required: ['task_title']
       }
+    },
+    {
+      name: 'update_task_priority',
+      description: 'ユーザーが「優先度を上げて」「優先順位を高くして」のように特定タスクの優先度変更を明確に依頼した場合に使う。渡されたタスク一覧の中でタイトルが一意に特定できる場合のみ使うこと。',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          task_title: { type: 'STRING', description: '優先度変更の対象タスクのタイトル（タスク一覧の名称と完全一致）' },
+          new_priority: { type: 'STRING', enum: ['high', 'mid', 'low'], description: '変更後の優先度' }
+        },
+        required: ['task_title', 'new_priority']
+      }
+    },
+    {
+      name: 'update_task_due',
+      description: 'ユーザーが「期限を6/30にして」のように特定タスクの期限変更を明確に依頼した場合に使う。渡されたタスク一覧の中でタイトルが一意に特定できる場合のみ使うこと。',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          task_title: { type: 'STRING', description: '期限変更の対象タスクのタイトル（タスク一覧の名称と完全一致）' },
+          due: { type: 'STRING', description: 'YYYY-MM-DD形式の新しい期限' },
+          due_time: { type: 'STRING', description: 'HH:MM形式の時刻（分かる場合のみ、無ければ省略）' }
+        },
+        required: ['task_title', 'due']
+      }
     }
   ]
+}];
+// バッチで複数タスクへ期限を割り当てるためのツール（夜間チェックインの棚卸し返信の解釈に使用）
+const TOOLS_SET_DUE_BATCH = [{
+  functionDeclarations: [{
+    name: 'set_due_dates',
+    description: 'タスク一覧と、ユーザーの返信文をもとに、各タスクに割り当てる期限を返す。返信で触れられていないタスクは含めない。',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        assignments: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              task_title: { type: 'STRING', description: 'タスク一覧の名称と完全一致' },
+              due: { type: 'STRING', description: 'YYYY-MM-DD形式の期限' },
+              due_time: { type: 'STRING', description: 'HH:MM形式の時刻（分かる場合のみ）' }
+            },
+            required: ['task_title', 'due']
+          }
+        }
+      },
+      required: ['assignments']
+    }
+  }]
+}];
+// 未完了タスク全体の優先順位見直し案を作るためのツール（毎晩のチェックイン／「優先順位を整理して」で使用）
+const TOOLS_REPRIORITIZE = [{
+  functionDeclarations: [{
+    name: 'reprioritize_tasks',
+    description: '未完了タスク一覧を、期限・停滞日数・状態を踏まえて見直し、優先度を変えるべきタスクだけを返す。今のままでよいタスクは含めない。',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        assignments: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              task_title: { type: 'STRING', description: 'タスク一覧の名称と完全一致' },
+              priority: { type: 'STRING', enum: ['high', 'mid', 'low'], description: '新しい優先度' }
+            },
+            required: ['task_title', 'priority']
+          }
+        }
+      },
+      required: ['assignments']
+    }
+  }]
 }];
 // Gemini APIを呼び出し、応答テキストを返す（失敗時はnull）
 function callGemini(systemPrompt, userText, maxTokens) {
@@ -599,7 +724,10 @@ function askAgent(userId, userText) {
     '以下は現在のタスク状況です。この状況を踏まえて、ユーザーからの次の相談に答えてください。\n' +
     '「〜を分解して」のような依頼にはpropose_subtasksツールで提案し、' +
     '「〜を完了にして」のように状態変更が明確に依頼された場合はupdate_task_statusツールを、' +
-    '「〜を削除して」のように削除が明確に依頼された場合はdelete_taskツールを使ってください。\n' +
+    '「〜を削除して」のように削除が明確に依頼された場合はdelete_taskツールを、' +
+    '「〜の優先度を上げて/下げて」のように優先度変更が明確に依頼された場合はupdate_task_priorityツールを、' +
+    '「〜の期限を6/30にして」のように特定タスクの期限変更が明確に依頼された場合はupdate_task_dueツールを使ってください。\n' +
+    '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n' +
     '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n\n' +
     context + '\n\n【ユーザーの相談】\n' + userText,
     AGENT_TOOLS, 700);
@@ -614,6 +742,8 @@ function askAgent(userId, userText) {
   if (funcPart && funcPart.functionCall.name === 'propose_subtasks') reply = handleProposeSubtasks(userId, funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'update_task_status') reply = handleUpdateTaskStatus(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'delete_task') reply = handleDeleteTask(funcPart.functionCall.args, intro);
+  else if (funcPart && funcPart.functionCall.name === 'update_task_priority') reply = handleUpdateTaskPriority(funcPart.functionCall.args, intro);
+  else if (funcPart && funcPart.functionCall.name === 'update_task_due') reply = handleUpdateTaskDue(funcPart.functionCall.args, intro);
   else reply = intro || '⚠️ AIエージェントの応答取得に失敗しました。';
 
   logAgentInteraction_(userId, userText, reply);
@@ -708,6 +838,157 @@ function handleDeleteTask(input, intro) {
   return (intro ? intro + '\n\n' : '') + `🗑️「${title}」を削除しました。`;
 }
 
+// タスクの優先度変更を実行（タイトルが一意に特定できる場合のみ）
+function handleUpdateTaskPriority(input, intro) {
+  const title = String((input || {}).task_title || '').trim();
+  const newPriority = String((input || {}).new_priority || '').trim();
+  if (!title || ['high', 'mid', 'low'].indexOf(newPriority) < 0) return '⚠️ 優先度変更の内容を理解できませんでした。';
+
+  const matches = getSupabase('tasks',
+    'deleted=eq.false&title=eq.' + encodeURIComponent(title) + '&select=id,title');
+  if (!matches.length) return `⚠️「${title}」に一致するタスクが見つかりませんでした。`;
+  if (matches.length > 1) return `⚠️「${title}」に一致するタスクが複数あります。アプリ側で確認・変更してください。`;
+
+  const updated = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(matches[0].id),
+    { priority: newPriority, updated_at: new Date().toISOString() });
+  if (!updated) return `⚠️「${title}」の更新に失敗しました。`;
+
+  const label = { high: '高', mid: '中', low: '低' }[newPriority];
+  return (intro ? intro + '\n\n' : '') + `✅「${title}」の優先度を${label}に変更しました。`;
+}
+
+// タスクの期限変更を実行（タイトルが一意に特定できる場合のみ）
+function handleUpdateTaskDue(input, intro) {
+  const title = String((input || {}).task_title || '').trim();
+  const due = String((input || {}).due || '').trim();
+  const dueTime = String((input || {}).due_time || '').trim();
+  if (!title || !due) return '⚠️ 期限変更の内容を理解できませんでした。';
+
+  const matches = getSupabase('tasks',
+    'deleted=eq.false&title=eq.' + encodeURIComponent(title) + '&select=id,title');
+  if (!matches.length) return `⚠️「${title}」に一致するタスクが見つかりませんでした。`;
+  if (matches.length > 1) return `⚠️「${title}」に一致するタスクが複数あります。アプリ側で確認・変更してください。`;
+
+  const updated = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(matches[0].id),
+    { due: due, due_time: dueTime || null, updated_at: new Date().toISOString() });
+  if (!updated) return `⚠️「${title}」の更新に失敗しました。`;
+
+  return (intro ? intro + '\n\n' : '') + `✅「${title}」の期限を ${jp(due)}` + (dueTime ? ' ' + dueTime : '') + ' に変更しました。';
+}
+
+// pending中の期限確認（単発追加時／夜間の棚卸し）への返信を処理。該当なしはnullを返す
+function handlePendingDueReply(userId, text) {
+  const p = PropertiesService.getScriptProperties();
+  const key = 'PENDING_DUE_' + userId;
+  const raw = p.getProperty(key);
+  if (!raw) return null;
+  let pending;
+  try { pending = JSON.parse(raw); } catch (e) { p.deleteProperty(key); return null; }
+  if ((Date.now() - pending.createdAt) / 60000 > 360) { p.deleteProperty(key); return null; }
+
+  const t = text.trim();
+  if (/^(不要|なし|未定|スキップ|やめて|あとで)[。.!！]?$/.test(t)) {
+    p.deleteProperty(key);
+    return '了解です、期限は未設定のままにします。';
+  }
+
+  if (pending.mode === 'single') {
+    const parsed = extractDateTime_(t);
+    if (!parsed.due) return '日付を認識できませんでした。「6/30」「今日」のように送ってください（設定しない場合は「なし」）。';
+    const task = pending.tasks[0];
+    const updated = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(task.id),
+      { due: parsed.due, due_time: parsed.dueTime || null, updated_at: new Date().toISOString() });
+    p.deleteProperty(key);
+    if (!updated) return `⚠️「${task.title}」の期限設定に失敗しました。`;
+    return `✅「${task.title}」の期限を ${jp(parsed.due)}` + (parsed.dueTime ? ' ' + parsed.dueTime : '') + ' に設定しました。';
+  }
+
+  // batchモード：複数タスクぶんの期限をまとめてAIに割り振らせる
+  const taskListText = pending.tasks.map(pt => '・' + pt.title).join('\n');
+  const res = callGeminiWithTools(
+    '今日の日付は' + todayISO_() + '（YYYY-MM-DD）です。ユーザーの返信文から、下記タスク一覧のうちどのタスクにどの期限を割り当てたいか読み取り、set_due_datesツールで返してください。返信で触れられていないタスクは含めないでください。',
+    '【タスク一覧】\n' + taskListText + '\n\n【ユーザーの返信】\n' + t,
+    TOOLS_SET_DUE_BATCH, 400);
+  p.deleteProperty(key);
+
+  const parts = res && (((res.candidates || [])[0] || {}).content || {}).parts;
+  const funcPart = parts && parts.find(pp => pp.functionCall);
+  const assignments = funcPart && Array.isArray(funcPart.functionCall.args.assignments) ? funcPart.functionCall.args.assignments : [];
+  if (!assignments.length) return '反映できませんでした。個別に「〇〇の期限を6/30にして」のように送ってください。';
+
+  const applied = [];
+  assignments.forEach(a => {
+    const atitle = String(a.task_title || '').trim();
+    const adue = String(a.due || '').trim();
+    if (!atitle || !adue) return;
+    const match = pending.tasks.find(pt => pt.title === atitle);
+    if (!match) return;
+    const ok = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(match.id),
+      { due: adue, due_time: a.due_time || null, updated_at: new Date().toISOString() });
+    if (ok) applied.push('・' + atitle + '（' + jp(adue) + (a.due_time ? ' ' + a.due_time : '') + '）');
+  });
+  if (!applied.length) return '反映できませんでした。個別に「〇〇の期限を6/30にして」のように送ってください。';
+  return '✅ 期限を設定しました\n' + applied.join('\n');
+}
+
+// 未完了タスク全体の優先順位見直し案を作り、確認を求める（実際の適用は「はい」の返信を待つ）
+function proposeReprioritization_(userId) {
+  const tasks = getSupabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title,priority');
+  if (!tasks.length) return '未完了タスクがありません。';
+  const priorityMap = {};
+  tasks.forEach(t => { priorityMap[t.title] = t.priority; });
+
+  const context = buildAgentContext();
+  const res = callGeminiWithTools(AGENT_PERSONA,
+    '以下は現在のタスク状況です。期限・停滞日数・状態を踏まえて、優先度を変えたほうがよいタスクだけをreprioritize_tasksツールで提案してください。変更不要なタスクは含めないでください。\n\n' + context,
+    TOOLS_REPRIORITIZE, 500);
+  const parts = res && (((res.candidates || [])[0] || {}).content || {}).parts;
+  const funcPart = parts && parts.find(p => p.functionCall);
+  const assignments = funcPart && Array.isArray(funcPart.functionCall.args.assignments) ? funcPart.functionCall.args.assignments : [];
+  const valid = assignments.filter(a => priorityMap[a.task_title] !== undefined && priorityMap[a.task_title] !== a.priority);
+  if (!valid.length) return '🔀 今のままで問題なさそうです。優先順位の変更提案はありません。';
+
+  PropertiesService.getScriptProperties().setProperty('PENDING_REPRIORITIZE_' + userId,
+    JSON.stringify({ assignments: valid, createdAt: Date.now() }));
+
+  const label = { high: '高', mid: '中', low: '低' };
+  const lines = valid.map(a => '・' + a.task_title + '：' + label[priorityMap[a.task_title]] + '→' + label[a.priority]);
+  return '🔀 優先順位の見直し案\n' + lines.join('\n') + '\n\n適用してよければ「はい」と送ってください。';
+}
+// pending中の優先順位見直し案への返信（「はい」「いいえ」）を処理。該当なしはnullを返す
+function handlePendingReprioritizeReply(userId, text) {
+  const p = PropertiesService.getScriptProperties();
+  const key = 'PENDING_REPRIORITIZE_' + userId;
+  const raw = p.getProperty(key);
+  if (!raw) return null;
+  let pending;
+  try { pending = JSON.parse(raw); } catch (e) { p.deleteProperty(key); return null; }
+  if ((Date.now() - pending.createdAt) / 60000 > 360) { p.deleteProperty(key); return null; }
+
+  const t = text.trim();
+  if (/^(はい|適用|うん|お願い(します)?|ok|yes)$/i.test(t)) {
+    p.deleteProperty(key);
+    const tasks = getSupabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title');
+    const idByTitle = {};
+    tasks.forEach(tk => { idByTitle[tk.title] = tk.id; });
+    const applied = [];
+    pending.assignments.forEach(a => {
+      const id = idByTitle[a.task_title];
+      if (!id) return;
+      const ok = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(id),
+        { priority: a.priority, updated_at: new Date().toISOString() });
+      if (ok) applied.push('・' + a.task_title);
+    });
+    if (!applied.length) return '⚠️ 適用できませんでした。タスクの状態が変わっている可能性があります。';
+    return '✅ 優先順位を更新しました\n' + applied.join('\n');
+  }
+  if (/^(いいえ|キャンセル|やめて|no)$/i.test(t)) {
+    p.deleteProperty(key);
+    return '🙅 優先順位の変更をキャンセルしました。';
+  }
+  return null;
+}
+
 // プッシュ型：毎晩の進捗チェックイン（毎朝のリマインドとは別に送信）
 function sendAgentCheckIn() {
   const context = buildAgentContext();
@@ -715,7 +996,34 @@ function sendAgentCheckIn() {
     '以下は現在のタスク状況です。今日の進捗チェックインとして、①最優先で手をつけるべきタスク　②停滞・放置が気になる要注意タスク　③一言アドバイス、をまとめてください。\n\n' + context,
     600);
   if (!reply) return;
-  getUsers().forEach(uid => pushText(uid, '🧭 進捗チェックイン\n\n' + reply));
+
+  let msg = '🧭 進捗チェックイン\n\n' + reply;
+
+  // 期限未設定タスクの棚卸し（すでに確認待ちがあれば重複して聞かない）
+  const p = PropertiesService.getScriptProperties();
+  const noDue = getSupabase('tasks', 'done=eq.false&deleted=eq.false&due=is.null&select=id,title&limit=10');
+  if (noDue.length) {
+    getUsers().forEach(uid => {
+      if (!p.getProperty('PENDING_DUE_' + uid)) {
+        p.setProperty('PENDING_DUE_' + uid, JSON.stringify({
+          mode: 'batch',
+          tasks: noDue.map(t => ({ id: t.id, title: t.title })),
+          createdAt: Date.now()
+        }));
+      }
+    });
+    msg += '\n\n📅 期限未設定のタスク\n' + noDue.map(t => '・' + t.title).join('\n') +
+      '\n\n期限を教えてください（例：「◯◯は6/30、△△は今日」。不要なら「なし」）。';
+  }
+
+  getUsers().forEach(uid => pushText(uid, msg));
+
+  // 優先順位の見直し提案（別メッセージ。すでに確認待ちがあれば重複して提案しない）
+  getUsers().forEach(uid => {
+    if (p.getProperty('PENDING_REPRIORITIZE_' + uid)) return;
+    const proposal = proposeReprioritization_(uid);
+    if (proposal && proposal.indexOf('変更提案はありません') === -1) pushText(uid, proposal);
+  });
 }
 // 毎晩の自動チェックイン・トリガーを作成
 function installAgentTrigger() {
