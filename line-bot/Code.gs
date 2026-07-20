@@ -4,7 +4,7 @@
  *
  * ・タスク／定期タスクはSupabase（tasks／recurringテーブル）を直接参照する
  * ・LINEで追加したタスクも、その場でSupabaseの tasks テーブルに直接書き込む（受信箱や取込は無し）
- * ・毎朝、期限が「期限超過/今日/明日」のタスクをまとめてLINEに自動通知
+ * ・毎朝、期限が「超過〜3日以内」のタスクをまとめてLINEに自動通知（時刻設定があれば時刻も表示）
  *
  * LINEトークでの使い方:
  *   牛乳を買う           → タスク追加
@@ -21,9 +21,8 @@ const SUPABASE_URL         = 'https://xldkfkhgazpugfuscpqt.supabase.co';
 const SUPABASE_ANON_KEY    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZGtma2hnYXpwdWdmdXNjcHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NDg3MzgsImV4cCI6MjA5OTQyNDczOH0.C3_TYQI8R3HeXYWTzca9erUMjpTWm2sneB7hk5Bre8Y';
 const GEMINI_API_KEY       = 'ここにGemini APIキーを貼り付け';  // https://aistudio.google.com/apikey で発行（無料）
 const GEMINI_MODEL         = 'gemini-3.1-flash-lite';
-const REMIND_HOUR   = 8;            // 毎朝の通知時刻（時・24時間制）
+const REMIND_HOUR   = 6;            // 毎朝の通知時刻（時・24時間制）
 const REMIND_MINUTE = 0;            // 通知時刻（分）。nearMinuteで±15分ほどに絞る
-const REC_LEAD_DAYS = 4;            // 定期タスクは「何日前」から通知するか
 const AGENT_HOUR = 20;              // 毎晩のAI進捗チェックイン時刻（毎朝のリマインドとは別）
 const TIME_LEAD_MINUTES = 10;       // 時刻指定タスクの何分前にリマインドするか
 const TIME_CHECK_INTERVAL = 5;      // 何分おきにチェックするか（installTimedReminderTriggerと合わせる）
@@ -75,11 +74,13 @@ function routeCommand(userId, text) {
   if (pendingSubtask !== null) return pendingSubtask;
   const pendingDue = handlePendingDueReply(userId, text);
   if (pendingDue !== null) return pendingDue;
+  const pendingTime = handlePendingTimeReply(userId, text);
+  if (pendingTime !== null) return pendingTime;
   const pendingReprioritize = handlePendingReprioritizeReply(userId, text);
   if (pendingReprioritize !== null) return pendingReprioritize;
 
   if (/^(一覧|リスト|list)$/i.test(text)) return listAll(userId);
-  if (/^(通知|リマインド|今日)$/i.test(text)) return buildReminder() || '📭 期限が近い（超過・今日・明日）のタスクはありません。';
+  if (/^(通知|リマインド|今日)$/i.test(text)) return buildReminder() || '📭 期限が近い（超過〜3日以内）のタスクはありません。';
   if (/^(ヘルプ|使い方|help)$/i.test(text)) return helpText();
   if (/^(相談|アドバイス)$/i.test(text)) return askAgent(userId, '最近のタスク状況について、率直な進捗評価とアドバイスをください。');
   if (/^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$/.test(text)) return proposeReprioritization_(userId);
@@ -93,12 +94,17 @@ function routeCommand(userId, text) {
     if (!rest) return `${numMatch[1]}番：「${resolved.title}」`;
     text = `「${resolved.title}」${numMatch[4]}`;
   }
+  if (/^(定期タスク一覧|定期一覧)$/.test(text)) return listAll(userId);
   if (/^(資料一覧|資料リスト)$/.test(text)) return listMaterials_();
   const materialMatch = text.match(/^資料[:：]\s*([\s\S]+)$/);
   if (materialMatch) return addMaterialFromText_(materialMatch[1].trim());
+  const logMatch = text.match(/^振り返り[:：]\s*([\s\S]+)$/);
+  if (logMatch) return addDailyLog_(logMatch[1].trim());
   const ytMatch = text.match(/(https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)[\w-]+|youtu\.be\/[\w-]+))/);
   if (ytMatch) return addMaterialFromYoutube_(ytMatch[1]);
   if (!text) return '空メッセージです。「ヘルプ」で使い方を表示します。';
+  // 「毎日／毎週◯曜／毎月◯日」で始まる文章は定期タスクの依頼とみなし、AIコーチ（create_recurring_task）に回す
+  if (/^毎(日|週|月)/.test(text)) return askAgent(userId, text);
   if (isQuestionLike(text)) return askAgent(userId, text);
   return addLine(userId, text);
 }
@@ -107,7 +113,7 @@ function isQuestionLike(text) {
   if (/[?？]$/.test(text)) return true;
   if (/(か|かな|かしら)[。.!！]?$/.test(text)) return true;
   if (/(完了しました|完了した|終わりました|終わった|できました|やりました)[。.!！]?$/.test(text)) return true;
-  if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に|書き換えて|タイトルを|名前を|修正して|直して)/.test(text)) return true;
+  if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に|書き換えて|タイトルを|名前を|修正して|直して|定期)/.test(text)) return true;
   return false;
 }
 
@@ -145,6 +151,12 @@ function addLine(userId, text) {
   let msg = `✅ 追加しました\n「${title}」`;
   if (due) {
     msg += `\n📅 ${jp(due)}` + (dueTime ? ' ' + dueTime : '');
+    // 今日／明日／明後日など目前の期限で時刻が未設定なら、時刻も確認する
+    if (!dueTime && dayDiff(midnight(new Date()), parseDate(due)) <= 2) {
+      PropertiesService.getScriptProperties().setProperty('PENDING_TIME_' + userId,
+        JSON.stringify({ mode: 'single', taskId: row.id, title, createdAt: Date.now() }));
+      msg += '\n\n⏰ 時間は何時ですか？（例：15:00、15時、未定なら「なし」）';
+    }
   } else {
     PropertiesService.getScriptProperties().setProperty('PENDING_DUE_' + userId,
       JSON.stringify({ mode: 'single', tasks: [{ id: row.id, title }], createdAt: Date.now() }));
@@ -153,13 +165,14 @@ function addLine(userId, text) {
   msg += `\n\n未完了: ${cnt}件`;
   return msg;
 }
-// 未完了タスク＋定期タスクを「進捗状況ごと」に表示。番号を振り、後で「3番を〜」と指定できるよう記憶しておく
+// 未完了タスクを「進捗状況ごと」に表示。番号を振り、後で「3番を〜」と指定できるよう記憶しておく
+// 定期タスク（テンプレート）は別メッセージで表示する
 function listAll(userId) {
   const app = getAppTasksAll();
   const rec = getRecurring();
   if (!app.length && !rec.length) return '🎉 未完了のタスクはありません。';
 
-  let msg = '📋 タスク一覧\n';
+  let msg = app.length ? '📋 タスク一覧\n' : '🎉 未完了のタスクはありません。';
   const numbered = [];
   let n = 0;
 
@@ -175,18 +188,20 @@ function listAll(userId) {
       }).join('\n') + '\n';
   });
 
-  // 定期タスク（番号は振らない）
-  if (rec.length) {
-    msg += '\n🔁 定期タスク（' + rec.length + '）\n' +
-      rec.map(r => '・' + r.title + '（' + r.recurrence + (r.next ? '・次回 ' + jp2(r.next) : '') + '）').join('\n') + '\n';
-  }
-
   if (numbered.length && userId) {
     PropertiesService.getScriptProperties().setProperty('LAST_LIST_' + userId,
       JSON.stringify({ items: numbered, createdAt: Date.now() }));
     msg += '\n番号で「3番を完了にして」のように操作できます。';
   }
-  return msg.trim();
+  msg = msg.trim();
+
+  if (!rec.length) return msg;
+
+  const recMsg = '🔁 登録されている定期タスク（' + rec.length + '）\n' +
+    rec.map(r => '・' + r.title + '（' + recDesc_(r) +
+      (r.next ? '・次回 ' + jp2(r.next) : '') +
+      '・' + (r.remindTime || (String(REMIND_HOUR).padStart(2, '0') + ':' + String(REMIND_MINUTE).padStart(2, '0'))) + '）').join('\n');
+  return app.length ? [msg, recMsg] : recMsg;
 }
 // アプリの未完了タスクを全部取得（状態つき・期限の有無は問わない）※Supabase参照
 function getAppTasksAll() {
@@ -209,29 +224,78 @@ function resolveNumberedTask_(userId, num) {
 }
 // 定期タスクを取得 ※Supabase参照
 function getRecurring() {
-  const rows = getSupabase('recurring', 'select=title,recurrence,next_date');
+  const rows = getSupabase('recurring', 'select=id,title,recurrence,weekday,monthday,next_date,remind_time');
   return rows.map(r => ({
+    id: r.id,
     title: String(r.title),
     recurrence: String(r.recurrence || ''),
-    next: parseDate(r.next_date)
+    weekday: r.weekday,
+    monthday: r.monthday,
+    next: parseDate(r.next_date),
+    remindTime: r.remind_time || ''
   }));
+}
+
+/* ============ 定期タスク（テンプレート）の日付計算ヘルパー ============ */
+const WEEKDAY_JP = ['日', '月', '火', '水', '木', '金', '土'];
+// 表示用ラベル（毎週水曜／毎月15日／毎月末日など）
+function recDesc_(r) {
+  if (r.recurrence === 'weekly' && r.weekday != null && r.weekday !== '') return '毎週' + WEEKDAY_JP[Number(r.weekday)] + '曜';
+  if (r.recurrence === 'monthly' && r.monthday != null && r.monthday !== '') return r.monthday === 'last' ? '毎月末日' : '毎月' + r.monthday + '日';
+  if (r.recurrence === 'daily') return '毎日';
+  return r.recurrence || '';
+}
+function isoOfDate_(d) { const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+function monthdayFor_(y, m, monthday) {
+  const last = new Date(y, m + 1, 0).getDate();
+  return monthday === 'last' ? last : Math.min(Number(monthday), last);
+}
+// 開始日以降で最初に weekday になる日
+function firstWeekly_(startISO, weekday) {
+  const d = new Date(startISO + 'T00:00:00'); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + ((Number(weekday) - d.getDay() + 7) % 7));
+  return isoOfDate_(d);
+}
+// 開始日以降で最初に monthday になる日
+function firstMonthly_(startISO, monthday) {
+  const s = new Date(startISO + 'T00:00:00'); s.setHours(0, 0, 0, 0);
+  let y = s.getFullYear(), m = s.getMonth();
+  let cand = new Date(y, m, monthdayFor_(y, m, monthday));
+  if (cand < s) { m++; if (m > 11) { m = 0; y++; } cand = new Date(y, m, monthdayFor_(y, m, monthday)); }
+  return isoOfDate_(cand);
+}
+// 現在の予定日から次の周期の予定日を計算する
+function nextRecurDate_(currentISO, r) {
+  const base = new Date(currentISO + 'T00:00:00'); base.setHours(0, 0, 0, 0);
+  if (r.recurrence === 'weekly') { base.setDate(base.getDate() + 7); return isoOfDate_(base); }
+  if (r.recurrence === 'monthly') {
+    const md = (r.monthday != null && r.monthday !== '') ? r.monthday : base.getDate();
+    let y = base.getFullYear(), m = base.getMonth() + 1;
+    if (m > 11) { m = 0; y++; }
+    return isoOfDate_(new Date(y, m, monthdayFor_(y, m, md)));
+  }
+  base.setDate(base.getDate() + 1);
+  return isoOfDate_(base);
 }
 
 /* ============ リマインド ============ */
 // アプリの期限ありの未完了タスクを取得 ※Supabase参照
 function getDueFromApp() {
-  const rows = getSupabase('tasks', 'done=eq.false&deleted=eq.false&due=not.is.null&select=title,status,due');
+  const rows = getSupabase('tasks', 'done=eq.false&deleted=eq.false&due=not.is.null&select=title,status,due,due_time');
   const out = [];
   rows.forEach(r => {
     const due = parseDate(r.due);
     if (!r.title || !due) return;
-    out.push({ title: String(r.title), due, status: STATUS_LABEL_JP[r.status] || r.status || '未着手' });
+    out.push({
+      title: String(r.title), due, status: STATUS_LABEL_JP[r.status] || r.status || '未着手',
+      dueTime: r.due_time ? String(r.due_time).slice(0, 5) : ''
+    });
   });
   return out;
 }
 // 通知メッセージを組み立て（対象が無ければ空文字）
-// ・通常タスク: 期限が「超過/今日/明日」を、進捗状況ごとに表示
-// ・定期タスク: 次回予定が REC_LEAD_DAYS 日以内を表示
+// 通常タスク: 期限が3日以内（超過含む）を、進捗状況ごとに表示（時刻が設定されていれば時刻も表示）
+// ※定期タスクのリマインドはcheckRecurringReminders()で別メッセージとして送るため、ここには含めない
 function buildReminder() {
   const today = midnight(new Date());
 
@@ -239,52 +303,61 @@ function buildReminder() {
   const near = [];
   getDueFromApp().forEach(t => {
     const d = dayDiff(today, t.due);
-    if (d <= 1) near.push({ title: t.title, due: t.due, status: t.status, d });
+    if (d <= 3) near.push({ title: t.title, due: t.due, status: t.status, d, dueTime: t.dueTime });
   });
 
-  // もうすぐの定期タスク（3〜4日前から）
-  const recSoon = getRecurring().filter(r => {
-    if (!r.next) return false;
-    const d = dayDiff(today, r.next);
-    return d >= 0 && d <= REC_LEAD_DAYS;
-  }).sort((a, b) => dayDiff(today, a.next) - dayDiff(today, b.next));
-
-  if (!near.length && !recSoon.length) return '';
+  if (!near.length) return '';
 
   let msg = `🔔 タスクのリマインド (${today.getMonth() + 1}/${today.getDate()})\n`;
 
-  // 進捗状況ごとに表示（各行に期日も）
+  // 進捗状況ごとに表示（各行に期日・時刻も）
   STATUS_ORDER.forEach(st => {
     const arr = near.filter(t => t.status === st).sort((a, b) => a.d - b.d);
     if (!arr.length) return;
     msg += '\n' + STATUS_ICON[st] + ' ' + st + '\n' +
-      arr.map(t => '・' + t.title + '（' + dueTag(t.d, t.due) + '）').join('\n') + '\n';
+      arr.map(t => '・' + t.title + '（' + dueTag(t.d, t.due, t.dueTime) + '）').join('\n') + '\n';
   });
-
-  // 定期タスク
-  if (recSoon.length) {
-    msg += '\n🔁 定期タスク（' + REC_LEAD_DAYS + '日以内）\n' +
-      recSoon.map(r => '・' + r.title + '（' + r.recurrence + '・' + dueTag(dayDiff(today, r.next), r.next) + '）').join('\n') + '\n';
-  }
   return msg.trim();
 }
 // 今日との日数差（0=今日, 1=明日, -1=昨日）
 function dayDiff(today, dateObj) {
   return Math.round((midnight(dateObj) - today) / 86400000);
 }
-// 期日を「今日/明日/N日後/N日超過 M/D」の形に
-function dueTag(d, dateObj) {
+// 期日を「今日/明日/N日後/N日超過 M/D」の形に（時刻があれば末尾に付ける）
+function dueTag(d, dateObj, dueTime) {
   const md = (dateObj.getMonth() + 1) + '/' + dateObj.getDate();
-  if (d < 0) return '⚠' + (-d) + '日超過 ' + md;
-  if (d === 0) return '今日 ' + md;
-  if (d === 1) return '明日 ' + md;
-  return d + '日後 ' + md;
+  const time = dueTime ? ' ' + dueTime : '';
+  if (d < 0) return '⚠' + (-d) + '日超過 ' + md + time;
+  if (d === 0) return '今日 ' + md + time;
+  if (d === 1) return '明日 ' + md + time;
+  return d + '日後 ' + md + time;
+}
+// 期限が3日以内（超過含む）なのに時刻が未設定のタスクを集める
+function getNoTimeSoonTasks_() {
+  const today = midnight(new Date());
+  const rows = getSupabase('tasks', 'done=eq.false&deleted=eq.false&due=not.is.null&due_time=is.null&select=id,title,due');
+  return rows.filter(r => {
+    const d = parseDate(r.due);
+    return d && dayDiff(today, d) <= 3;
+  }).map(r => ({ id: r.id, title: r.title }));
 }
 // 毎朝のトリガーから呼ばれる
 function sendReminders() {
   const msg = buildReminder();
-  if (!msg) return;
-  getUsers().forEach(uid => pushText(uid, msg));
+  if (msg) getUsers().forEach(uid => pushText(uid, msg));
+
+  // 期限が近いのに時刻未設定のタスクを、別メッセージで確認する（すでに確認待ちがあれば重複して聞かない）
+  const noTime = getNoTimeSoonTasks_();
+  if (!noTime.length) return;
+  const p = PropertiesService.getScriptProperties();
+  getUsers().forEach(uid => {
+    if (!p.getProperty('PENDING_TIME_' + uid)) {
+      p.setProperty('PENDING_TIME_' + uid, JSON.stringify({ mode: 'batch', tasks: noTime, createdAt: Date.now() }));
+    }
+  });
+  const timeMsg = '⏰ 期限が近いのに時間未設定のタスク\n' + noTime.map(t => '・' + t.title).join('\n') +
+    '\n\n時間を教えてください（例：「〇〇は15時、△△は10時」。不要なら「なし」）。';
+  getUsers().forEach(uid => pushText(uid, timeMsg));
 }
 
 /* ============ 時刻指定タスクの直前リマインド ============ */
@@ -310,8 +383,56 @@ function getTimedTasksToday_() {
   });
   return out;
 }
+// 定期タスクのリマインド時刻（未設定なら毎朝の通知時刻）が到来したら、別メッセージで通知し次回予定日へ進める
+function checkRecurringReminders() {
+  const todayStr = todayISO_();
+  const now = new Date();
+  const items = getRecurring().filter(r => r.next && isoOfDate_(r.next) <= todayStr);
+  if (!items.length) return;
+
+  const propKey = 'REC_REMINDED_' + todayStr;
+  const p = PropertiesService.getScriptProperties();
+  let reminded = [];
+  try { reminded = JSON.parse(p.getProperty(propKey) || '[]'); } catch (e) {}
+
+  const fire = [];
+  items.forEach(r => {
+    if (reminded.indexOf(r.id) >= 0) return;
+    const hhmm = r.remindTime || (String(REMIND_HOUR).padStart(2, '0') + ':' + String(REMIND_MINUTE).padStart(2, '0'));
+    const target = dateTimeFromISO_(todayStr, hhmm);
+    const diffMin = (target - now) / 60000;
+    // 予定時刻を過ぎた直後（チェック間隔ぶんの幅）で1回だけ捕まえる。予定日が過去に溜まっている場合はすぐに捕まえる
+    if (diffMin <= 0 && (diffMin > -TIME_CHECK_INTERVAL || isoOfDate_(r.next) < todayStr)) {
+      fire.push(r);
+      reminded.push(r.id);
+    }
+  });
+  if (!fire.length) return;
+
+  const msg = '🔁 今日の定期タスク\n' + fire.map(r => '・' + r.title).join('\n');
+  getUsers().forEach(uid => pushText(uid, msg));
+  p.setProperty(propKey, JSON.stringify(reminded));
+
+  // 次回予定日へ進める（溜まっていた場合は今日以前を追い越すまで進める）
+  fire.forEach(r => {
+    let n = isoOfDate_(r.next);
+    do { n = nextRecurDate_(n, r); } while (n <= todayStr);
+    patchSupabase('recurring', 'id=eq.' + encodeURIComponent(r.id), { next_date: n });
+  });
+
+  cleanupOldRecReminderProps_(todayStr);
+}
+function cleanupOldRecReminderProps_(todayStr) {
+  const p = PropertiesService.getScriptProperties();
+  const all = p.getProperties();
+  Object.keys(all).forEach(k => {
+    if (k.indexOf('REC_REMINDED_') === 0 && k !== 'REC_REMINDED_' + todayStr) p.deleteProperty(k);
+  });
+}
 // 時刻の TIME_LEAD_MINUTES 分前になったタスクをLINEに通知（重複送信は防ぐ）
 function checkTimedReminders() {
+  checkRecurringReminders();
+  checkDailyLogFollowup_();
   const todayStr = todayISO_();
   const now = new Date();
   const items = getTimedTasksToday_();
@@ -376,19 +497,22 @@ function getUsers() {
 }
 
 /* ============ LINE送信 ============ */
+// textは文字列、または複数メッセージに分けたい場合は文字列の配列（LINEの仕様上5件まで）
 function replyText(token, text) {
+  const messages = (Array.isArray(text) ? text : [text]).slice(0, 5).map(t => ({ type: 'text', text: t }));
   UrlFetchApp.fetch(REPLY_URL, {
     method: 'post', contentType: 'application/json',
     headers: { Authorization: 'Bearer ' + CHANNEL_ACCESS_TOKEN },
-    payload: JSON.stringify({ replyToken: token, messages: [{ type: 'text', text: text }] }),
+    payload: JSON.stringify({ replyToken: token, messages: messages }),
     muteHttpExceptions: true
   });
 }
 function pushText(to, text) {
+  const messages = (Array.isArray(text) ? text : [text]).slice(0, 5).map(t => ({ type: 'text', text: t }));
   UrlFetchApp.fetch(PUSH_URL, {
     method: 'post', contentType: 'application/json',
     headers: { Authorization: 'Bearer ' + CHANNEL_ACCESS_TOKEN },
-    payload: JSON.stringify({ to: to, messages: [{ type: 'text', text: text }] }),
+    payload: JSON.stringify({ to: to, messages: messages }),
     muteHttpExceptions: true
   });
 }
@@ -422,11 +546,21 @@ function helpText() {
     '・優先順位を整理して　→ AIが全体を見直して並べ替え案を提示（「はい」で適用）',
     '・長い文章や箇条書きを送ると、AIが要点だけのタスク名に整理して追加します',
     '・期限を指定せずに追加すると、その場で期限を聞かれます（不要なら「なし」）',
+    '・今日／明日／明後日の期限で時刻を指定しなかった場合、その場で時刻も聞かれます（不要なら「なし」）',
+    '・期限が3日以内に迫っているのに時刻が未設定のタスクは、毎朝の通知とは別メッセージでまとめて時刻を聞かれます',
     '・YouTubeのURLを送る、または「資料：本文」の形式でテキストを送ると、AIコーチが要点を要約して覚え、以降の相談で参考にします',
     '・資料一覧 → 登録済みの資料を確認',
     '　例）〇〇の資料を△△に直して　→ 資料の内容をAIが書き直し（理解の相違があった時など）',
+    '・振り返り：本文　の形式で送ると、その日の一言メモとして記録します',
+    '　例）振り返り：今日はうなぎの仕込みが予定より早く終わった',
+    '　（週次レポートや相談時にAIコーチが参考にします）',
+    '・定期タスク（毎日／毎週〇曜／毎月〇日）はアプリの「🔁 定期タスク」タブ、またはLINEで登録できます',
+    '　例）毎週月曜19時に週報を出すのを定期タスクにして　→ その場で登録',
+    '　例）毎月末日に家賃を振り込むのを定期タスクとして登録して',
+    '　（登録済みの定期タスクは「一覧」の中で別メッセージとして表示されます。ボードへの自動追加はされず、指定した時刻＝未指定なら毎朝の通知と同じ時刻に、そのつどLINEでリマインドします）',
     '',
     `毎朝${REMIND_HOUR}時に期限リマインド、毎晩${AGENT_HOUR}時にAIコーチの進捗チェックイン（今日完了したタスクの集計・期限未設定タスクの確認・優先順位見直し案つき）を自動送信します。`,
+    '毎晩24時に振り返りの催促を送り、1時間たっても届かなければもう一度だけ催促します。',
     `時刻つきタスクは、開始${TIME_LEAD_MINUTES}分前にも別途リマインドします。`
   ].join('\n');
 }
@@ -642,6 +776,22 @@ const AGENT_TOOLS = [{
       }
     },
     {
+      name: 'create_recurring_task',
+      description: 'ユーザーが「毎週〇曜日に〜する」「毎月〇日に〜」「毎日〜」のように、繰り返し発生するタスク（定期タスク）の新規登録を明確に依頼した場合に使う。通常の単発タスク追加（addLine）とは別物で、こちらは繰り返しの予定を新しく作る場合のみ使うこと。',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          title: { type: 'STRING', description: '定期タスクのタイトル' },
+          recurrence: { type: 'STRING', enum: ['daily', 'weekly', 'monthly'], description: '繰り返しの周期' },
+          weekday: { type: 'NUMBER', description: 'recurrenceがweeklyの場合の曜日（0=日曜〜6=土曜）。weekly以外では省略' },
+          monthday: { type: 'STRING', description: 'recurrenceがmonthlyの場合の日にち（1〜31の数字、または月末なら文字列"last"）。monthly以外では省略' },
+          remind_time: { type: 'STRING', description: 'リマインドしてほしい時刻（HH:MM形式）。ユーザーが時刻を言っていなければ省略する' },
+          start_date: { type: 'STRING', description: '開始日（YYYY-MM-DD形式）。ユーザーが言っていなければ省略する（省略時は今日から開始）' }
+        },
+        required: ['title', 'recurrence']
+      }
+    },
+    {
       name: 'update_material',
       description: 'ユーザーが「〇〇の資料を直して」「資料の2番をもっと具体的にして」のように、タスクではなく登録済みの参考資料（資料一覧にあるもの）の内容修正・書き直しを明確に依頼した場合に使う。ユーザーが「資料」という言葉で言及している場合はこちらを優先すること。',
       parameters: {
@@ -673,6 +823,30 @@ const TOOLS_SET_DUE_BATCH = [{
               due_time: { type: 'STRING', description: 'HH:MM形式の時刻（分かる場合のみ）' }
             },
             required: ['task_title', 'due']
+          }
+        }
+      },
+      required: ['assignments']
+    }
+  }]
+}];
+// バッチで複数タスクへ時刻を割り当てるためのツール（期限が近いのに時刻未設定タスクの棚卸し返信の解釈に使用）
+const TOOLS_SET_TIME_BATCH = [{
+  functionDeclarations: [{
+    name: 'set_times',
+    description: 'タスク一覧と、ユーザーの返信文をもとに、各タスクに割り当てる時刻を返す。返信で触れられていないタスクは含めない。',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        assignments: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              task_title: { type: 'STRING', description: 'タスク一覧の名称と完全一致' },
+              due_time: { type: 'STRING', description: 'HH:MM形式の時刻' }
+            },
+            required: ['task_title', 'due_time']
           }
         }
       },
@@ -753,10 +927,10 @@ function buildAgentContext() {
   });
 
   const rec = getRecurring();
-  const recLines = rec.map(r => '・' + r.title + '（' + r.recurrence + (r.next ? '・次回' + jp2(r.next) : '') + '）');
+  const recLines = rec.map(r => '・' + r.title + '（' + recDesc_(r) + (r.next ? '・次回' + jp2(r.next) : '') + '）');
 
-  const logs = getSupabase('daily_logs', 'select=log_date,note&order=log_date.desc&limit=5');
-  const logLines = logs.map(l => '・' + l.log_date + '：' + (l.note ? String(l.note).slice(0, 80) : '（内容なし）'));
+  const logs = getSupabase('daily_logs', 'select=log_date,content&order=log_date.desc&limit=5');
+  const logLines = logs.map(l => '・' + l.log_date + '：' + (l.content ? String(l.content).slice(0, 80) : '（内容なし）'));
 
   // 直近14日で完了したタスク（傾向把握用）
   const since14 = new Date(now - 14 * 86400000).toISOString().slice(0, 10);
@@ -783,6 +957,59 @@ function buildAgentContext() {
   ].join('\n');
 }
 function trunc_(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
+
+/* ============ 振り返りログ（日々の一言メモ） ============ */
+// 「振り返り：本文」でその日の一言メモを記録する。AI処理はせずそのまま保存（週次レポート・AIコーチの文脈で参照される）
+function addDailyLog_(content) {
+  if (!content) return '振り返りの内容が空です。「振り返り：」の後に本文も送ってください。';
+  const ok = postSupabase('daily_logs', [{
+    log_date: todayISO_(),
+    content: trunc_(content, 500)
+  }]);
+  if (!ok) return '⚠️ 振り返りの記録に失敗しました。Supabaseにdaily_logsテーブルがあるか確認してください。';
+  return `📓 振り返りを記録しました\n「${trunc_(content, 500)}」\n\n週次レポートやAIコーチとの相談で参考にします。`;
+}
+// 毎晩24時（0時）に振り返りを一言催促する。すでに催促後に届いていれば何もしない
+function sendDailyLogPrompt() {
+  const msg = '📓 今日の振り返りを一言送ってください（例：振り返り：今日はうなぎの仕込みが早く終わった）';
+  getUsers().forEach(uid => pushText(uid, msg));
+  PropertiesService.getScriptProperties().setProperty('PENDING_LOG_PROMPT',
+    JSON.stringify({ promptedAt: new Date().toISOString(), nudged: false }));
+}
+// 催促から1時間たっても振り返りが届いていなければ、もう一度だけ催促する（5分おきのチェックから呼ばれる）
+function checkDailyLogFollowup_() {
+  const p = PropertiesService.getScriptProperties();
+  const raw = p.getProperty('PENDING_LOG_PROMPT');
+  if (!raw) return;
+  let pending;
+  try { pending = JSON.parse(raw); } catch (e) { p.deleteProperty('PENDING_LOG_PROMPT'); return; }
+
+  // 催促後に振り返りが届いていれば完了（date属性のズレを避けるため created_at で判定）
+  const since = getSupabase('daily_logs', 'created_at=gte.' + encodeURIComponent(pending.promptedAt) + '&select=id&limit=1');
+  if (since.length) { p.deleteProperty('PENDING_LOG_PROMPT'); return; }
+
+  if (pending.nudged) return;
+  const elapsedMin = (Date.now() - new Date(pending.promptedAt).getTime()) / 60000;
+  if (elapsedMin < 60) return;
+
+  const msg = '📓 まだ今日の振り返りが届いていません。一言だけでも送ってください（例：振り返り：今日は〜だった）';
+  getUsers().forEach(uid => pushText(uid, msg));
+  pending.nudged = true;
+  p.setProperty('PENDING_LOG_PROMPT', JSON.stringify(pending));
+}
+// 毎晩の振り返り催促トリガーを作成
+function installDailyLogPromptTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'sendDailyLogPrompt') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('sendDailyLogPrompt').timeBased().atHour(0).nearMinute(0).everyDays(1).create();
+}
+// テスト：今すぐ振り返りの催促を送る
+function testDailyLogPrompt() {
+  if (!getUsers().length) { Logger.log('ユーザー未登録：先にLINEからBotへメッセージを送ってください。'); return; }
+  sendDailyLogPrompt();
+  Logger.log('振り返りの催促を送信しました');
+}
 
 /* ============ 参考資料（YouTube動画／テキスト）をAIコーチに学習させる ============ */
 // YouTube動画のURLを渡すと、Geminiが内容を要約して「資料」として保存する
@@ -879,7 +1106,8 @@ function askAgent(userId, userText) {
     '「〜の優先度を上げて/下げて」のように優先度変更が明確に依頼された場合はupdate_task_priorityツールを、' +
     '「〜の期限を6/30にして」のように特定タスクの期限変更が明確に依頼された場合はupdate_task_dueツールを、' +
     '「〜を△△に書き換えて」のようにタスクの内容・タイトルそのものの変更が明確に依頼された場合はupdate_task_titleツールを、' +
-    '「資料を〜に直して」のように登録済みの参考資料の修正が明確に依頼された場合はupdate_materialツールを使ってください。\n' +
+    '「資料を〜に直して」のように登録済みの参考資料の修正が明確に依頼された場合はupdate_materialツールを、' +
+    '「毎週〇曜日に〜する」「毎月〇日に〜」「毎日〜」のように繰り返しタスク（定期タスク）の新規登録が明確に依頼された場合はcreate_recurring_taskツールを使ってください。\n' +
     '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n' +
     'ユーザーはタスク名を毎回全部書かず、一部の言葉やキーワードだけで指定することが多いです。「未完了タスク一覧」を見て該当するタスクが1つに絞れる場合は、正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、ツールを使わず候補を挙げて確認してください。\n' +
     '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n' +
@@ -901,6 +1129,7 @@ function askAgent(userId, userText) {
   else if (funcPart && funcPart.functionCall.name === 'update_task_due') reply = handleUpdateTaskDue(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'update_task_title') reply = handleUpdateTaskTitle(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'update_material') reply = handleUpdateMaterial(funcPart.functionCall.args, intro);
+  else if (funcPart && funcPart.functionCall.name === 'create_recurring_task') reply = handleCreateRecurringTask(funcPart.functionCall.args, intro);
   else reply = intro || '⚠️ AIエージェントの応答取得に失敗しました。';
 
   logAgentInteraction_(userId, userText, reply);
@@ -1051,6 +1280,63 @@ function handleUpdateTaskTitle(input, intro) {
   return (intro ? intro + '\n\n' : '') + `✅「${title}」を「${newTitle}」に書き換えました。`;
 }
 
+// 定期タスク（テンプレート）の新規登録を実行
+function handleCreateRecurringTask(input, intro) {
+  const title = String((input || {}).title || '').trim();
+  const recurrence = String((input || {}).recurrence || '').trim();
+  const weekday = (input || {}).weekday;
+  const monthday = (input || {}).monthday;
+  const remindTime = String((input || {}).remind_time || '').trim();
+  const startDate = String((input || {}).start_date || '').trim() || todayISO_();
+  if (!title || ['daily', 'weekly', 'monthly'].indexOf(recurrence) < 0) return '⚠️ 定期タスクの登録内容を理解できませんでした。';
+  if (recurrence === 'weekly' && (weekday === undefined || weekday === null || weekday === '')) return '⚠️ 毎週の場合は曜日も教えてください（例：毎週月曜）。';
+  if (recurrence === 'monthly' && (monthday === undefined || monthday === null || monthday === '')) return '⚠️ 毎月の場合は日にちも教えてください（例：毎月15日、毎月末日）。';
+
+  let next;
+  if (recurrence === 'weekly') next = firstWeekly_(startDate, weekday);
+  else if (recurrence === 'monthly') next = firstMonthly_(startDate, monthday);
+  else next = startDate;
+
+  const ok = postSupabase('recurring', [{
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    title, recurrence,
+    weekday: recurrence === 'weekly' ? Number(weekday) : null,
+    monthday: recurrence === 'monthly' ? String(monthday) : null,
+    next_date: next,
+    remind_time: remindTime || null,
+    priority: 'mid', estimate: '',
+    created_at: new Date().toISOString()
+  }]);
+  if (!ok) return '⚠️ 定期タスクの登録に失敗しました。時間をおいて再度お試しください。';
+
+  const desc = recDesc_({ recurrence: recurrence, weekday: weekday, monthday: monthday });
+  const timeLabel = remindTime ? remindTime + 'にリマインド' :
+    '毎朝' + String(REMIND_HOUR).padStart(2, '0') + ':' + String(REMIND_MINUTE).padStart(2, '0') + 'の通知と同じタイミングでリマインド';
+  return (intro ? intro + '\n\n' : '') +
+    `🔁「${title}」を定期タスクとして登録しました\n${desc}・${timeLabel}\n次回：${jp(next)}`;
+}
+
+// 日付の返信らしさを判定（数字や日付関連の言葉を含むか）。含まなければ別の話題の返信とみなしてよい
+function looksLikeDateReply_(t) {
+  return /[0-9０-９]|今日|明日|明後日|来週|再来週|今週|来月|月末|週末|月曜|火曜|水曜|木曜|金曜|土曜|日曜/.test(t);
+}
+// 「定期タスクでお願いします」等の返信を受けて、直前に追加した単発タスクを定期タスクへ変換する
+// （タスクのタイトルに「毎月25日」のような周期が含まれている前提でAIに読み取らせる）
+function convertPendingTaskToRecurring_(task) {
+  const tool = [{ functionDeclarations: [AGENT_TOOLS[0].functionDeclarations.find(f => f.name === 'create_recurring_task')] }];
+  const res = callGeminiWithTools(
+    'あなたはタスク管理アシスタントです。渡されたタスクのタイトルには「毎月25日」「毎週月曜」のような繰り返しの予定が含まれています。その内容を読み取り、create_recurring_taskツールで定期タスクとして登録してください。周期を表す言葉を除いた実際の作業内容をtitleにしてください。',
+    'タスク：' + task.title,
+    tool, 300);
+  const parts = res && (((res.candidates || [])[0] || {}).content || {}).parts;
+  const funcPart = parts && parts.find(p => p.functionCall);
+  if (!funcPart || funcPart.functionCall.name !== 'create_recurring_task') {
+    return `⚠️「${task.title}」を定期タスクとして解釈できませんでした。「毎週月曜19時に〇〇する を定期タスクにして」のように、周期を具体的に送ってください。`;
+  }
+  const reply = handleCreateRecurringTask(funcPart.functionCall.args, '');
+  patchSupabase('tasks', 'id=eq.' + encodeURIComponent(task.id), { deleted: true, updated_at: new Date().toISOString() });
+  return reply + `\n\n（先ほど追加した単発タスク「${task.title}」は削除し、定期タスクに置き換えました）`;
+}
 // pending中の期限確認（単発追加時／夜間の棚卸し）への返信を処理。該当なしはnullを返す
 function handlePendingDueReply(userId, text) {
   const p = PropertiesService.getScriptProperties();
@@ -1068,10 +1354,14 @@ function handlePendingDueReply(userId, text) {
   }
 
   if (pending.mode === 'single') {
+    if (/定期/.test(t)) {
+      p.deleteProperty(key);
+      return convertPendingTaskToRecurring_(pending.tasks[0]);
+    }
     const parsed = extractDateTime_(t);
     if (!parsed.due) {
-      // 明らかに日付の返信ではなさそうな長文・複数行は、期限確認を諦めて通常ルーティングへ流す
-      if (t.length > 15 || /\n/.test(t)) { p.deleteProperty(key); return null; }
+      // 日付の話ではなさそうな返信は、期限確認を諦めて通常ルーティングへ流す
+      if (!looksLikeDateReply_(t)) { p.deleteProperty(key); return null; }
       return '日付を認識できませんでした。「6/30」「今日」のように送ってください（設定しない場合は「なし」）。';
     }
     const task = pending.tasks[0];
@@ -1094,8 +1384,8 @@ function handlePendingDueReply(userId, text) {
   const funcPart = parts && parts.find(pp => pp.functionCall);
   const assignments = funcPart && Array.isArray(funcPart.functionCall.args.assignments) ? funcPart.functionCall.args.assignments : [];
   if (!assignments.length) {
-    // 期限の話ではなさそうな長文・複数行は、諦めて通常ルーティングへ流す
-    if (t.length > 15 || /\n/.test(t)) return null;
+    // 期限の話ではなさそうな返信は、諦めて通常ルーティングへ流す
+    if (!looksLikeDateReply_(t)) return null;
     return '反映できませんでした。個別に「〇〇の期限を6/30にして」のように送ってください。';
   }
 
@@ -1112,6 +1402,75 @@ function handlePendingDueReply(userId, text) {
   });
   if (!applied.length) return '反映できませんでした。個別に「〇〇の期限を6/30にして」のように送ってください。';
   return '✅ 期限を設定しました\n' + applied.join('\n');
+}
+
+// テキストから時刻表現だけを抜き出す（日付の有無は問わない）
+function parseTimeOnly_(t) {
+  return extractDateTime_(t).dueTime || '';
+}
+// 時刻の返信らしさを判定
+function looksLikeTimeReply_(t) {
+  return /[0-9０-９]|時|分/.test(t);
+}
+// pending中の時刻確認（近日中のタスク追加時／期限が近いのに時刻未設定のタスクの棚卸し）への返信を処理。該当なしはnullを返す
+function handlePendingTimeReply(userId, text) {
+  const p = PropertiesService.getScriptProperties();
+  const key = 'PENDING_TIME_' + userId;
+  const raw = p.getProperty(key);
+  if (!raw) return null;
+  let pending;
+  try { pending = JSON.parse(raw); } catch (e) { p.deleteProperty(key); return null; }
+  if ((Date.now() - pending.createdAt) / 60000 > 360) { p.deleteProperty(key); return null; }
+
+  const t = text.trim();
+  if (/^(不要|なし|未定|スキップ|やめて|あとで)[。.!！]?$/.test(t)) {
+    p.deleteProperty(key);
+    return '了解です、時間は未設定のままにします。';
+  }
+
+  if (pending.mode === 'single') {
+    const time = parseTimeOnly_(t);
+    if (!time) {
+      // 時刻の話ではなさそうな返信は、確認を諦めて通常ルーティングへ流す
+      if (!looksLikeTimeReply_(t)) { p.deleteProperty(key); return null; }
+      return '時間を認識できませんでした。「15:00」「15時」のように送ってください（設定しない場合は「なし」）。';
+    }
+    const updated = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(pending.taskId),
+      { due_time: time, updated_at: new Date().toISOString() });
+    p.deleteProperty(key);
+    if (!updated) return `⚠️「${pending.title}」の時間設定に失敗しました。`;
+    return `✅「${pending.title}」の時間を ${time} に設定しました。`;
+  }
+
+  // batchモード：複数タスクぶんの時刻をまとめてAIに割り振らせる
+  const taskListText = pending.tasks.map(pt => '・' + pt.title).join('\n');
+  const res = callGeminiWithTools(
+    'ユーザーの返信文から、下記タスク一覧のうちどのタスクに何時のリマインドを割り当てたいか読み取り、set_timesツールで返してください。返信で触れられていないタスクは含めないでください。',
+    '【タスク一覧】\n' + taskListText + '\n\n【ユーザーの返信】\n' + t,
+    TOOLS_SET_TIME_BATCH, 300);
+  p.deleteProperty(key);
+
+  const parts = res && (((res.candidates || [])[0] || {}).content || {}).parts;
+  const funcPart = parts && parts.find(pp => pp.functionCall);
+  const assignments = funcPart && Array.isArray(funcPart.functionCall.args.assignments) ? funcPart.functionCall.args.assignments : [];
+  if (!assignments.length) {
+    if (!looksLikeTimeReply_(t)) return null;
+    return '反映できませんでした。個別に「〇〇の時間を15時にして」のように送ってください。';
+  }
+
+  const applied = [];
+  assignments.forEach(a => {
+    const atitle = String(a.task_title || '').trim();
+    const atime = String(a.due_time || '').trim();
+    if (!atitle || !atime) return;
+    const match = pending.tasks.find(pt => pt.title === atitle);
+    if (!match) return;
+    const ok = patchSupabase('tasks', 'id=eq.' + encodeURIComponent(match.id),
+      { due_time: atime, updated_at: new Date().toISOString() });
+    if (ok) applied.push('・' + atitle + '（' + atime + '）');
+  });
+  if (!applied.length) return '反映できませんでした。個別に「〇〇の時間を15時にして」のように送ってください。';
+  return '✅ 時間を設定しました\n' + applied.join('\n');
 }
 
 // 未完了タスク全体の優先順位見直し案を作り、確認を求める（実際の適用は「はい」の返信を待つ）

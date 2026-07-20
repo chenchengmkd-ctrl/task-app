@@ -394,9 +394,10 @@
         </select>
         <input type="text" id="recEstimate" placeholder="見積り (例: 30分)">
         <input type="date" id="recStart" title="開始日">
+        <input type="time" id="recRemindTime" title="リマインド時刻（任意）">
       </div>
     </form>
-    <p class="rec-hint">💡 登録すると、開始日以降に <b>毎日 / 毎週◯曜 / 毎月◯日</b> のペースで「ボード」の<b>未着手</b>へ自動追加されます（アプリを開いた時にその日の分を作成）。「今すぐ作成」で手動追加も可能です。</p>
+    <p class="rec-hint">💡 登録すると、開始日以降に <b>毎日 / 毎週◯曜 / 毎月◯日</b> のペースで、指定した時刻（未指定なら毎朝の通知と同じ時刻）にLINEでリマインドが届きます。ボードへの自動追加はされません。「今すぐ作成」を押すとその場でボードの未着手に手動追加できます。</p>
     <ul id="recList"></ul>
   </section>
 
@@ -508,10 +509,9 @@ function addRecurring(f) {
   recurring.push({
     id: newId(), title: f.title, recurrence: f.interval,
     priority: f.priority, estimate: f.estimate || "", tags: parseTags(f.tags),
-    weekday, monthday, next, created: Date.now()
+    weekday, monthday, next, remindTime: f.remindTime || null, created: Date.now()
   });
   saveRecurring();
-  generateDue();          // 開始日が今日以前なら即作成
   render(); renderRecurring();
 }
 function deleteRecurring(id) {
@@ -525,23 +525,6 @@ function generateNow(id) {
   tasks.push(makeTaskFromTemplate(r, todayISO()));
   save(); render();
   alert(`「${r.title}」をボードの未着手に追加しました`);
-}
-// 予定日が来た分をボードへ自動生成（開いた時に呼ぶ）
-function generateDue() {
-  const today = todayISO();
-  let created = 0;
-  recurring.forEach(r => {
-    if (!r.next) r.next = today;
-    if (r.next <= today) {
-      tasks.push(makeTaskFromTemplate(r, r.next));
-      created++;
-      let n = r.next;
-      do { n = nextDue(n, r); } while (n <= today);  // 次の予定日へ
-      r.next = n;
-    }
-  });
-  if (created) { save(); saveRecurring(); }
-  return created;
 }
 function fmtDateJP(iso) {
   if (!iso) return "-";
@@ -561,11 +544,12 @@ function renderRecurring() {
     let meta = `<span class="badge"><i class="dot dot-rec"></i>${recurDesc(r)}</span>`;
     meta += `<span class="badge"><i class="dot dot-${r.priority}"></i>${PRIO_LABEL[r.priority]}</span>`;
     if (r.estimate) meta += `<span class="badge">⏱ ${escapeHtml(r.estimate)}</span>`;
+    meta += `<span class="badge">⏰ ${r.remindTime ? escapeHtml(r.remindTime) : "毎朝の通知と同じ時刻"}</span>`;
     li.innerHTML = `
       <div class="rec-body">
         <div class="rec-title">${escapeHtml(r.title)}</div>
         <div class="task-meta">${meta}</div>
-        <div class="rec-next">次回作成: ${fmtDateJP(r.next)}</div>
+        <div class="rec-next">次回リマインド: ${fmtDateJP(r.next)}</div>
       </div>
       <button type="button" class="btn ghost rec-now">今すぐ作成</button>
       <button type="button" class="icon-btn delete rec-del" title="削除">×</button>
@@ -611,22 +595,6 @@ function toggleTask(id) {
   t.done = !t.done;
   t.updated = Date.now();
   save(); render();
-}
-function nextDue(due, r) {
-  const rec = (typeof r === "string") ? r : r.recurrence;
-  const base = due ? new Date(due + "T00:00:00") : new Date();
-  base.setHours(0, 0, 0, 0);
-  if (rec === "weekly") { base.setDate(base.getDate() + 7); return isoOf(base); }
-  if (rec === "monthly") {
-    // 翌月の指定日（無ければ現在の日付）。月末を超えないよう調整
-    const md = (typeof r === "object" && r.monthday != null && r.monthday !== "") ? r.monthday : base.getDate();
-    let y = base.getFullYear(), m = base.getMonth() + 1;
-    if (m > 11) { m = 0; y++; }
-    return isoOf(new Date(y, m, monthdayFor(y, m, md)));
-  }
-  // daily（その他）
-  base.setDate(base.getDate() + 1);
-  return isoOf(base);
 }
 function deleteTask(id) {
   const t = tasks.find(t => t.id === id);
@@ -786,11 +754,12 @@ function buildRecCard(li, r) {
   let meta = `<span class="badge"><i class="dot dot-rec"></i>${recurDesc(r)}</span>`;
   meta += `<span class="badge"><i class="dot dot-${r.priority}"></i>${PRIO_LABEL[r.priority]}</span>`;
   if (r.estimate) meta += `<span class="badge">⏱ ${escapeHtml(r.estimate)}</span>`;
+  meta += `<span class="badge">⏰ ${r.remindTime ? escapeHtml(r.remindTime) : "毎朝の通知と同じ時刻"}</span>`;
   li.innerHTML = `
     <div class="task-body">
       <div class="task-title">${escapeHtml(r.title)}</div>
       <div class="task-meta">${meta}</div>
-      <div class="rec-next">次回作成: ${fmtDateJP(r.next)}</div>
+      <div class="rec-next">次回リマインド: ${fmtDateJP(r.next)}</div>
       <div class="rec-card-actions">
         <button type="button" class="btn ghost rec-now">今すぐ作成</button>
         <button type="button" class="icon-btn delete rec-del" title="この定期タスクを削除">×</button>
@@ -991,6 +960,7 @@ async function syncAllToSupabase() {
         id: r.id, title: r.title, recurrence: r.recurrence,
         weekday: r.weekday != null ? Number(r.weekday) : null,
         monthday: r.monthday || null, next_date: r.next || null,
+        remind_time: r.remindTime || null,
         priority: r.priority || 'mid', estimate: r.estimate || ''
       })));
     }
@@ -1024,6 +994,7 @@ async function pullFromSupabase() {
       recurring = recData.map(r => ({
         id: r.id, title: r.title, recurrence: r.recurrence,
         weekday: r.weekday, monthday: r.monthday, next: r.next_date,
+        remindTime: r.remind_time || null,
         priority: r.priority || 'mid', estimate: r.estimate || '',
         created: new Date(r.created_at).getTime()
       }));
@@ -1159,7 +1130,8 @@ document.getElementById("recForm").addEventListener("submit", e => {
     monthday: document.getElementById("recMonthday").value,
     priority: document.getElementById("recPriority").value,
     estimate: document.getElementById("recEstimate").value.trim(),
-    start: document.getElementById("recStart").value
+    start: document.getElementById("recStart").value,
+    remindTime: document.getElementById("recRemindTime").value
   });
   e.target.reset();
   updateRecFields();   // resetで毎日に戻るので欄も戻す
@@ -1184,7 +1156,6 @@ loadRecurring();
 loadHiddenCols();
 buildColToggleMenu();
 initRecForm();
-generateDue();
 render();
 renderRecurring();
 pullFromSupabase();
