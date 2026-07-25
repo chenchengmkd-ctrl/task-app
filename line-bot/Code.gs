@@ -112,7 +112,7 @@ function routeCommand(userId, text) {
 function isQuestionLike(text) {
   if (/[?？]$/.test(text)) return true;
   if (/(か|かな|かしら)[。.!！]?$/.test(text)) return true;
-  if (/(完了しました|完了した|終わりました|終わった|できました|やりました)[。.!！]?$/.test(text)) return true;
+  if (/(完了しました|完了した|終わりました|終わった|できました|やりました|できませんでした|できなかった|間に合わなかった|間に合いませんでした|取れませんでした|取れなかった|難しかった|大変だった|疲れました|疲れた)[。.!！]?$/.test(text)) return true;
   if (/(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に|書き換えて|タイトルを|名前を|修正して|直して|定期)/.test(text)) return true;
   return false;
 }
@@ -792,6 +792,17 @@ const AGENT_TOOLS = [{
       }
     },
     {
+      name: 'record_reflection',
+      description: 'ユーザーが「タスクの時間取れませんでした」「今日は忙しかった」のように、タスクの追加やコマンドではなく、その日の状況・出来事・気持ちを報告・感想として述べた場合に使う。振り返りログとして記録する。',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          content: { type: 'STRING', description: 'ユーザーが述べた状況・気持ちの内容（ユーザーの発言をもとに簡潔にまとめる）' }
+        },
+        required: ['content']
+      }
+    },
+    {
       name: 'update_material',
       description: 'ユーザーが「〇〇の資料を直して」「資料の2番をもっと具体的にして」のように、タスクではなく登録済みの参考資料（資料一覧にあるもの）の内容修正・書き直しを明確に依頼した場合に使う。ユーザーが「資料」という言葉で言及している場合はこちらを優先すること。',
       parameters: {
@@ -1057,6 +1068,12 @@ function listMaterials_() {
   if (!rows.length) return '📚 登録済みの資料はまだありません。「資料：本文」やYouTubeのURLを送ると覚えます。';
   return '📚 資料一覧\n' + rows.map(r => '・' + r.title + (r.source_type === 'youtube' ? '🎥' : '📝')).join('\n');
 }
+// AIが「これは振り返り報告だ」と判断した発言を、そのままdaily_logsに記録する
+function handleRecordReflection(input, intro) {
+  const content = String((input || {}).content || '').trim();
+  if (!content) return '⚠️ 振り返りの内容を理解できませんでした。';
+  return (intro ? intro + '\n\n' : '') + addDailyLog_(content);
+}
 // 登録済み資料の内容修正を実行（タイトルが一意に特定できる場合のみ）。現在の要約に修正指示を反映して書き直す
 function handleUpdateMaterial(input, intro) {
   const title = String((input || {}).material_title || '').trim();
@@ -1107,7 +1124,8 @@ function askAgent(userId, userText) {
     '「〜の期限を6/30にして」のように特定タスクの期限変更が明確に依頼された場合はupdate_task_dueツールを、' +
     '「〜を△△に書き換えて」のようにタスクの内容・タイトルそのものの変更が明確に依頼された場合はupdate_task_titleツールを、' +
     '「資料を〜に直して」のように登録済みの参考資料の修正が明確に依頼された場合はupdate_materialツールを、' +
-    '「毎週〇曜日に〜する」「毎月〇日に〜」「毎日〜」のように繰り返しタスク（定期タスク）の新規登録が明確に依頼された場合はcreate_recurring_taskツールを使ってください。\n' +
+    '「毎週〇曜日に〜する」「毎月〇日に〜」「毎日〜」のように繰り返しタスク（定期タスク）の新規登録が明確に依頼された場合はcreate_recurring_taskツールを、' +
+    '「タスクの時間取れませんでした」「今日は忙しかった」のように、依頼や質問ではなくその日の状況・気持ちの報告・感想を述べている場合はrecord_reflectionツールを使ってください。\n' +
     '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n' +
     'ユーザーはタスク名を毎回全部書かず、一部の言葉やキーワードだけで指定することが多いです。「未完了タスク一覧」を見て該当するタスクが1つに絞れる場合は、正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、ツールを使わず候補を挙げて確認してください。\n' +
     '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n' +
@@ -1130,6 +1148,7 @@ function askAgent(userId, userText) {
   else if (funcPart && funcPart.functionCall.name === 'update_task_title') reply = handleUpdateTaskTitle(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'update_material') reply = handleUpdateMaterial(funcPart.functionCall.args, intro);
   else if (funcPart && funcPart.functionCall.name === 'create_recurring_task') reply = handleCreateRecurringTask(funcPart.functionCall.args, intro);
+  else if (funcPart && funcPart.functionCall.name === 'record_reflection') reply = handleRecordReflection(funcPart.functionCall.args, intro);
   else reply = intro || '⚠️ AIエージェントの応答取得に失敗しました。';
 
   logAgentInteraction_(userId, userText, reply);
