@@ -1,0 +1,22 @@
+name: LINE bot 5-minute poll
+
+# Vercel Hobby（無料プラン）は1日1回までしかCronを設定できないため、
+# 5分おきのチェック（時刻リマインド・定期タスク・振り返りの再催促）はGitHub Actionsから
+# Vercel側の /api/cron_poll エンドポイントを叩くことで実現する。
+# 呼び出し先URL（?key=秘密の値まで含む）は下記の1つのリポジトリシークレットにまとめて保存する:
+#   Settings → Secrets and variables → Actions → New repository secret
+#   Name: LINE_BOT_POLL_URL
+#   Value: https://（あなたのVercelプロジェクト）.vercel.app/api/cron_poll?key=（POLL_SECRETと同じ値）
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cron_poll endpoint
+        run: |
+          curl -fsS "${{ secrets.LINE_BOT_POLL_URL }}" || echo "poll request failed (non-fatal, will retry in 5 min)"
