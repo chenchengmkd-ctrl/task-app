@@ -20,10 +20,44 @@ def add_daily_log(content):
 
 def send_daily_log_prompt(push_text_fn, get_users_fn):
     """毎晩24時（0時）に振り返りを一言催促する。"""
-    msg = '📓 今日の振り返りを一言送ってください（例：振り返り：今日はうなぎの仕込みが早く終わった）'
+    msg = ('📓 今日の振り返りを一言送ってください\n'
+           'このまま普通に文章を送ればOKです（例：今日はうなぎの仕込みが早く終わった）')
     for uid in get_users_fn():
         push_text_fn(uid, msg)
     set_state('PENDING_LOG_PROMPT', {'promptedAt': config.now_jst().isoformat(), 'nudged': False})
+
+
+def handle_pending_log_reply(text):
+    """振り返りを催促した直後の自由文を、タスク追加ではなく振り返りとして記録する。
+    該当しない場合はNoneを返し、通常のルーティング（タスク追加など）に流す。
+    ※明示的なコマンド（一覧・通知・番号指定など）はrouter側で先に処理されるので、ここには来ない。
+    """
+    pending = get_state('PENDING_LOG_PROMPT')
+    if not pending:
+        return None
+
+    prompted_at_iso = pending.get('promptedAt')
+    from datetime import datetime
+    try:
+        prompted_at = datetime.fromisoformat(prompted_at_iso)
+    except (TypeError, ValueError):
+        delete_state('PENDING_LOG_PROMPT')
+        return None
+
+    # 催促から時間が経ちすぎている場合は、もう振り返りへの返信とはみなさない
+    if (config.now_jst() - prompted_at).total_seconds() / 3600 > 12:
+        delete_state('PENDING_LOG_PROMPT')
+        return None
+
+    # すでに今日の振り返りが記録済みなら、通常のルーティングへ戻す
+    since = get_supabase('daily_logs', f'created_at=gte.{quote(prompted_at_iso)}&select=id&limit=1')
+    if since:
+        delete_state('PENDING_LOG_PROMPT')
+        return None
+
+    reply = add_daily_log(text.strip())
+    delete_state('PENDING_LOG_PROMPT')
+    return reply
 
 
 def check_daily_log_followup(push_text_fn, get_users_fn):
@@ -48,7 +82,8 @@ def check_daily_log_followup(push_text_fn, get_users_fn):
     if elapsed_min < 60:
         return
 
-    msg = '📓 まだ今日の振り返りが届いていません。一言だけでも送ってください（例：振り返り：今日は〜だった）'
+    msg = ('📓 まだ今日の振り返りが届いていません。一言だけでも送ってください\n'
+           'このまま普通に文章を送ればOKです')
     for uid in get_users_fn():
         push_text_fn(uid, msg)
     pending['nudged'] = True

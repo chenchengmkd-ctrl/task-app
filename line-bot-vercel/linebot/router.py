@@ -89,6 +89,10 @@ def route_command(user_id, text):
     # 「毎日／毎週◯曜／毎月◯日」で始まる文章は定期タスクの依頼とみなし、AIコーチ（create_recurring_task）に回す
     if re.match(r'^毎(日|週|月)', text):
         return agent_mod.ask_agent(user_id, text)
+    # 振り返りの催促直後なら、自由文はタスクではなく振り返りとして記録する
+    pending_log = daily_log_mod.handle_pending_log_reply(text)
+    if pending_log is not None:
+        return pending_log
     if is_question_like(text):
         return agent_mod.ask_agent(user_id, text)
     return tasks_mod.add_line(user_id, text)

@@ -19,7 +19,7 @@ from linebot.heartbeat import push_heartbeat_commit
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 2
+APP_VERSION = 3
 
 
 def _respond(start_response, status, body):

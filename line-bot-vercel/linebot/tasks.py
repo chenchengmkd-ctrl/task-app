@@ -19,14 +19,15 @@ def extract_date_time(text):
     due_time = ''
 
     rel_days = {'今日': 0, '明日': 1, '明後日': 2}
-    m = re.search(r'(今日|明日|明後日)(に|の)?', title)
+    # 「今日は〜」のように助詞が続く場合、助詞ごと取り除かないとタイトルが「は〜」になってしまう
+    m = re.search(r'(今日|明日|明後日)(?:には|までに|まで|は|に|の)?', title)
     if m:
         from datetime import timedelta
         d = config.now_jst() + timedelta(days=rel_days[m.group(1)])
         due = d.strftime('%Y-%m-%d')
         title = title.replace(m.group(0), '', 1)
     else:
-        m = re.search(r'(\d{1,2})/(\d{1,2})(に|の)?', title)
+        m = re.search(r'(\d{1,2})/(\d{1,2})(?:には|までに|まで|は|に|の)?', title)
         if m:
             y = config.now_jst().year
             due = f'{y}-{int(m.group(1)):02d}-{int(m.group(2)):02d}'
