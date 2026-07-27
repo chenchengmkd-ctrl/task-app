@@ -1,19 +1,29 @@
 """環境変数・定数・JST（日本時間）ヘルパー。Code.gs 冒頭の定数群に相当。"""
 import os
 import random
+import re
 import string
 import time
 from datetime import datetime, timedelta, timezone
 
-CHANNEL_ACCESS_TOKEN = os.environ.get('CHANNEL_ACCESS_TOKEN', '')
-SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
-SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY', '')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-3.1-flash-lite')
-CRON_SECRET = os.environ.get('CRON_SECRET', '')
-POLL_SECRET = os.environ.get('POLL_SECRET', '')
-GITHUB_PAT = os.environ.get('GITHUB_PAT', '')
-GITHUB_REPO = os.environ.get('GITHUB_REPO', '')
+
+def _env(name, default=''):
+    """環境変数を読む。値の前後だけでなく途中の改行・空白も取り除く。
+    トークンやAPIキーは貼り付け時に改行や空白が紛れ込みやすく、そのままだと
+    HTTPヘッダに載せた時点でエラーになったり認証に失敗したりするため。
+    """
+    return re.sub(r'\s+', '', os.environ.get(name, default) or '')
+
+
+CHANNEL_ACCESS_TOKEN = _env('CHANNEL_ACCESS_TOKEN')
+SUPABASE_URL = _env('SUPABASE_URL')
+SUPABASE_ANON_KEY = _env('SUPABASE_ANON_KEY')
+GEMINI_API_KEY = _env('GEMINI_API_KEY')
+GEMINI_MODEL = _env('GEMINI_MODEL', 'gemini-3.1-flash-lite') or 'gemini-3.1-flash-lite'
+CRON_SECRET = _env('CRON_SECRET')
+POLL_SECRET = _env('POLL_SECRET')
+GITHUB_PAT = _env('GITHUB_PAT')
+GITHUB_REPO = _env('GITHUB_REPO')
 
 REMIND_HOUR = 6            # 毎朝の通知時刻（時・24時間制、JST）
 REMIND_MINUTE = 0

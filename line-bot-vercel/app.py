@@ -21,7 +21,7 @@ from linebot.gemini_client import call_gemini
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 5
+APP_VERSION = 6
 
 
 def _respond(start_response, status, body, cors=False):
