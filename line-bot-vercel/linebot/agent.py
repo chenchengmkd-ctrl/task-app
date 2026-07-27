@@ -421,7 +421,7 @@ def send_agent_checkin(push_text_fn, get_users_fn):
 
 
 def send_weekly_report(push_text_fn, get_users_fn):
-    """毎週月曜9時：先週の完了実績・ペース・積み残しを送る。番号はユーザーごとに記憶する。"""
+    """毎週日曜21時：その週の完了実績・ペース・積み残しを送る。番号はユーザーごとに記憶する。"""
     from . import reports as reports_mod
     for uid in get_users_fn():
         push_text_fn(uid, reports_mod.build_weekly_report(uid))

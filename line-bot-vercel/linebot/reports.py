@@ -39,7 +39,21 @@ def _completed_between(since_iso, until_iso=None):
 
 
 def _deleted_since(since_iso):
-    return _count(f'deleted=eq.true&updated_at=gte.{since_iso}')
+    """削除されたタスク。完了とは別枠で数えたいので分けて取得する。"""
+    return get_supabase(
+        'tasks',
+        f'deleted=eq.true&updated_at=gte.{since_iso}&select=title,updated_at&order=updated_at.desc',
+    )
+
+
+def _deleted_block(deleted, label):
+    if not deleted:
+        return ''
+    block = f'\n\n🗑 {label}：{len(deleted)}件（完了には数えていません）'
+    block += '\n' + '\n'.join(f'・{_short(t["title"])}' for t in deleted[:5])
+    if len(deleted) > 5:
+        block += f'\n…ほか{len(deleted) - 5}件'
+    return block
 
 
 def _open_tasks():
@@ -124,8 +138,7 @@ def build_daily_report(user_id=None):
 
     msg += f'\n\n📌 未完了：{len(open_tasks)}件'
     msg += f'\n📈 直近7日の完了：{done_7d}件（1日あたり{done_7d / 7:.1f}件）'
-    if deleted_today:
-        msg += f'\n🗑 今日削除：{deleted_today}件（完了には数えていません）'
+    msg += _deleted_block(deleted_today, '今日削除')
     return msg + _MEASURED_FROM_NOTE
 
 
@@ -149,8 +162,6 @@ def build_weekly_report(user_id=None):
     diff_label = f'＋{diff}' if diff > 0 else (f'{diff}' if diff < 0 else '±0')
     msg += f'\n✅ 完了：{len(done)}件（1日あたり{len(done) / 7:.1f}件）'
     msg += f'\n　前の週：{done_prev}件（{diff_label}）'
-    if deleted:
-        msg += f'\n🗑 削除：{deleted}件（完了には数えていません）'
     msg += f'\n📌 未完了：{len(open_tasks)}件'
     if overdue:
         msg += f'\n🔴 期限切れ：{len(overdue)}件'
@@ -159,6 +170,8 @@ def build_weekly_report(user_id=None):
         msg += '\n\n✅ 完了したタスク\n' + '\n'.join(f'・{_short(t["title"])}' for t in done[:10])
         if len(done) > 10:
             msg += f'\n…ほか{len(done) - 10}件'
+
+    msg += _deleted_block(deleted, '削除')
 
     numbered = []
     if overdue:
