@@ -7,6 +7,8 @@ URLパス自体は従来通り /api/webhook・/api/cron_* のまま（vercel.jso
 import json
 from urllib.parse import parse_qs
 
+import requests
+
 from linebot import config
 from linebot.router import handle_event
 from linebot.tasks import send_reminders, check_timed_reminders
@@ -15,6 +17,9 @@ from linebot.daily_log import send_daily_log_prompt, check_daily_log_followup
 from linebot.agent import send_agent_checkin, send_weekly_report
 from linebot.heartbeat import push_heartbeat_commit
 from linebot.line_client import push_text, get_users
+
+# デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
+APP_VERSION = 2
 
 
 def _respond(start_response, status, body):
@@ -91,10 +96,47 @@ def _run_poll(environ, start_response):
     return _respond(start_response, '200 OK', {'ok': True})
 
 
+def _handle_health(environ, start_response):
+    """設定診断用。秘密の値そのものは返さず、「設定されているか」「余計な文字が混ざっていないか」だけを返す。
+    実際にLINEのAPIを叩いて、チャネルアクセストークンが有効かどうかも確認する。
+    """
+    token = config.CHANNEL_ACCESS_TOKEN
+    info = {
+        'version': APP_VERSION,
+        'env': {
+            'CHANNEL_ACCESS_TOKEN': {
+                'set': bool(token),
+                'length': len(token),
+                'has_whitespace_or_newline': any(c.isspace() for c in token),
+                'looks_truncated_or_extra': ("'" in token or ';' in token),
+            },
+            'SUPABASE_URL': bool(config.SUPABASE_URL),
+            'SUPABASE_ANON_KEY': bool(config.SUPABASE_ANON_KEY),
+            'GEMINI_API_KEY': bool(config.GEMINI_API_KEY),
+            'CRON_SECRET': bool(config.CRON_SECRET),
+            'POLL_SECRET': bool(config.POLL_SECRET),
+            'GITHUB_PAT': bool(config.GITHUB_PAT),
+        },
+    }
+    # LINEのAPIにトークンの有効性を問い合わせる（メッセージは送らない）
+    try:
+        res = requests.get(
+            'https://api.line.me/v2/bot/info',
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=15,
+        )
+        info['line_token_check'] = {'status': res.status_code, 'body': res.text[:300]}
+    except Exception as e:
+        info['line_token_check'] = {'error': str(e)}
+    return _respond(start_response, '200 OK', info)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
 
+    if path == '/api/health' and method == 'GET':
+        return _handle_health(environ, start_response)
     if path == '/api/webhook' and method == 'POST':
         return _handle_webhook(environ, start_response)
     if path == '/api/cron_morning_reminder' and method == 'GET':
