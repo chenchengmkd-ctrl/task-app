@@ -104,16 +104,22 @@ def check_recurring_reminders(push_text_fn, get_users_fn):
     prop_key = f'REC_REMINDED_{today_str}'
     reminded = get_state(prop_key) or []
 
-    fire = []
+    fire, overdue = [], []
     for r in items:
         if r['id'] in reminded:
+            continue
+        if config.iso_of_date(r['next']) < today_str:
+            # 予定日を過ぎたまま溜まっている分は、時刻を待たずにすぐ通知して日付を進める
+            fire.append(r)
+            overdue.append(r)
+            reminded.append(r['id'])
             continue
         hhmm = r['remindTime'] or f'{config.REMIND_HOUR:02d}:{config.REMIND_MINUTE:02d}'
         hh, mm = hhmm.split(':')
         target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
         diff_min = (target - now).total_seconds() / 60
-        # 予定時刻を過ぎた直後（チェック間隔ぶんの幅）で1回だけ捕まえる。予定日が過去に溜まっている場合はすぐに捕まえる
-        if diff_min <= 0 and (diff_min > -config.TIME_CHECK_INTERVAL or config.iso_of_date(r['next']) < today_str):
+        # 今日ぶんは、予定時刻を過ぎた直後（チェック間隔ぶんの幅）で1回だけ捕まえる
+        if -config.TIME_CHECK_INTERVAL < diff_min <= 0:
             fire.append(r)
             reminded.append(r['id'])
 
@@ -121,6 +127,8 @@ def check_recurring_reminders(push_text_fn, get_users_fn):
         return
 
     msg = '🔁 今日の定期タスク\n' + '\n'.join(f"・{r['title']}" for r in fire)
+    if overdue:
+        msg += f'\n\n（うち{len(overdue)}件は予定日を過ぎていたぶんです。次回以降は設定時刻にお知らせします）'
     for uid in get_users_fn():
         push_text_fn(uid, msg)
     set_state(prop_key, reminded)
