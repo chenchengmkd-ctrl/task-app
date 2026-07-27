@@ -304,9 +304,9 @@ def handle_numbered_actions(user_id, text):
         if action == 'delete':
             body = {'deleted': True, 'updated_at': config.now_iso()}
         elif action == 'done':
-            body = {'done': True, 'updated_at': config.now_iso()}
+            body = {'done': True, 'completed_at': config.now_iso(), 'updated_at': config.now_iso()}
         else:
-            body = {'done': False, 'status': action, 'updated_at': config.now_iso()}
+            body = {'done': False, 'status': action, 'completed_at': None, 'updated_at': config.now_iso()}
         ok = patch_supabase('tasks', f"id=eq.{quote(target['id'])}", body)
         if ok is None:
             failed.append(f"{num}. {target['title']}")

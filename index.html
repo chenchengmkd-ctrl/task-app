@@ -589,10 +589,17 @@ function addTask(fields) {
 function parseTags(str) {
   return String(str || "").split(",").map(t => t.trim()).filter(Boolean);
 }
+// 完了状態が変わったときに「いつ完了したか」を記録する。
+// updated_at は同期のたびに動くため、完了実績の集計には使えない（レポートは completedAt を見る）
+function markDone(t, done) {
+  if (done && !t.completedAt) t.completedAt = Date.now();
+  if (!done) t.completedAt = null;
+  t.done = done;
+}
 function toggleTask(id) {
   const t = tasks.find(t => t.id === id);
   if (!t) return;
-  t.done = !t.done;
+  markDone(t, !t.done);
   t.updated = Date.now();
   save(); render();
 }
@@ -622,7 +629,7 @@ function dropOnTask(draggedId, targetId) {
   const target = tasks.find(t => t.id === targetId);
   if (!dragged || !target || draggedId === targetId) return;
   dragged.status = target.status;
-  dragged.done = target.done;
+  markDone(dragged, target.done);
   dragged.updated = Date.now();
   tasks.splice(tasks.findIndex(t => t.id === draggedId), 1);
   tasks.splice(tasks.findIndex(t => t.id === targetId), 0, dragged);
@@ -632,8 +639,8 @@ function dropOnTask(draggedId, targetId) {
 function dropOnColumn(draggedId, col) {
   const dragged = tasks.find(t => t.id === draggedId);
   if (!dragged) return;
-  if (col.done) { dragged.done = true; }
-  else { dragged.done = false; dragged.status = col.key; }
+  if (col.done) { markDone(dragged, true); }
+  else { markDone(dragged, false); dragged.status = col.key; }
   dragged.updated = Date.now();
   const [moved] = tasks.splice(tasks.findIndex(t => t.id === draggedId), 1);
   tasks.push(moved);
@@ -933,7 +940,10 @@ function taskToRow(t) {
     recurrence: t.recurrence || 'none', note: t.note || '',
     tags: t.tags || [], done: t.done || false,
     deleted: t.deleted || false, from_line: t.fromLine || false,
-    updated_at: new Date(t.updated || Date.now()).toISOString()
+    completed_at: t.completedAt ? new Date(t.completedAt).toISOString() : null,
+    // 更新時刻を持たない古いタスクに「今」を書き込むと、同期のたびに全件が更新扱いになってしまうため
+    // 作成時刻で代用する（レポートの集計が壊れるのを防ぐ）
+    updated_at: new Date(t.updated || t.created || Date.now()).toISOString()
   };
 }
 function rowToTask(row) {
@@ -944,6 +954,7 @@ function rowToTask(row) {
     recurrence: row.recurrence || 'none', note: row.note || '',
     tags: row.tags || [], done: row.done || false,
     deleted: row.deleted || false, fromLine: row.from_line || false,
+    completedAt: row.completed_at ? new Date(row.completed_at).getTime() : null,
     created: new Date(row.created_at).getTime(),
     updated: new Date(row.updated_at).getTime()
   };

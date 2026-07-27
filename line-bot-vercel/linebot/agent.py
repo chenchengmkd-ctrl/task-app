@@ -148,9 +148,11 @@ def handle_update_task_status(input_args, intro):
     body = {'updated_at': config.now_iso()}
     if new_status == 'done':
         body['done'] = True
+        body['completed_at'] = config.now_iso()
     else:
         body['done'] = False
         body['status'] = new_status
+        body['completed_at'] = None
 
     updated = patch_supabase('tasks', f"id=eq.{quote(matches[0]['id'])}", body)
     if updated is None:

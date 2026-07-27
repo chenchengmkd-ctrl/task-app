@@ -13,6 +13,10 @@ def _ts(dt):
     return quote(dt.strftime('%Y-%m-%dT%H:%M:%S+09:00'), safe='')
 
 
+# 完了日時（completed_at）を記録し始める前に完了したタスクは、正確な完了日が分からないため集計に入らない
+_MEASURED_FROM_NOTE = '\n\n※完了日の記録を始める前に完了した分は集計に含まれません'
+
+
 def _short(title, n=30):
     t = str(title or '').replace('\n', ' ').strip()
     return t if len(t) <= n else t[:n] + '…'
@@ -24,10 +28,13 @@ def _count(params):
 
 
 def _completed_between(since_iso, until_iso=None):
-    """完了（削除されていないもの）を期間で取得。until_isoは含まない上限。"""
-    q = f'done=eq.true&deleted=eq.false&updated_at=gte.{since_iso}&select=title,updated_at&order=updated_at.desc'
+    """完了（削除されていないもの）を期間で取得。until_isoは含まない上限。
+    completed_at は完了操作をした時点だけを記録するため、同期で動く updated_at と違って実績集計に使える。
+    """
+    q = (f'done=eq.true&deleted=eq.false&completed_at=gte.{since_iso}'
+         '&select=title,completed_at&order=completed_at.desc')
     if until_iso:
-        q += f'&updated_at=lt.{until_iso}'
+        q += f'&completed_at=lt.{until_iso}'
     return get_supabase('tasks', q)
 
 
@@ -119,7 +126,7 @@ def build_daily_report(user_id=None):
     msg += f'\n📈 直近7日の完了：{done_7d}件（1日あたり{done_7d / 7:.1f}件）'
     if deleted_today:
         msg += f'\n🗑 今日削除：{deleted_today}件（完了には数えていません）'
-    return msg
+    return msg + _MEASURED_FROM_NOTE
 
 
 def build_weekly_report(user_id=None):
@@ -172,4 +179,4 @@ def build_weekly_report(user_id=None):
             msg += f'\n・{label}：{_short(l.get("content"), 40)}'
 
     msg += '\n\n今週もお疲れ様でした！'
-    return msg
+    return msg + _MEASURED_FROM_NOTE
