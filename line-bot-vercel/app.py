@@ -17,10 +17,11 @@ from linebot.daily_log import send_daily_log_prompt, check_daily_log_followup
 from linebot.agent import send_agent_checkin, send_weekly_report
 from linebot.heartbeat import push_heartbeat_commit
 from linebot.richmenu import setup_rich_menu
+from linebot.gemini_client import call_gemini
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 4
+APP_VERSION = 5
 
 
 def _respond(start_response, status, body, cors=False):
@@ -109,23 +110,35 @@ def _handle_health(environ, start_response):
     実際にLINEのAPIを叩いて、チャネルアクセストークンが有効かどうかも確認する。
     """
     token = config.CHANNEL_ACCESS_TOKEN
+    gkey = config.GEMINI_API_KEY
+
+    def describe(v):
+        return {
+            'set': bool(v),
+            'length': len(v),
+            'has_whitespace_or_newline': any(c.isspace() for c in v),
+            'looks_truncated_or_extra': ("'" in v or ';' in v),
+        }
+
     info = {
         'version': APP_VERSION,
         'env': {
-            'CHANNEL_ACCESS_TOKEN': {
-                'set': bool(token),
-                'length': len(token),
-                'has_whitespace_or_newline': any(c.isspace() for c in token),
-                'looks_truncated_or_extra': ("'" in token or ';' in token),
-            },
+            'CHANNEL_ACCESS_TOKEN': describe(token),
+            'GEMINI_API_KEY': describe(gkey),
+            'GEMINI_MODEL': config.GEMINI_MODEL,
             'SUPABASE_URL': bool(config.SUPABASE_URL),
             'SUPABASE_ANON_KEY': bool(config.SUPABASE_ANON_KEY),
-            'GEMINI_API_KEY': bool(config.GEMINI_API_KEY),
             'CRON_SECRET': bool(config.CRON_SECRET),
             'POLL_SECRET': bool(config.POLL_SECRET),
             'GITHUB_PAT': bool(config.GITHUB_PAT),
         },
     }
+    # Geminiに実際に短い問い合わせをして、キー・モデル名が有効か確かめる
+    try:
+        reply = call_gemini('返答は必ず日本語で。', 'テスト。「OK」とだけ返してください。', 20)
+        info['gemini_check'] = {'ok': reply is not None, 'reply': (reply or '')[:100]}
+    except Exception as e:
+        info['gemini_check'] = {'ok': False, 'error': str(e)}
     # LINEのAPIにトークンの有効性を問い合わせる（メッセージは送らない）
     try:
         res = requests.get(
