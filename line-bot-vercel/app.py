@@ -14,6 +14,7 @@ from linebot.router import handle_event
 from linebot.tasks import send_reminders, check_timed_reminders
 from linebot.recurring import check_recurring_reminders
 from linebot.daily_log import send_daily_log_prompt, check_daily_log_followup
+from linebot.planning import check_daily_plan
 from linebot.agent import send_agent_checkin, send_weekly_report
 from linebot.heartbeat import push_heartbeat_commit
 from linebot.richmenu import setup_rich_menu
@@ -22,7 +23,7 @@ from linebot.reports import build_daily_report, build_weekly_report
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 15
+APP_VERSION = 16
 
 
 def _respond(start_response, status, body, cors=False):
@@ -98,6 +99,7 @@ def _run_poll(environ, start_response):
         (check_recurring_reminders, 'check_recurring_reminders'),
         (check_timed_reminders, 'check_timed_reminders'),
         (check_daily_log_followup, 'check_daily_log_followup'),
+        (check_daily_plan, 'check_daily_plan'),
     ):
         try:
             fn(push_text, get_users)

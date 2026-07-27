@@ -7,6 +7,7 @@ from . import tasks as tasks_mod
 from . import materials as materials_mod
 from . import daily_log as daily_log_mod
 from . import reports as reports_mod
+from . import planning as planning_mod
 from .line_client import remember_user, reply_text
 
 
@@ -51,6 +52,10 @@ def route_command(user_id, text):
     pending_reprioritize = agent_mod.handle_pending_reprioritize_reply(user_id, text)
     if pending_reprioritize is not None:
         return pending_reprioritize
+    # 「1,3,5」のような番号だけの返信は、その日にやることの選択として受け取る
+    pending_plan = planning_mod.handle_pending_plan_reply(user_id, text)
+    if pending_plan is not None:
+        return pending_plan
 
     if re.match(r'^(一覧|リスト|list)$', text, re.IGNORECASE):
         return tasks_mod.list_all(user_id)
@@ -62,6 +67,10 @@ def route_command(user_id, text):
         return reports_mod.build_daily_report(user_id)
     if re.match(r'^(週報|週次レポート|今週のレポート)$', text):
         return reports_mod.build_weekly_report(user_id)
+    if re.match(r'^(明日の予定|予定を決める|予定決め)$', text):
+        return planning_mod.plan_prompt_on_demand(user_id)
+    if re.match(r'^(今日の予定|予定|予定確認)$', text):
+        return planning_mod.show_plan(user_id)
     if re.match(r'^(相談|アドバイス)$', text):
         return agent_mod.ask_agent(user_id, '最近のタスク状況について、率直な進捗評価とアドバイスをください。')
     if re.match(r'^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$', text):
@@ -146,6 +155,8 @@ def help_text():
         '・日報 → 今日の完了件数・今日が期限のもの・期限切れ・ペースを表示',
         '・週報 → 直近1週間の完了件数とペース、前週比、積み残しを表示',
         '　（どちらも番号つきなので、その場で「1完了」「1明日」と返せます）',
+        '・明日の予定 → 明日やる候補を番号つきで表示（「1,3,5」と番号を返して確定）',
+        '・今日の予定 → 決めたぶんが今どこまで進んでいるかを表示',
         '・相談・アドバイス → AIコーチに進捗評価を聞く',
         '　（「〜どう？」のような疑問文もAIコーチが拾って回答します）',
         '・AIコーチにはタスクの分解・状態変更・削除・優先度変更・期限変更も頼めます',
@@ -180,6 +191,9 @@ def help_text():
         '⏰ 自動で届くもの',
         f'・毎朝{config.REMIND_HOUR}時：期限リマインド（番号つき）',
         f'・毎晩{config.AGENT_HOUR}時：AIコーチの進捗チェックイン＋日報',
+        '・毎晩22:30：その日決めた予定の答え合わせ（できていないものはそのままリマインド）',
+        '・毎晩23:30：明日やることの洗い出し（番号で選んで確定）',
+        '　決まらない場合は 0:30／6:30／8:00 に催促（朝8時が最終期限）',
         '・毎晩24時：振り返りの催促（1時間たっても届かなければもう一度だけ催促）',
         '・毎週日曜21時：週報',
         f'・時刻つきタスクは開始{config.TIME_LEAD_MINUTES}分前にもリマインド',
