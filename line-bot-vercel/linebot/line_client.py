@@ -28,7 +28,7 @@ def _messages(text):
 
 def reply_text(token, text):
     """text は文字列、または複数メッセージに分けたい場合は文字列のリスト（LINEの仕様上5件まで）。"""
-    requests.post(
+    res = requests.post(
         config.REPLY_URL,
         headers={
             'Authorization': f'Bearer {config.CHANNEL_ACCESS_TOKEN}',
@@ -37,10 +37,12 @@ def reply_text(token, text):
         data=json.dumps({'replyToken': token, 'messages': _messages(text)}),
         timeout=20,
     )
+    if res.status_code >= 300:
+        print('LINE reply error', res.status_code, res.text)
 
 
 def push_text(to, text):
-    requests.post(
+    res = requests.post(
         config.PUSH_URL,
         headers={
             'Authorization': f'Bearer {config.CHANNEL_ACCESS_TOKEN}',
@@ -49,3 +51,5 @@ def push_text(to, text):
         data=json.dumps({'to': to, 'messages': _messages(text)}),
         timeout=20,
     )
+    if res.status_code >= 300:
+        print('LINE push error', res.status_code, res.text)
