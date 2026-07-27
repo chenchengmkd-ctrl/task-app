@@ -399,8 +399,7 @@ def send_agent_checkin(push_text_fn, get_users_fn):
     # 期限未設定タスクの棚卸し（すでに確認待ちがあれば重複して聞かない）
     no_due = get_supabase('tasks', 'done=eq.false&deleted=eq.false&due=is.null&select=id,title&limit=10')
     if no_due:
-        msg = '📅 期限未設定のタスク\n' + '\n'.join(f"・{t['title']}" for t in no_due) + \
-            '\n\n期限を教えてください（例：「◯◯は6/30、△△は今日」。不要なら「なし」）。'
+        from . import tasks as tasks_mod
         for uid in get_users_fn():
             if get_state(f'PENDING_DUE_{uid}'):
                 continue
@@ -409,6 +408,10 @@ def send_agent_checkin(push_text_fn, get_users_fn):
                 'tasks': [{'id': t['id'], 'title': t['title']} for t in no_due],
                 'createdAt': config.now_ms(),
             })
+            # 日次レポートの番号の続きとして採番し、「12明日」のように番号で期限を送れるようにする
+            numbered = tasks_mod.append_to_last_list(uid, no_due)
+            msg = ('📅 期限未設定のタスク\n' + '\n'.join(f"{it['num']}. {it['title']}" for it in numbered) +
+                   '\n\n番号と期限を送れば設定できます（例：1明日／2を6/30／3明日15時）。不要なら「なし」。')
             push_text_fn(uid, msg)
 
     # 優先順位の見直し提案（別メッセージ。すでに確認待ちがあれば重複して提案しない）

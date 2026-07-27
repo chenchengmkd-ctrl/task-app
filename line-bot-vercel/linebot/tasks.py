@@ -211,6 +211,33 @@ def resolve_numbered_task(user_id, num):
     return next((it for it in (data.get('items') or []) if it['num'] == num), None)
 
 
+def append_to_last_list(user_id, tasks):
+    """直前の一覧の番号を引き継いで、渡したタスクに番号を振る。
+    すでに番号があるタスクはその番号のまま、無いものだけ続き番号を足す。
+    → [{'num': n, 'id': .., 'title': ..}]
+    """
+    if not user_id:
+        return [{'num': i + 1, 'id': t['id'], 'title': t['title']} for i, t in enumerate(tasks)]
+    data = get_state(f'LAST_LIST_{user_id}') or {}
+    created = data.get('createdAt') or 0
+    if (config.now_ms() - created) / 3600000 > LAST_LIST_VALID_HOURS:
+        data, created = {}, config.now_ms()
+    items = list(data.get('items') or [])
+    by_id = {it['id']: it['num'] for it in items}
+    max_num = max((it['num'] for it in items), default=0)
+
+    out = []
+    for t in tasks:
+        n = by_id.get(t['id'])
+        if n is None:
+            max_num += 1
+            n = max_num
+            items.append({'num': n, 'id': t['id'], 'title': t['title']})
+        out.append({'num': n, 'id': t['id'], 'title': t['title']})
+    set_state(f'LAST_LIST_{user_id}', {'items': items, 'createdAt': created or config.now_ms()})
+    return out
+
+
 # 番号だけで操作するときに使える言葉（「1削除」「5ペンディング」など）
 NUMBERED_ACTIONS = {
     '削除': 'delete', '消す': 'delete', '消して': 'delete',
@@ -225,42 +252,109 @@ _ACTION_LABEL = {'delete': '削除', 'done': '完了', 'pending': 'ペンディ�
 _ZEN2HAN = str.maketrans('０１２３４５６７８９', '0123456789')
 
 
-# 「1明日」「2を7/30」のように、番号＋日付で期限だけ付け替える（リスケ）
-_RESCHEDULE_DATE = r'(今日|明日|明後日|来週|再来週|今週末|週末|来月|月末|\d{1,2}/\d{1,2})'
+# 「1明日」「2を7/30」「1 15時」「3明日10時」のように、番号＋日付/時刻で期限・時間を設定する
+_DATE_WORD = r'今日|明日|明後日|来週|再来週|今週末|週末|来月|月末'
+_DATE_NUM = r'\d{1,2}/\d{1,2}'
+_TIME_EXPR = r'\d{1,2}時(?:\d{1,2}分)?|\d{1,2}:\d{2}'
+_NUM_SPEC = re.compile(
+    r'(?P<num>\d+)'
+    r'(?P<sep>\s*(?:番目?)?\s*(?:を|の|は|に)?\s*)'
+    rf'(?P<when>{_DATE_WORD}|{_DATE_NUM})?'
+    r'\s*(?:の|に|は|、)?\s*'
+    rf'(?P<time>{_TIME_EXPR})?'
+)
 
 
-def handle_numbered_reschedule(user_id, text):
-    """番号＋日付だけの指定を、期限の付け替えとして処理する。該当なしはNone。"""
-    pattern = r'(\d+)\s*(?:番目?)?\s*(?:を|の|は)?\s*' + _RESCHEDULE_DATE
-    pairs = re.findall(pattern, text)
-    if not pairs:
+def _iter_num_specs(text):
+    """「番号＋日付/時刻」の指定を順に取り出す。→ (match, 番号, 日付表現, 時刻表現)"""
+    for m in _NUM_SPEC.finditer(text.translate(_ZEN2HAN)):
+        when = m.group('when') or ''
+        time_s = m.group('time') or ''
+        if not when and not time_s:
+            continue
+        # 「15:00」を「1番を5:00」と読み違えないよう、数字で始まる指定は
+        # 区切り（空白・助詞・「番」）が入っているときだけ番号指定として扱う。
+        if (when or time_s)[0].isdigit() and m.group('sep') == '':
+            continue
+        yield m, int(m.group('num')), when, time_s
+
+
+def _accepted_num_specs(text):
+    """番号指定として受け付けてよいものだけを返す。
+    「会議 1 15時」のような普通のタスク文をコマンドと誤解しないよう、
+    先頭が番号で始まり、かつ指定部分と定型的な言い回しを除いた残りがほとんど無いことを条件にする。
+    """
+    specs = list(_iter_num_specs(text))
+    if not specs or specs[0][0].start() > 1:
+        return []
+    rest = text.translate(_ZEN2HAN)
+    for m, _, _, _ in reversed(specs):
+        rest = rest[:m.start()] + rest[m.end():]
+    rest = re.sub(r'(にしてください|にして|でお願いします|でお願い|お願いします|おねがいします|にリスケ|リスケ|'
+                  r'に変更|変更|に設定|設定|時間|時刻|期限|から|へ|に|、|,|\s)', '', rest)
+    return [] if len(rest) > 3 else specs
+
+
+def looks_like_numbered_due_time(user_id, text):
+    """「1 15時」「2を7/30」のような番号指定かどうか（番号が直前の一覧で実在する場合のみTrue）。
+    期限・時刻の確認待ちへの返信と取り違えないための判定。
+    """
+    return any(resolve_numbered_task(user_id, num) for _, num, _, _ in _accepted_num_specs(text))
+
+
+def _prune_pending_time(user_id, task_ids):
+    """番号指定で時間が入ったぶんを、時刻確認待ちのリストから外す（全部埋まったら確認自体を終了）。"""
+    key = f'PENDING_TIME_{user_id}'
+    pending = get_state(key)
+    if not pending or pending.get('mode') != 'batch':
+        return
+    remain = [t for t in (pending.get('tasks') or []) if t['id'] not in task_ids]
+    if not remain:
+        delete_state(key)
+    elif len(remain) != len(pending.get('tasks') or []):
+        set_state(key, {**pending, 'tasks': remain})
+
+
+def handle_numbered_due_time(user_id, text):
+    """番号＋日付/時刻の指定を、期限・時間の設定として処理する。該当なしはNone。"""
+    specs = _accepted_num_specs(text)
+    if not specs:
         return None
 
-    rest = re.sub(pattern, '', text)
-    rest = re.sub(r'(にしてください|にして|でお願いします|お願いします|にリスケ|リスケ|に変更|変更|へ|に|、|,|\s)', '', rest)
-    if len(rest) > 3:
-        return None
-
-    applied, missing = [], []
-    for num_str, when in pairs:
-        num = int(num_str)
+    applied, missing, timed_ids = [], [], []
+    for _, num, when, time_s in specs:
         target = resolve_numbered_task(user_id, num)
         if not target:
             missing.append(num)
             continue
-        parsed = extract_date_time(when)
-        due = parsed['due'] or ai_parse_date(when)
-        if not due:
+        body = {'updated_at': config.now_iso()}
+        due = ''
+        if when:
+            due = extract_date_time(when)['due'] or ai_parse_date(when) or ''
+            if due:
+                body['due'] = due
+        time_val = parse_time_only(time_s) if time_s else ''
+        if time_val:
+            body['due_time'] = time_val
+        if len(body) == 1:
             continue
-        ok = patch_supabase('tasks', f"id=eq.{quote(target['id'])}", {
-            'due': due, 'updated_at': config.now_iso(),
-        })
-        if ok is not None:
-            applied.append(f"{num}. {target['title']} → {config.jp(due)}")
+        ok = patch_supabase('tasks', f"id=eq.{quote(target['id'])}", body)
+        if ok is None:
+            continue
+        if time_val:
+            timed_ids.append(target['id'])
+        parts = [config.jp(due)] if due else []
+        if time_val:
+            parts.append(time_val)
+        applied.append(f"{num}. {target['title']} → {' '.join(parts)}")
+
+    if timed_ids:
+        _prune_pending_time(user_id, timed_ids)
 
     lines = []
     if applied:
-        lines.append('📅 期限を変更しました\n' + '\n'.join(applied))
+        head = '⏰ 期限・時間を設定しました' if timed_ids else '📅 期限を変更しました'
+        lines.append(head + '\n' + '\n'.join(applied))
     if missing:
         nums = '、'.join(str(n) for n in missing)
         lines.append(f'⚠️ {nums} 番に対応するタスクが見つかりませんでした。「一覧」で番号を確認してください。')
@@ -283,7 +377,7 @@ def handle_numbered_actions(user_id, text):
     pattern = r'(\d+)\s*(?:番目?)?\s*(?:を|の|に|で|は)?\s*(' + words + r')'
     pairs = re.findall(pattern, t)
     if not pairs:
-        return handle_numbered_reschedule(user_id, t)
+        return handle_numbered_due_time(user_id, t)
 
     # 「3完了報告書を作る」のような普通のタスク文を誤って操作コマンドと解釈しないよう、
     # 指定部分と定型的な言い回しを取り除いた残りがほとんど無いときだけコマンドとして扱う。
@@ -399,8 +493,23 @@ def get_no_time_soon_tasks():
     for r in rows:
         d = config.parse_date(r.get('due'))
         if d and config.day_diff(today, d) <= config.REC_NEAR_DAYS:
-            out.append({'id': r['id'], 'title': r['title']})
+            out.append({'id': r['id'], 'title': r['title'], 'due': r.get('due') or ''})
     return out
+
+
+def build_no_time_message(user_id, no_time):
+    """期限が近いのに時刻未設定のタスクを、リマインド本文と同じ番号つきで並べる。
+    番号で「1 15時」と返すだけで時間を設定できるようにする。
+    """
+    numbered = append_to_last_list(user_id, no_time)
+    due_by_id = {t['id']: t.get('due') or '' for t in no_time}
+    lines = '\n'.join(
+        f"{it['num']}. {it['title']}" + (f"（{config.jp(due_by_id[it['id']])}）" if due_by_id.get(it['id']) else '')
+        for it in numbered
+    )
+    return ('⏰ 期限が近いのに時間未設定のタスク\n' + lines +
+            '\n\n番号と時間を送れば設定できます（例：1 15時／2は10時30分）。'
+            '\n日付もまとめて変えられます（例：3 明日10時）。不要なら「なし」。')
 
 
 def send_reminders(push_text_fn, get_users_fn):
@@ -416,10 +525,7 @@ def send_reminders(push_text_fn, get_users_fn):
     for uid in get_users_fn():
         if not get_state(f'PENDING_TIME_{uid}'):
             set_state(f'PENDING_TIME_{uid}', {'mode': 'batch', 'tasks': no_time, 'createdAt': config.now_ms()})
-    time_msg = '⏰ 期限が近いのに時間未設定のタスク\n' + '\n'.join(f"・{t['title']}" for t in no_time) + \
-        '\n\n時間を教えてください（例：「〇〇は15時、△△は10時」。不要なら「なし」）。'
-    for uid in get_users_fn():
-        push_text_fn(uid, time_msg)
+        push_text_fn(uid, build_no_time_message(uid, no_time))
 
 
 # ============ 時刻指定タスクの直前リマインド ============
@@ -508,8 +614,8 @@ def handle_pending_due_reply(user_id, text):
         return None
 
     t = text.strip()
-    # 「1完了」のような番号コマンドは期限の返信ではないので、そちらに処理を譲る
-    if looks_like_numbered_action(t):
+    # 「1完了」「2を7/30」のような番号指定は、そちらの処理に譲る
+    if looks_like_numbered_action(t) or looks_like_numbered_due_time(user_id, t):
         return None
     if re.match(r'^(不要|なし|未定|スキップ|やめて|あとで)[。.!！]?$', t):
         delete_state(key)
@@ -583,8 +689,8 @@ def handle_pending_time_reply(user_id, text):
         return None
 
     t = text.strip()
-    # 「1完了」のような番号コマンドは時刻の返信ではないので、そちらに処理を譲る
-    if looks_like_numbered_action(t):
+    # 「1完了」「1 15時」のような番号指定は、そちらの処理に譲る
+    if looks_like_numbered_action(t) or looks_like_numbered_due_time(user_id, t):
         return None
     if re.match(r'^(不要|なし|未定|スキップ|やめて|あとで)[。.!！]?$', t):
         delete_state(key)
