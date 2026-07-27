@@ -81,18 +81,6 @@ def log_agent_interaction(user_id, user_text, ai_reply):
     }])
 
 
-def build_daily_report():
-    """今日完了したタスクの集計（日次レポート・進捗チェックインに含める）。"""
-    today_str = config.today_iso()
-    done_today = get_supabase(
-        'tasks', f'done=eq.true&deleted=eq.false&updated_at=gte.{today_str}&select=title&order=updated_at.desc',
-    )
-    msg = f'✅ 今日完了したタスク（{len(done_today)}件）'
-    if done_today:
-        msg += '\n' + '\n'.join(f"・{t['title']}" for t in done_today)
-    return msg
-
-
 # ============ サブタスク分解の提案 ============
 def handle_propose_subtasks(user_id, input_args, intro):
     a = input_args or {}
@@ -389,7 +377,9 @@ def ask_agent(user_id, user_text):
 
 # ============ 毎晩の進捗チェックイン・週次レポート（Cronから呼ばれる） ============
 def send_agent_checkin(push_text_fn, get_users_fn):
-    """プッシュ型：毎晩の進捗チェックイン（毎朝のリマインドとは別に送信）。"""
+    """プッシュ型：毎晩の進捗チェックイン。日次レポートは番号つきなので別メッセージで送る。"""
+    from . import reports as reports_mod
+
     context = build_agent_context()
     reply = call_gemini(
         config.AGENT_PERSONA,
@@ -397,27 +387,27 @@ def send_agent_checkin(push_text_fn, get_users_fn):
         '③のアドバイスは、単なる励ましではなく、そのタスクの分野に詳しいスペシャリストとしての具体的な進め方を含めてください。\n\n' + context,
         600,
     )
-    if not reply:
-        return
 
-    msg = '🧭 進捗チェックイン\n\n' + reply
-    msg += '\n\n' + build_daily_report()
+    # 日次レポートは番号を振るため、ユーザーごとに組み立てて送る
+    for uid in get_users_fn():
+        if reply:
+            push_text_fn(uid, '🧭 進捗チェックイン\n\n' + reply)
+        push_text_fn(uid, reports_mod.build_daily_report(uid))
 
     # 期限未設定タスクの棚卸し（すでに確認待ちがあれば重複して聞かない）
     no_due = get_supabase('tasks', 'done=eq.false&deleted=eq.false&due=is.null&select=id,title&limit=10')
     if no_due:
-        for uid in get_users_fn():
-            if not get_state(f'PENDING_DUE_{uid}'):
-                set_state(f'PENDING_DUE_{uid}', {
-                    'mode': 'batch',
-                    'tasks': [{'id': t['id'], 'title': t['title']} for t in no_due],
-                    'createdAt': config.now_ms(),
-                })
-        msg += '\n\n📅 期限未設定のタスク\n' + '\n'.join(f"・{t['title']}" for t in no_due) + \
+        msg = '📅 期限未設定のタスク\n' + '\n'.join(f"・{t['title']}" for t in no_due) + \
             '\n\n期限を教えてください（例：「◯◯は6/30、△△は今日」。不要なら「なし」）。'
-
-    for uid in get_users_fn():
-        push_text_fn(uid, msg)
+        for uid in get_users_fn():
+            if get_state(f'PENDING_DUE_{uid}'):
+                continue
+            set_state(f'PENDING_DUE_{uid}', {
+                'mode': 'batch',
+                'tasks': [{'id': t['id'], 'title': t['title']} for t in no_due],
+                'createdAt': config.now_ms(),
+            })
+            push_text_fn(uid, msg)
 
     # 優先順位の見直し提案（別メッセージ。すでに確認待ちがあれば重複して提案しない）
     for uid in get_users_fn():
@@ -429,39 +419,7 @@ def send_agent_checkin(push_text_fn, get_users_fn):
 
 
 def send_weekly_report(push_text_fn, get_users_fn):
-    """毎週月曜9時：先週完了したタスク・振り返りログをまとめて送る。"""
-    now = config.now_jst()
-    since = (now - timedelta(days=7)).strftime('%Y-%m-%d')
-
-    done_tasks = get_supabase(
-        'tasks', f'done=eq.true&deleted=eq.false&updated_at=gte.{since}&select=title,updated_at&order=updated_at.desc',
-    )
-    logs = get_supabase('daily_logs', f'log_date=gte.{since}&select=log_date,content&order=log_date.desc')
-
-    msg = f'📊 週次レポート（{now.month}/{now.day}）\n'
-    msg += f'\n✅ 先週の完了タスク（{len(done_tasks)}件）'
-    msg += ('\n' + '\n'.join(f"・{t['title']}" for t in done_tasks)) if done_tasks else '\nなし'
-
-    msg += f'\n\n📓 振り返りログ（{len(logs)}件）'
-    if logs:
-        lines = []
-        for l in logs:
-            ld = config.parse_date(l.get('log_date'))
-            label = f'{ld.month}/{ld.day}' if ld else str(l.get('log_date'))
-            content = l.get('content')
-            if content:
-                excerpt = content[:60].replace('\n', ' ') + ('…' if len(content) > 60 else '')
-            else:
-                excerpt = '（内容なし）'
-            lines.append(f'{label}：{excerpt}')
-        msg += '\n' + '\n'.join(lines)
-    else:
-        msg += '\nなし'
-
-    if not done_tasks and not logs:
-        msg += '\n\n今週もお疲れ様でした！来週も頑張りましょう💪'
-    else:
-        msg += '\n\n今週もお疲れ様でした！'
-
+    """毎週月曜9時：先週の完了実績・ペース・積み残しを送る。番号はユーザーごとに記憶する。"""
+    from . import reports as reports_mod
     for uid in get_users_fn():
-        push_text_fn(uid, msg)
+        push_text_fn(uid, reports_mod.build_weekly_report(uid))

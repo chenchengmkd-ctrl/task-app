@@ -225,6 +225,55 @@ _ACTION_LABEL = {'delete': '削除', 'done': '完了', 'pending': 'ペンディ�
 _ZEN2HAN = str.maketrans('０１２３４５６７８９', '0123456789')
 
 
+# 「1明日」「2を7/30」のように、番号＋日付で期限だけ付け替える（リスケ）
+_RESCHEDULE_DATE = r'(今日|明日|明後日|来週|再来週|今週末|週末|来月|月末|\d{1,2}/\d{1,2})'
+
+
+def handle_numbered_reschedule(user_id, text):
+    """番号＋日付だけの指定を、期限の付け替えとして処理する。該当なしはNone。"""
+    pattern = r'(\d+)\s*(?:番目?)?\s*(?:を|の|は)?\s*' + _RESCHEDULE_DATE
+    pairs = re.findall(pattern, text)
+    if not pairs:
+        return None
+
+    rest = re.sub(pattern, '', text)
+    rest = re.sub(r'(にしてください|にして|でお願いします|お願いします|にリスケ|リスケ|に変更|変更|へ|に|、|,|\s)', '', rest)
+    if len(rest) > 3:
+        return None
+
+    applied, missing = [], []
+    for num_str, when in pairs:
+        num = int(num_str)
+        target = resolve_numbered_task(user_id, num)
+        if not target:
+            missing.append(num)
+            continue
+        parsed = extract_date_time(when)
+        due = parsed['due'] or ai_parse_date(when)
+        if not due:
+            continue
+        ok = patch_supabase('tasks', f"id=eq.{quote(target['id'])}", {
+            'due': due, 'updated_at': config.now_iso(),
+        })
+        if ok is not None:
+            applied.append(f"{num}. {target['title']} → {config.jp(due)}")
+
+    lines = []
+    if applied:
+        lines.append('📅 期限を変更しました\n' + '\n'.join(applied))
+    if missing:
+        nums = '、'.join(str(n) for n in missing)
+        lines.append(f'⚠️ {nums} 番に対応するタスクが見つかりませんでした。「一覧」で番号を確認してください。')
+    return '\n\n'.join(lines) if lines else None
+
+
+def looks_like_numbered_action(text):
+    """「1完了」「2削除」のように番号＋操作語の指定かどうか。期限確認への返信と取り違えないための判定。"""
+    words = '|'.join(sorted(NUMBERED_ACTIONS, key=len, reverse=True))
+    return bool(re.search(r'\d+\s*(?:番目?)?\s*(?:を|の|に|で|は)?\s*(' + words + r')',
+                          text.translate(_ZEN2HAN)))
+
+
 def handle_numbered_actions(user_id, text):
     """「1削除」「5ペンディング」「1削除 5ペンディング」のように、番号＋操作をまとめて処理する。
     AIを使わずその場で確定させる。該当する指定が無ければNoneを返して通常のルーティングへ。
@@ -234,7 +283,7 @@ def handle_numbered_actions(user_id, text):
     pattern = r'(\d+)\s*(?:番目?)?\s*(?:を|の|に|で|は)?\s*(' + words + r')'
     pairs = re.findall(pattern, t)
     if not pairs:
-        return None
+        return handle_numbered_reschedule(user_id, t)
 
     # 「3完了報告書を作る」のような普通のタスク文を誤って操作コマンドと解釈しないよう、
     # 指定部分と定型的な言い回しを取り除いた残りがほとんど無いときだけコマンドとして扱う。
@@ -459,6 +508,9 @@ def handle_pending_due_reply(user_id, text):
         return None
 
     t = text.strip()
+    # 「1完了」のような番号コマンドは期限の返信ではないので、そちらに処理を譲る
+    if looks_like_numbered_action(t):
+        return None
     if re.match(r'^(不要|なし|未定|スキップ|やめて|あとで)[。.!！]?$', t):
         delete_state(key)
         return '了解です、期限は未設定のままにします。'
@@ -531,6 +583,9 @@ def handle_pending_time_reply(user_id, text):
         return None
 
     t = text.strip()
+    # 「1完了」のような番号コマンドは時刻の返信ではないので、そちらに処理を譲る
+    if looks_like_numbered_action(t):
+        return None
     if re.match(r'^(不要|なし|未定|スキップ|やめて|あとで)[。.!！]?$', t):
         delete_state(key)
         return '了解です、時間は未設定のままにします。'

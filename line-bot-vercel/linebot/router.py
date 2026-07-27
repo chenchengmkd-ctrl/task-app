@@ -6,6 +6,7 @@ from . import agent as agent_mod
 from . import tasks as tasks_mod
 from . import materials as materials_mod
 from . import daily_log as daily_log_mod
+from . import reports as reports_mod
 from .line_client import remember_user, reply_text
 
 
@@ -57,6 +58,10 @@ def route_command(user_id, text):
         return tasks_mod.build_reminder(user_id) or '📭 期限が近い（超過〜3日以内）のタスクはありません。'
     if re.match(r'^(ヘルプ|使い方|help)$', text, re.IGNORECASE):
         return help_text()
+    if re.match(r'^(日報|日次レポート|今日のレポート)$', text):
+        return reports_mod.build_daily_report(user_id)
+    if re.match(r'^(週報|週次レポート|今週のレポート)$', text):
+        return reports_mod.build_weekly_report(user_id)
     if re.match(r'^(相談|アドバイス)$', text):
         return agent_mod.ask_agent(user_id, '最近のタスク状況について、率直な進捗評価とアドバイスをください。')
     if re.match(r'^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$', text):
@@ -133,8 +138,12 @@ def help_text():
         '　番号だけで操作できます（一覧・通知の番号は12時間有効）',
         '　例）1削除／5ペンディング／3完了／2着手中／4対応待ち',
         '　例）1削除 5ペンディング　→ まとめて指定もOK',
-        '　例）3番の期限を7/1にして　→ 期限やタイトルの変更は「3番の〜」と続けて指示',
+        '　例）1明日／2を7/30　→ 番号で期限だけ変更（リスケ）',
+        '　例）3番のタイトルを〜に書き換えて　→ 細かい指示は「3番の〜」と続けて',
         '・通知 → 今の期限リマインドを番号つきで表示（そのまま「1完了」などで操作可）',
+        '・日報 → 今日の完了件数・今日が期限のもの・期限切れ・ペースを表示',
+        '・週報 → 直近1週間の完了件数とペース、前週比、積み残しを表示',
+        '　（どちらも番号つきなので、その場で「1完了」「1明日」と返せます）',
         '・相談・アドバイス → AIコーチに進捗評価を聞く',
         '　（「〜どう？」のような疑問文もAIコーチが拾って回答します）',
         '・AIコーチにはタスクの分解・状態変更・削除・優先度変更・期限変更も頼めます',
