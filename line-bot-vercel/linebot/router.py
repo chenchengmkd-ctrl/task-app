@@ -54,7 +54,7 @@ def route_command(user_id, text):
     if re.match(r'^(一覧|リスト|list)$', text, re.IGNORECASE):
         return tasks_mod.list_all(user_id)
     if re.match(r'^(通知|リマインド|今日)$', text, re.IGNORECASE):
-        return tasks_mod.build_reminder() or '📭 期限が近い（超過〜3日以内）のタスクはありません。'
+        return tasks_mod.build_reminder(user_id) or '📭 期限が近い（超過〜3日以内）のタスクはありません。'
     if re.match(r'^(ヘルプ|使い方|help)$', text, re.IGNORECASE):
         return help_text()
     if re.match(r'^(相談|アドバイス)$', text):
@@ -62,7 +62,12 @@ def route_command(user_id, text):
     if re.match(r'^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$', text):
         return agent_mod.propose_reprioritization(user_id)
 
-    # 「3番を完了にして」のような番号指定を、直前の一覧を元に実際のタイトルへ変換する
+    # 「1削除」「5ペンディング」「1削除 5ペンディング」のように、番号＋操作だけの指定はその場で確定させる
+    numbered = tasks_mod.handle_numbered_actions(user_id, text)
+    if numbered is not None:
+        return numbered
+
+    # 「3番の期限を7/1にして」のような番号指定を、直前の一覧を元に実際のタイトルへ変換してAIに渡す
     num_match = re.match(r'^(\d+)番(目)?(を|の)?\s*([\s\S]*)$', text)
     if num_match:
         resolved = tasks_mod.resolve_numbered_task(user_id, int(num_match.group(1)))
@@ -125,8 +130,11 @@ def help_text():
         '　例）今日17時に小室くんにチラシの件伝える  ← 自然な文中の日付・時刻もOK',
         '　（今日／明日／明後日、HH時MM分／HH時／HH:MM に対応）',
         '・一覧 → 未完了タスクを番号つきで表示',
-        '　例）3番を完了にして／3番の期限を7/1にして／3番を削除して　→ 一覧の番号でそのまま操作（1時間有効）',
-        '・通知 → 今の期限リマインドを表示',
+        '　番号だけで操作できます（一覧・通知の番号は12時間有効）',
+        '　例）1削除／5ペンディング／3完了／2着手中／4対応待ち',
+        '　例）1削除 5ペンディング　→ まとめて指定もOK',
+        '　例）3番の期限を7/1にして　→ 期限やタイトルの変更は「3番の〜」と続けて指示',
+        '・通知 → 今の期限リマインドを番号つきで表示（そのまま「1完了」などで操作可）',
         '・相談・アドバイス → AIコーチに進捗評価を聞く',
         '　（「〜どう？」のような疑問文もAIコーチが拾って回答します）',
         '・AIコーチにはタスクの分解・状態変更・削除・優先度変更・期限変更も頼めます',

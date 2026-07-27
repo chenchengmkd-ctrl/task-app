@@ -188,7 +188,7 @@ def list_all(user_id):
 
     if numbered and user_id:
         set_state(f'LAST_LIST_{user_id}', {'items': numbered, 'createdAt': config.now_ms()})
-        msg += '\n番号で「3番を完了にして」のように操作できます。'
+        msg += '\n番号だけで操作できます（例：1削除、5ペンディング、3完了）。\n「1削除 5ペンディング」のようにまとめてもOKです。'
     msg = msg.strip()
 
     if not rec:
@@ -198,27 +198,94 @@ def list_all(user_id):
     return [msg, rec_msg] if app else rec_msg
 
 
+LAST_LIST_VALID_HOURS = 12
+
+
 def resolve_numbered_task(user_id, num):
     """直前の「一覧」で表示した番号から、実際のタスク（id・title）を引き当てる。該当なし/期限切れはNone。"""
     data = get_state(f'LAST_LIST_{user_id}')
     if not data:
         return None
-    if (config.now_ms() - data.get('createdAt', 0)) / 60000 > 60:
+    if (config.now_ms() - data.get('createdAt', 0)) / 3600000 > LAST_LIST_VALID_HOURS:
         return None
     return next((it for it in (data.get('items') or []) if it['num'] == num), None)
+
+
+# 番号だけで操作するときに使える言葉（「1削除」「5ペンディング」など）
+NUMBERED_ACTIONS = {
+    '削除': 'delete', '消す': 'delete', '消して': 'delete',
+    '完了': 'done', 'done': 'done',
+    'ペンディング': 'pending', 'ペンデイング': 'pending',
+    '着手中': 'doing', '着手': 'doing',
+    '対応待ち': 'waiting', '待ち': 'waiting',
+    '未着手': 'todo',
+}
+_ACTION_LABEL = {'delete': '削除', 'done': '完了', 'pending': 'ペンディング',
+                 'doing': '着手中', 'waiting': '対応待ち', 'todo': '未着手'}
+_ZEN2HAN = str.maketrans('０１２３４５６７８９', '0123456789')
+
+
+def handle_numbered_actions(user_id, text):
+    """「1削除」「5ペンディング」「1削除 5ペンディング」のように、番号＋操作をまとめて処理する。
+    AIを使わずその場で確定させる。該当する指定が無ければNoneを返して通常のルーティングへ。
+    """
+    t = text.translate(_ZEN2HAN)
+    words = '|'.join(sorted(NUMBERED_ACTIONS, key=len, reverse=True))
+    pattern = r'(\d+)\s*(?:番目?)?\s*(?:を|の|に|で|は)?\s*(' + words + r')'
+    pairs = re.findall(pattern, t)
+    if not pairs:
+        return None
+
+    # 「3完了報告書を作る」のような普通のタスク文を誤って操作コマンドと解釈しないよう、
+    # 指定部分と定型的な言い回しを取り除いた残りがほとんど無いときだけコマンドとして扱う。
+    rest = re.sub(pattern, '', t)
+    rest = re.sub(r'(でお願いします|でお願い|にしてください|しといて|しておいて|してください|お願いします|'
+                  r'おねがいします|にして|して|に変更|変更|です|ます|、|,|\s)', '', rest)
+    if len(rest) > 3:
+        return None
+
+    applied, missing, failed = [], [], []
+    for num_str, word in pairs:
+        num = int(num_str)
+        target = resolve_numbered_task(user_id, num)
+        if not target:
+            missing.append(num)
+            continue
+        action = NUMBERED_ACTIONS[word]
+        if action == 'delete':
+            body = {'deleted': True, 'updated_at': config.now_iso()}
+        elif action == 'done':
+            body = {'done': True, 'updated_at': config.now_iso()}
+        else:
+            body = {'done': False, 'status': action, 'updated_at': config.now_iso()}
+        ok = patch_supabase('tasks', f"id=eq.{quote(target['id'])}", body)
+        if ok is None:
+            failed.append(f"{num}. {target['title']}")
+        else:
+            applied.append(f"{num}. {target['title']} → {_ACTION_LABEL[action]}")
+
+    lines = []
+    if applied:
+        lines.append('✅ 反映しました\n' + '\n'.join(applied))
+    if failed:
+        lines.append('⚠️ 反映に失敗しました\n' + '\n'.join(failed))
+    if missing:
+        nums = '、'.join(str(n) for n in missing)
+        lines.append(f'⚠️ {nums} 番に対応するタスクが見つかりませんでした。「一覧」で番号を確認してください。')
+    return '\n\n'.join(lines)
 
 
 # ============ リマインド ============
 def get_due_from_app():
     """アプリの期限ありの未完了タスクを取得。"""
-    rows = get_supabase('tasks', 'done=eq.false&deleted=eq.false&due=not.is.null&select=title,status,due,due_time')
+    rows = get_supabase('tasks', 'done=eq.false&deleted=eq.false&due=not.is.null&select=id,title,status,due,due_time')
     out = []
     for r in rows:
         due = config.parse_date(r.get('due'))
         if not r.get('title') or not due:
             continue
         out.append({
-            'title': str(r['title']), 'due': due,
+            'id': r['id'], 'title': str(r['title']), 'due': due,
             'status': config.STATUS_LABEL_JP.get(r.get('status'), r.get('status') or '未着手'),
             'due_time': str(r['due_time'])[:5] if r.get('due_time') else '',
         })
@@ -238,9 +305,10 @@ def due_tag(d, date_obj, due_time=''):
     return f'{d}日後 {md}{time_part}'
 
 
-def build_reminder():
+def build_reminder(user_id=None):
     """通知メッセージを組み立て（対象が無ければ空文字）。
     通常タスク: 期限が3日以内（超過含む）を、進捗状況ごとに表示（時刻が設定されていれば時刻も表示）。
+    番号を振り、user_idが分かる場合は「1完了」のようにそのまま操作できるよう記憶しておく。
     ※定期タスクのリマインドは recurring.py の check_recurring_reminders() で別メッセージとして送るため、ここには含めない。
     """
     today = config.midnight(config.now_jst())
@@ -255,12 +323,22 @@ def build_reminder():
         return ''
 
     msg = f'🔔 タスクのリマインド ({today.month}/{today.day})\n'
+    numbered = []
+    n = 0
     for st in config.STATUS_ORDER:
         arr = sorted([t for t in near if t['status'] == st], key=lambda t: t['d'])
         if not arr:
             continue
-        lines = [f"・{t['title']}（{due_tag(t['d'], t['due'], t['due_time'])}）" for t in arr]
+        lines = []
+        for t in arr:
+            n += 1
+            numbered.append({'num': n, 'id': t['id'], 'title': t['title']})
+            lines.append(f"{n}. {t['title']}（{due_tag(t['d'], t['due'], t['due_time'])}）")
         msg += f'\n{config.STATUS_ICON[st]} {st}\n' + '\n'.join(lines) + '\n'
+
+    if numbered and user_id:
+        set_state(f'LAST_LIST_{user_id}', {'items': numbered, 'createdAt': config.now_ms()})
+        msg += '\n番号だけで操作できます（例：1完了、2ペンディング、3削除）。'
     return msg.strip()
 
 
@@ -277,10 +355,10 @@ def get_no_time_soon_tasks():
 
 
 def send_reminders(push_text_fn, get_users_fn):
-    """毎朝のトリガーから呼ばれる。"""
-    msg = build_reminder()
-    if msg:
-        for uid in get_users_fn():
+    """毎朝のトリガーから呼ばれる。番号はユーザーごとに記憶する。"""
+    for uid in get_users_fn():
+        msg = build_reminder(uid)
+        if msg:
             push_text_fn(uid, msg)
 
     no_time = get_no_time_soon_tasks()
