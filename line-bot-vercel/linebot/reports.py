@@ -38,24 +38,6 @@ def _completed_between(since_iso, until_iso=None):
     return get_supabase('tasks', q)
 
 
-def _deleted_since(since_iso):
-    """削除されたタスク。完了とは別枠で数えたいので分けて取得する。"""
-    return get_supabase(
-        'tasks',
-        f'deleted=eq.true&updated_at=gte.{since_iso}&select=title,updated_at&order=updated_at.desc',
-    )
-
-
-def _deleted_block(deleted, label):
-    if not deleted:
-        return ''
-    block = f'\n\n🗑 {label}：{len(deleted)}件（完了には数えていません）'
-    block += '\n' + '\n'.join(f'・{_short(t["title"])}' for t in deleted[:5])
-    if len(deleted) > 5:
-        block += f'\n…ほか{len(deleted) - 5}件'
-    return block
-
-
 def _open_tasks():
     return get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title,due,due_time')
 
@@ -95,7 +77,6 @@ def build_daily_report(user_id=None):
     today_start = _ts(config.midnight(now))
 
     done_today = _completed_between(today_start)
-    deleted_today = _deleted_since(today_start)
     open_tasks = _open_tasks()
     overdue, due_today = _overdue_and_today(open_tasks, today_str)
 
@@ -138,7 +119,6 @@ def build_daily_report(user_id=None):
 
     msg += f'\n\n📌 未完了：{len(open_tasks)}件'
     msg += f'\n📈 直近7日の完了：{done_7d}件（1日あたり{done_7d / 7:.1f}件）'
-    msg += _deleted_block(deleted_today, '今日削除')
     return msg + _MEASURED_FROM_NOTE
 
 
@@ -151,7 +131,6 @@ def build_weekly_report(user_id=None):
 
     done = _completed_between(since)
     done_prev = len(_completed_between(prev_since, since))
-    deleted = _deleted_since(since)
     open_tasks = _open_tasks()
     overdue, due_today = _overdue_and_today(open_tasks, today_str)
 
@@ -170,8 +149,6 @@ def build_weekly_report(user_id=None):
         msg += '\n\n✅ 完了したタスク\n' + '\n'.join(f'・{_short(t["title"])}' for t in done[:10])
         if len(done) > 10:
             msg += f'\n…ほか{len(done) - 10}件'
-
-    msg += _deleted_block(deleted, '削除')
 
     numbered = []
     if overdue:
