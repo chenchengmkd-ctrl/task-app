@@ -27,6 +27,12 @@ def send_daily_log_prompt(push_text_fn, get_users_fn):
     set_state('PENDING_LOG_PROMPT', {'promptedAt': config.now_jst().isoformat(), 'nudged': False})
 
 
+def start_reflection_prompt():
+    """「振り返り」とだけ送られた（リッチメニューのボタンを含む）ときに、次の文章を振り返りとして受け取る準備をする。"""
+    set_state('PENDING_LOG_PROMPT', {'promptedAt': config.now_jst().isoformat(), 'nudged': True})
+    return '📓 今日の振り返りをどうぞ。このまま普通に文章を送ればOKです。'
+
+
 def handle_pending_log_reply(text):
     """振り返りを催促した直後の自由文を、タスク追加ではなく振り返りとして記録する。
     該当しない場合はNoneを返し、通常のルーティング（タスク追加など）に流す。

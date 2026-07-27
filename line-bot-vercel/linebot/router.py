@@ -71,8 +71,11 @@ def route_command(user_id, text):
 
     if re.match(r'^(定期タスク一覧|定期一覧)$', text):
         return tasks_mod.list_all(user_id)
-    if re.match(r'^(資料一覧|資料リスト)$', text):
+    if re.match(r'^(資料一覧|資料リスト|資料)$', text):
         return materials_mod.list_materials()
+    # リッチメニューの「振り返り」ボタン等。次に送られた文章を振り返りとして記録する
+    if re.match(r'^(振り返り|ふりかえり)$', text):
+        return daily_log_mod.start_reflection_prompt()
     material_match = re.match(r'^資料[:：]\s*([\s\S]+)$', text)
     if material_match:
         return materials_mod.add_material_from_text(material_match.group(1).strip())

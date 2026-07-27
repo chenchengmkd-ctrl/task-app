@@ -16,15 +16,23 @@ from linebot.recurring import check_recurring_reminders
 from linebot.daily_log import send_daily_log_prompt, check_daily_log_followup
 from linebot.agent import send_agent_checkin, send_weekly_report
 from linebot.heartbeat import push_heartbeat_commit
+from linebot.richmenu import setup_rich_menu
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 3
+APP_VERSION = 4
 
 
-def _respond(start_response, status, body):
+def _respond(start_response, status, body, cors=False):
     payload = json.dumps(body).encode('utf-8')
-    start_response(status, [('Content-Type', 'application/json')])
+    headers = [('Content-Type', 'application/json')]
+    if cors:
+        headers += [
+            ('Access-Control-Allow-Origin', '*'),
+            ('Access-Control-Allow-Headers', 'Content-Type'),
+            ('Access-Control-Allow-Methods', 'POST, OPTIONS'),
+        ]
+    start_response(status, headers)
     return [payload]
 
 
@@ -131,10 +139,35 @@ def _handle_health(environ, start_response):
     return _respond(start_response, '200 OK', info)
 
 
+def _handle_setup_richmenu(environ, start_response):
+    """ブラウザのCanvasで作った画像を受け取り、LINEのリッチメニューとして登録する（セットアップ時に1回だけ叩く）。"""
+    if not _has_poll_secret(environ):
+        return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'}, cors=True)
+    try:
+        length = int(environ.get('CONTENT_LENGTH') or 0)
+    except ValueError:
+        length = 0
+    raw = environ['wsgi.input'].read(length) if length else b'{}'
+    try:
+        body = json.loads(raw.decode('utf-8'))
+    except Exception as e:
+        return _respond(start_response, '400 Bad Request', {'error': f'bad json: {e}'}, cors=True)
+    try:
+        result = setup_rich_menu(body.get('image'))
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': str(e)}, cors=True)
+    return _respond(start_response, '200 OK', result, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
 
+    if path == '/api/setup_richmenu':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_setup_richmenu(environ, start_response)
     if path == '/api/health' and method == 'GET':
         return _handle_health(environ, start_response)
     if path == '/api/webhook' and method == 'POST':
