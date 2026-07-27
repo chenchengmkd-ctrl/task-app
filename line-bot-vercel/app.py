@@ -18,10 +18,11 @@ from linebot.agent import send_agent_checkin, send_weekly_report
 from linebot.heartbeat import push_heartbeat_commit
 from linebot.richmenu import setup_rich_menu
 from linebot.gemini_client import call_gemini
+from linebot.reports import build_daily_report, build_weekly_report
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 10
+APP_VERSION = 11
 
 
 def _respond(start_response, status, body, cors=False):
@@ -152,6 +153,22 @@ def _handle_health(environ, start_response):
     return _respond(start_response, '200 OK', info)
 
 
+def _handle_preview(environ, start_response):
+    """レポートの中身をLINEに送らずに確認する（動作確認用）。POLL_SECRETで保護。"""
+    if not _has_poll_secret(environ):
+        return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'})
+    qs = parse_qs(environ.get('QUERY_STRING', ''))
+    kind = (qs.get('kind') or ['daily'])[0]
+    try:
+        if kind == 'weekly':
+            body = build_weekly_report(None)
+        else:
+            body = build_daily_report(None)
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)})
+    return _respond(start_response, '200 OK', {'kind': kind, 'text': body})
+
+
 def _handle_setup_richmenu(environ, start_response):
     """ブラウザのCanvasで作った画像を受け取り、LINEのリッチメニューとして登録する（セットアップ時に1回だけ叩く）。"""
     if not _has_poll_secret(environ):
@@ -183,6 +200,8 @@ def app(environ, start_response):
             return _handle_setup_richmenu(environ, start_response)
     if path == '/api/health' and method == 'GET':
         return _handle_health(environ, start_response)
+    if path == '/api/preview_report' and method == 'GET':
+        return _handle_preview(environ, start_response)
     if path == '/api/webhook' and method == 'POST':
         return _handle_webhook(environ, start_response)
     if path == '/api/cron_morning_reminder' and method == 'GET':

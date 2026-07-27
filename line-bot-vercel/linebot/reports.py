@@ -1,10 +1,16 @@
 """日次・週次レポート。完了と削除を分けて数え、進み具合・ペース・期限切れ・リスケ候補まで出す。"""
 from datetime import timedelta
+from urllib.parse import quote
 
 from . import config
 from .supabase_client import get_supabase, set_state
 
 WEEKDAY_JP = ['月', '火', '水', '木', '金', '土', '日']
+
+
+def _ts(dt):
+    """PostgRESTのフィルタに載せる時刻。'+09:00' の + はURL上で空白扱いになるため必ずエンコードする。"""
+    return quote(dt.strftime('%Y-%m-%dT%H:%M:%S+09:00'), safe='')
 
 
 def _short(title, n=30):
@@ -65,7 +71,7 @@ def build_daily_report(user_id=None):
     """今日の進み具合をまとめる。番号を振るので、そのまま「1明日」などでリスケできる。"""
     now = config.now_jst()
     today_str = config.today_iso()
-    today_start = f'{today_str}T00:00:00+09:00'
+    today_start = _ts(config.midnight(now))
 
     done_today = _completed_between(today_start)
     deleted_today = _deleted_since(today_start)
@@ -76,8 +82,7 @@ def build_daily_report(user_id=None):
     done_due_today = _count(f'done=eq.true&deleted=eq.false&due=eq.{today_str}')
     total_due_today = done_due_today + len(due_today)
 
-    since7 = (now - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S+09:00')
-    done_7d = len(_completed_between(since7))
+    done_7d = len(_completed_between(_ts(now - timedelta(days=7))))
 
     msg = f'📊 日次レポート（{now.month}/{now.day} {WEEKDAY_JP[now.weekday()]}）\n'
 
@@ -120,8 +125,8 @@ def build_daily_report(user_id=None):
 def build_weekly_report(user_id=None):
     """先週1週間の完了実績・ペース・積み残しをまとめる。"""
     now = config.now_jst()
-    since = (now - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S+09:00')
-    prev_since = (now - timedelta(days=14)).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+    since = _ts(now - timedelta(days=7))
+    prev_since = _ts(now - timedelta(days=14))
     today_str = config.today_iso()
 
     done = _completed_between(since)
