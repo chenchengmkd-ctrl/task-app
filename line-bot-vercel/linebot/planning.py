@@ -133,7 +133,7 @@ def show_plan(user_id):
     msg = build_plan_review(user_id, config.today_iso())
     if msg:
         return msg
-    return '📋 今日は「予定なし」で決めています。決め直すなら「明日の予定」と送ってください。'
+    return '📋 今日は「予定なし」で決めています。決め直すなら「予定を決める」と送ってください。'
 
 
 def send_plan_nudge(push_text_fn, get_users_fn, now, hm):
@@ -221,8 +221,9 @@ def build_plan_review(user_id, date_iso):
     plan = get_state(_plan_key(user_id, date_iso))
     d = config.parse_date(date_iso)
     if not plan:
-        return (f'📋 {config.jp2(d)}にやることは決まっていませんでした。\n'
-                f'このあと{PLAN_PROMPT_AT[0]}:{PLAN_PROMPT_AT[1]:02d}に明日のぶんを聞きます。')
+        return (f'📋 {config.jp2(d)}にやることは決まっていません。\n\n'
+                '→ いま決めるなら「予定を決める」と送ってください（候補が番号つきで出ます）。\n'
+                f'→ 自動では毎晩{PLAN_PROMPT_AT[0]}:{PLAN_PROMPT_AT[1]:02d}に翌日ぶんを聞きます。')
     items = plan.get('items') or []
     if not items:
         return None
