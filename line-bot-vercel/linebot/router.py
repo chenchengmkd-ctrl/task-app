@@ -61,7 +61,7 @@ def route_command(user_id, text):
         return tasks_mod.list_all(user_id)
     if re.match(r'^(通知|リマインド|今日)$', text, re.IGNORECASE):
         return tasks_mod.build_reminder(user_id) or '📭 期限が近い（超過〜3日以内）のタスクはありません。'
-    if re.match(r'^(ヘルプ|使い方|help)$', text, re.IGNORECASE):
+    if re.match(r'^(ヘルプ|使い方|help|マニュアル)$', text, re.IGNORECASE):
         return help_text()
     if re.match(r'^(日報|日次レポート|今日のレポート)$', text):
         return reports_mod.build_daily_report(user_id)
@@ -92,8 +92,9 @@ def route_command(user_id, text):
             return f"{num_match.group(1)}番：「{resolved['title']}」"
         text = f"「{resolved['title']}」{num_match.group(4)}"
 
-    if re.match(r'^(定期タスク一覧|定期一覧)$', text):
-        return tasks_mod.list_all(user_id)
+    if re.match(r'^(定期タスク|定期タスク一覧|定期一覧|定期)$', text):
+        from . import recurring as recurring_mod
+        return recurring_mod.recurring_list_message()
     if re.match(r'^(資料一覧|資料リスト|資料)$', text):
         return materials_mod.list_materials()
     # リッチメニューの「振り返り」ボタン等。次に送られた文章を振り返りとして記録する
@@ -136,7 +137,8 @@ def handle_event(ev):
 
 def help_text():
     lines = [
-        '📖 使い方', '',
+        '📖 使い方',
+        '（見やすいマニュアルはこちら → https://chenchengmkd-ctrl.github.io/task-app/guide.html ）', '',
         '・文章を送る → タスク追加',
         '　例）牛乳を買う',
         '　例）牛乳を買う 6/25  ← 末尾に日付で期限つき',
@@ -183,6 +185,7 @@ def help_text():
         '・振り返り：本文　の形式で送ると、その日の一言メモとして記録します',
         '　例）振り返り：今日はうなぎの仕込みが予定より早く終わった',
         '　（週次レポートや相談時にAIコーチが参考にします）',
+        '・定期タスク → 登録済みの繰り返し予定を表示（登録方法も一緒に出ます）',
         '・定期タスク（毎日／毎週〇曜／毎月〇日）はアプリの「🔁 定期タスク」タブ、またはLINEで登録できます',
         '　例）毎週月曜19時に週報を出すのを定期タスクにして　→ その場で登録',
         '　例）毎月末日に家賃を振り込むのを定期タスクとして登録して',

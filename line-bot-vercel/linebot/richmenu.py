@@ -12,21 +12,27 @@ import requests
 from . import config
 
 APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/'
+GUIDE_URL = 'https://chenchengmkd-ctrl.github.io/task-app/guide.html'
 
-# 1200x810の画像を 3列×3行（各 400x270）に分割したときの各ボタン。
+# 1200x810の画像を 4列×3行（各 300x270）に分割したときの各ボタン。
 # 並びは画像（Canvasで描く CELLS）と必ず一致させること。
+# 文字列＝そのテキストを送信、URL_APP/URL_GUIDE＝リンクを開く。
+URL_APP, URL_GUIDE = object(), object()
 AREAS = [
     (0, 0, '今日の予定'),
-    (400, 0, '予定を決める'),
-    (800, 0, '一覧'),
-    (0, 270, '通知'),
-    (400, 270, '資料'),
-    (800, 270, '振り返り'),
-    (0, 540, '相談'),
-    (400, 540, None),      # アプリ（URLを開く）
-    (800, 540, 'ヘルプ'),
+    (300, 0, '予定を決める'),
+    (600, 0, '一覧'),
+    (900, 0, '通知'),
+    (0, 270, '定期タスク'),
+    (300, 270, '資料'),
+    (600, 270, '振り返り'),
+    (900, 270, '相談'),
+    (0, 540, '日報'),
+    (300, 540, '週報'),
+    (600, 540, URL_APP),
+    (900, 540, URL_GUIDE),
 ]
-CELL_W, CELL_H = 400, 270
+CELL_W, CELL_H = 300, 270
 
 
 def _auth_headers():
@@ -36,8 +42,10 @@ def _auth_headers():
 def build_menu_definition():
     areas = []
     for x, y, message in AREAS:
-        if message is None:
+        if message is URL_APP:
             action = {'type': 'uri', 'label': 'アプリ', 'uri': APP_URL}
+        elif message is URL_GUIDE:
+            action = {'type': 'uri', 'label': 'マニュアル', 'uri': GUIDE_URL}
         else:
             action = {'type': 'message', 'label': message, 'text': message}
         areas.append({

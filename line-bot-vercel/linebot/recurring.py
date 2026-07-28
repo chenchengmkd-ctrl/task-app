@@ -45,6 +45,22 @@ def recurring_summary_message(rec):
     return f'🔁 登録されている定期タスク（{len(rec)}）\n' + '\n'.join(lines)
 
 
+_HOW_TO_ADD = ('\n\n📝 登録するには、周期を入れて送ってください\n'
+               '・毎週月曜19時に週報を出す を定期タスクにして\n'
+               '・毎月末日に家賃を振り込む を定期タスクとして登録して\n'
+               '・毎日8時に売上を確認する を定期タスクに\n'
+               '（時刻を書かなければ毎朝の通知と同じ時刻にお知らせします）\n'
+               '内容の変更・削除はアプリの「🔁 定期タスク」タブから')
+
+
+def recurring_list_message():
+    """「定期タスク」コマンド用：登録済みの定期タスクだけを表示する（通常のタスク一覧とは分ける）。"""
+    rec = get_recurring()
+    if not rec:
+        return '🔁 登録されている定期タスクはありません。' + _HOW_TO_ADD
+    return recurring_summary_message(rec) + _HOW_TO_ADD
+
+
 def monthday_for(y, m, monthday):
     last = calendar.monthrange(y, m)[1]
     if monthday == 'last':

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>マイタスク 操作マニュアル</title>
+<style>
+  :root {
+    --bg:#f4f5f7; --card:#ffffff; --text:#1f2933; --muted:#7b8794; --border:#e4e7eb;
+    --accent:#3b82f6; --gold:#b7791f; --code-bg:#eef2f7; --shadow:0 1px 2px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0f1419; --card:#1a2029; --text:#e2e8f0; --muted:#8a97a8; --border:#2d3643;
+      --accent:#60a5fa; --gold:#e0a44a; --code-bg:#222b38; --shadow:0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;
+    line-height:1.75; font-size:16px; -webkit-text-size-adjust:100%;
+  }
+  .wrap { max-width:760px; margin:0 auto; padding:20px 16px 80px; }
+  header { padding:24px 0 8px; }
+  h1 { font-size:24px; margin:0 0 4px; letter-spacing:.01em; }
+  .lead { color:var(--muted); font-size:14px; margin:0; }
+  h2 {
+    font-size:19px; margin:36px 0 12px; padding-bottom:8px;
+    border-bottom:2px solid var(--border);
+  }
+  h3 { font-size:16px; margin:22px 0 8px; }
+  p { margin:8px 0; }
+  ul { margin:8px 0; padding-left:1.3em; }
+  li { margin:4px 0; }
+  .card {
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; margin:12px 0; box-shadow:var(--shadow);
+  }
+  code, .say {
+    background:var(--code-bg); border-radius:6px; padding:2px 7px;
+    font-family:inherit; font-size:.95em; white-space:nowrap;
+  }
+  .say { color:var(--gold); font-weight:700; }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:15px; }
+  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:13px; white-space:nowrap; }
+  td:first-child { white-space:nowrap; }
+  .scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .tl { list-style:none; padding:0; margin:12px 0; }
+  .tl li { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); margin:0; }
+  .tl li:last-child { border-bottom:none; }
+  .tl b { color:var(--gold); min-width:62px; font-variant-numeric:tabular-nums; }
+  .note { color:var(--muted); font-size:14px; }
+  .big { font-size:17px; font-weight:700; margin:0 0 6px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin:12px 0; }
+  .btn {
+    background:var(--card); border:1px solid var(--border); border-radius:10px;
+    padding:10px 12px; font-size:14px;
+  }
+  .btn b { display:block; font-size:15px; }
+  .btn span { color:var(--muted); font-size:13px; }
+  footer { margin-top:48px; color:var(--muted); font-size:13px; text-align:center; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>マイタスク 操作マニュアル</h1>
+  <p class="lead">LINEで送る言葉と、自動で届くものの一覧です。迷ったらこのページを見てください。</p>
+</header>
+
+<h2>1. 1日の流れ</h2>
+<p>基本は「朝に確認 → 夜に答え合わせ → 明日を決める」の繰り返しです。何もしなくてもLINEから声がかかります。</p>
+<ul class="tl">
+  <li><b>6:00</b><span>期限が近いタスクのリマインド（番号つき）。時間が未設定のものは別メッセージで時間を聞かれます。</span></li>
+  <li><b>8:00</b><span>今日やることを決める最終期限。決まっていなければ催促が来ます。</span></li>
+  <li><b>20:00</b><span>AIコーチの進捗チェックイン ＋ 日報。期限未設定のタスクもここでまとめて聞かれます。</span></li>
+  <li><b>22:30</b><span>今日決めた予定の答え合わせ。できていないものはそのままリマインドされます。</span></li>
+  <li><b>23:30</b><span>明日やることの洗い出し。番号を返すだけで確定します。</span></li>
+  <li><b>24:00</b><span>今日の振り返りを一言。1時間返信がなければもう一度だけ催促します。</span></li>
+  <li><b>日曜21:00</b><span>週報（完了数・ペース・前週比・積み残し）。</span></li>
+</ul>
+<p class="note">このほか、時刻を設定したタスクは開始10分前に、定期タスクは設定時刻にリマインドが届きます。</p>
+
+<h2>2. メニューのボタン</h2>
+<div class="grid">
+  <div class="btn"><b>📋 今日の予定</b><span>決めたぶんの進み具合</span></div>
+  <div class="btn"><b>🗓️ 予定を決める</b><span>やることを番号で選ぶ</span></div>
+  <div class="btn"><b>📝 一覧</b><span>未完了タスク全部</span></div>
+  <div class="btn"><b>🔔 通知</b><span>期限が近いものだけ</span></div>
+  <div class="btn"><b>🔁 定期タスク</b><span>繰り返しの予定</span></div>
+  <div class="btn"><b>📚 資料</b><span>覚えさせた資料</span></div>
+  <div class="btn"><b>📓 振り返り</b><span>今日の一言メモ</span></div>
+  <div class="btn"><b>🤖 相談</b><span>AIコーチに聞く</span></div>
+  <div class="btn"><b>📊 日報</b><span>今日の実績</span></div>
+  <div class="btn"><b>📈 週報</b><span>1週間の実績</span></div>
+  <div class="btn"><b>📱 アプリ</b><span>ボードを開く</span></div>
+  <div class="btn"><b>📖 マニュアル</b><span>このページ</span></div>
+</div>
+
+<h2>3. タスクを追加する</h2>
+<p>やることをそのまま送るだけで追加されます。</p>
+<div class="card">
+  <p class="big">送り方の例</p>
+  <ul>
+    <li><span class="say">牛乳を買う</span> … 期限なしで追加（このあと期限を聞かれます）</li>
+    <li><span class="say">牛乳を買う 6/25</span> … 末尾に日付で期限つき</li>
+    <li><span class="say">会議の準備 6/25 15:00</span> … 日付＋時刻</li>
+    <li><span class="say">今日17時に小室くんにチラシの件伝える</span> … 文の途中の日付・時刻も読み取ります</li>
+  </ul>
+  <p class="note">今日／明日／明後日、6/25、15時／15時30分／15:00 に対応しています。</p>
+</div>
+<ul>
+  <li>期限を書かずに送ると、その場で「期限はいつ？」と聞かれます（不要なら <span class="say">なし</span>）。</li>
+  <li>期限が今日・明日・明後日なら、続けて時刻も聞かれます（不要なら <span class="say">なし</span>）。</li>
+  <li>長い文章や箇条書きを送ると、AIが要点だけのタスク名に整理して追加します。</li>
+</ul>
+
+<h2>4. 番号で操作する（いちばん速い）</h2>
+<p>「一覧」「通知」「日報」「週報」など番号つきのメッセージが届いたら、<b>その番号だけで操作できます</b>。タスク名を打ち直す必要はありません。番号は表示から12時間有効です。</p>
+<div class="scroll">
+<table>
+  <tr><th>送る言葉</th><th>結果</th></tr>
+  <tr><td><span class="say">1完了</span></td><td>1番を完了にする</td></tr>
+  <tr><td><span class="say">1削除</span></td><td>1番を削除する</td></tr>
+  <tr><td><span class="say">5ペンディング</span></td><td>5番をペンディングにする</td></tr>
+  <tr><td><span class="say">2着手中</span> / <span class="say">4対応待ち</span></td><td>状態を変える</td></tr>
+  <tr><td><span class="say">1削除 5ペンディング</span></td><td>まとめて指定</td></tr>
+  <tr><td><span class="say">1明日</span> / <span class="say">2を7/30</span></td><td>期限だけ変える（リスケ）</td></tr>
+  <tr><td><span class="say">1 15時</span> / <span class="say">2は10時30分</span></td><td>時間を設定する</td></tr>
+  <tr><td><span class="say">3 明日10時</span></td><td>期限と時間をまとめて設定</td></tr>
+  <tr><td><span class="say">3番のタイトルを〜に書き換えて</span></td><td>細かい指示は「3番の〜」と続ける</td></tr>
+</table>
+</div>
+<p class="note">番号が分からなくなったら <span class="say">一覧</span> と送れば振り直されます。</p>
+
+<h2>5. 今日やることを決める</h2>
+<p>毎晩23:30に、翌日の候補が番号つきで届きます。</p>
+<div class="card">
+  <p class="big">やりとりの例</p>
+  <p>ボット：🌙 明日（7/29）やることを決めましょう<br>
+  　1. ctrip問い合わせ（6/24）<br>
+  　2. 仕入れ先に連絡（7/29）<br>
+  　3. WIFIルーターを探す（期限なし）</p>
+  <p>あなた：<span class="say">1,2</span></p>
+  <p>→ 翌日22:30に「できたか」の答え合わせが届きます。できていないものは番号つきで出るので、<span class="say">1完了</span> や <span class="say">1明日</span> でその場で処理できます。</p>
+</div>
+<ul>
+  <li>自分から決めたいときは <span class="say">予定を決める</span>（20時より前ならその日ぶん、20時以降なら翌日ぶん）。</li>
+  <li>候補を全部やるなら <span class="say">全部</span>、決めないなら <span class="say">なし</span>。</li>
+  <li>決まっていないと 0:30 / 6:30 / 8:00 に催促が来ます（<b>朝8時が最終期限</b>）。</li>
+  <li>今の進み具合を見るには <span class="say">今日の予定</span>。</li>
+</ul>
+
+<h2>6. 定期タスク（繰り返し）</h2>
+<p>毎日・毎週・毎月くり返す予定は「定期タスク」として登録します。<b>ボードには自動で増えません。</b>指定した時刻にLINEでリマインドが届くだけの仕組みです。</p>
+<div class="card">
+  <p class="big">登録のしかた（周期を文に入れて送る）</p>
+  <ul>
+    <li><span class="say">毎週月曜19時に週報を出す を定期タスクにして</span></li>
+    <li><span class="say">毎月末日に家賃を振り込む を定期タスクとして登録して</span></li>
+    <li><span class="say">毎日8時に売上を確認する を定期タスクに</span></li>
+  </ul>
+  <p class="note">時刻を書かなければ、毎朝6:00の通知と同じタイミングでお知らせします。</p>
+</div>
+<ul>
+  <li>登録済みを見るには <span class="say">定期タスク</span>。</li>
+  <li>内容の変更・削除はアプリの「🔁 定期タスク」タブから行います。</li>
+  <li>リマインドは通常の一覧とは別メッセージで届きます。</li>
+</ul>
+
+<h2>7. AIコーチに頼めること</h2>
+<p>タスク名を全部書かなくても、キーワードだけで候補が1つに絞れればAIが判断します。</p>
+<ul>
+  <li><span class="say">会議資料の準備を分解して</span> … サブタスク案 →「はい」で追加</li>
+  <li><span class="say">牛乳を買うを完了にして</span> / <span class="say">〜を削除して</span></li>
+  <li><span class="say">〇〇の期限を7/1にして</span> / <span class="say">〇〇の優先度を上げて</span></li>
+  <li><span class="say">〇〇を△△に書き換えて</span> … タスク名の修正</li>
+  <li><span class="say">優先順位を整理して</span> … 並べ替え案 →「はい」で適用</li>
+  <li><span class="say">相談</span> / <span class="say">このタスクやる意味ある？</span> … 率直な意見が返ります</li>
+  <li><span class="say">要約して</span> / <span class="say">まとめて</span> … 今の状況を簡潔に</li>
+</ul>
+
+<h2>8. 資料と振り返り</h2>
+<h3>資料</h3>
+<ul>
+  <li>YouTubeのURLを送る、または <span class="say">資料：本文</span> の形式で送ると、AIが要点を要約して覚えます。</li>
+  <li>以降の相談で参考にします。確認は <span class="say">資料</span>。</li>
+  <li>理解がズレていたら <span class="say">〇〇の資料を△△に直して</span> で書き直せます。</li>
+</ul>
+<h3>振り返り</h3>
+<ul>
+  <li>毎晩24時に催促が来るので、そのまま普通の文章で返せば記録されます。</li>
+  <li>自分から書くときは <span class="say">振り返り</span> と送ってから本文、または <span class="say">振り返り：今日は仕込みが早く終わった</span>。</li>
+  <li>週報やAIコーチの相談で参考にされます。</li>
+</ul>
+
+<h2>9. レポート</h2>
+<ul>
+  <li><span class="say">日報</span> … 今日の完了件数、今日が期限のものの達成率、期限切れ、未完了数、直近7日のペース</li>
+  <li><span class="say">週報</span> … 直近1週間の完了数とペース、前週比、積み残し、振り返りログ</li>
+</ul>
+<p class="note">どちらも番号つきなので、その場で「1完了」「1明日」と返せます。日曜21:00には週報が自動で届きます。</p>
+
+<h2>10. 困ったとき</h2>
+<div class="card">
+  <ul>
+    <li><b>タスクじゃないのに追加されてしまう</b> … その場で <span class="say">1削除</span>（直前の番号）で消せます。</li>
+    <li><b>番号が効かない</b> … 12時間経つと無効になります。<span class="say">一覧</span> で振り直してください。</li>
+    <li><b>メニューが古いまま</b> … トーク画面を閉じて開き直す、それでもだめならLINEアプリを再起動。</li>
+    <li><b>反応がない</b> … 少し待ってもう一度送ってください。それでもだめなら開発担当（Claude）に連絡を。</li>
+  </ul>
+</div>
+
+<footer>
+  <p><a href="./">📱 タスク管理アプリを開く</a></p>
+  <p>最終更新：2026年7月28日</p>
+</footer>
+
+</div>
+</body>
+</html>
