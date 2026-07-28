@@ -101,11 +101,20 @@ def ai_parse_date(text):
 
 # ============ タスク追加・一覧 ============
 def add_line(user_id, text):
-    """タスクをその場でSupabaseに追加する。"""
+    """タスクをその場でSupabaseに追加する。
+    予定を決めている最中（PENDING_PLAN）なら、期限をその日にして候補にも足す。
+    """
+    from . import planning as planning_mod
+
     parsed = extract_date_time(text)
     title = parsed['title']
     due = parsed['due']
     due_time = parsed['due_time']
+
+    plan_pending = planning_mod.get_pending_plan(user_id)
+    plan_date = plan_pending.get('date') if plan_pending else ''
+    if plan_pending and not due:
+        due = plan_date
 
     if not due and re.search(r'(来週|再来週|今週中|今月中|来月|月末|週末|月曜|火曜|水曜|木曜|金曜|土曜|日曜)', title):
         ai_due = ai_parse_date(title)
@@ -130,6 +139,16 @@ def add_line(user_id, text):
 
     cnt = len(get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id'))
     msg = f'✅ 追加しました\n「{title}」'
+
+    # 予定を決めている最中なら、期限の質問はせずに候補へ追加して番号を返す
+    if plan_pending:
+        num = planning_mod.add_plan_candidate(user_id, row_id, title)
+        msg += f'\n📅 {config.jp(due)}' + (f' {due_time}' if due_time else '')
+        if num:
+            msg += (f'\n\n🌙 候補に追加しました（{num}番）'
+                    f'\n予定に入れるなら、{num} も一緒に番号で送ってください。')
+        return msg + f'\n\n未完了: {cnt}件'
+
     if due:
         msg += f'\n📅 {config.jp(due)}' + (f' {due_time}' if due_time else '')
         due_date = config.parse_date(due)
@@ -209,6 +228,14 @@ def resolve_numbered_task(user_id, num):
     if (config.now_ms() - data.get('createdAt', 0)) / 3600000 > LAST_LIST_VALID_HOURS:
         return None
     return next((it for it in (data.get('items') or []) if it['num'] == num), None)
+
+
+def set_last_list(user_id, tasks):
+    """番号を1から振り直す（そのメッセージだけで完結させたいとき用）。→ [{'num','id','title'}]"""
+    numbered = [{'num': i + 1, 'id': t['id'], 'title': t['title']} for i, t in enumerate(tasks)]
+    if user_id:
+        set_state(f'LAST_LIST_{user_id}', {'items': numbered, 'createdAt': config.now_ms()})
+    return numbered
 
 
 def append_to_last_list(user_id, tasks):
@@ -614,8 +641,10 @@ def handle_pending_due_reply(user_id, text):
         return None
 
     t = text.strip()
-    # 「1完了」「2を7/30」のような番号指定は、そちらの処理に譲る
-    if looks_like_numbered_action(t) or looks_like_numbered_due_time(user_id, t):
+    # 「1完了」「2を7/30」のような番号指定、「1,3,5」のような予定の選択は、そちらの処理に譲る
+    from . import planning as planning_mod
+    if (looks_like_numbered_action(t) or looks_like_numbered_due_time(user_id, t)
+            or planning_mod.looks_like_plan_reply(user_id, t)):
         return None
     if re.match(r'^(不要|なし|未定|スキップ|やめて|あとで)[。.!！]?$', t):
         delete_state(key)
@@ -689,8 +718,10 @@ def handle_pending_time_reply(user_id, text):
         return None
 
     t = text.strip()
-    # 「1完了」「1 15時」のような番号指定は、そちらの処理に譲る
-    if looks_like_numbered_action(t) or looks_like_numbered_due_time(user_id, t):
+    # 「1完了」「1 15時」のような番号指定、「1,3,5」のような予定の選択は、そちらの処理に譲る
+    from . import planning as planning_mod
+    if (looks_like_numbered_action(t) or looks_like_numbered_due_time(user_id, t)
+            or planning_mod.looks_like_plan_reply(user_id, t)):
         return None
     if re.match(r'^(不要|なし|未定|スキップ|やめて|あとで)[。.!！]?$', t):
         delete_state(key)

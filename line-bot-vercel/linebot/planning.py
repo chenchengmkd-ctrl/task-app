@@ -15,7 +15,7 @@ PLAN_NUDGE_AT = [(0, 30), (6, 30), (8, 0)]    # 決まっていないときの�
 PLAN_DEADLINE = PLAN_NUDGE_AT[-1]
 PLAN_REVIEW_AT = (22, 30)                     # その日の答え合わせ（23時前）
 PLAN_ROLLOVER_HOUR = 20                       # この時刻以降は「翌日ぶんの予定」を扱う
-PLAN_MAX_CANDIDATES = 15
+PLAN_MAX_CANDIDATES = 60      # LINEの1メッセージに収めるための上限（通常は全件出る）
 PENDING_VALID_HOURS = 12
 
 
@@ -48,44 +48,47 @@ def plan_date_for(now):
 
 # ============ 候補の洗い出し ============
 def _candidates(plan_date_iso):
-    """その日にやる候補。期限切れ → その日が期限 → それ以降・期限なし の順に並べる。"""
+    """未完了タスクを全部、期限切れ → その日が期限 → それ以降 → 期限なし に分けて返す。"""
     rows = get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title,status,due')
-    overdue, on_day, later = [], [], []
+    overdue, on_day, later, no_due = [], [], [], []
     for r in rows:
         item = {'id': r['id'], 'title': str(r['title']),
                 'status': config.STATUS_LABEL_JP.get(r.get('status'), r.get('status') or '未着手'),
                 'due': r.get('due') or ''}
-        if item['due'] and item['due'] < plan_date_iso:
+        if not item['due']:
+            no_due.append(item)
+        elif item['due'] < plan_date_iso:
             overdue.append(item)
         elif item['due'] == plan_date_iso:
             on_day.append(item)
         else:
             later.append(item)
     overdue.sort(key=lambda t: t['due'])
-    later.sort(key=lambda t: t['due'] or '9999-99-99')
-    return overdue, on_day, later
+    later.sort(key=lambda t: t['due'])
+    return overdue, on_day, later, no_due
 
 
 def build_plan_prompt(user_id, plan_date_iso):
-    """翌日の候補を番号つきで並べたメッセージと、番号→タスクの対応を作る。→ (本文, items) 候補なしは (None, [])"""
-    from .tasks import append_to_last_list
+    """候補を番号つきで並べたメッセージと、番号→タスクの対応を作る。→ (本文, items) 候補なしは (None, [])
+    番号はこのメッセージで1から振り直す（他のメッセージの番号とはズレるが、その場で選びやすくするため）。
+    """
+    from .tasks import set_last_list
 
-    overdue, on_day, later = _candidates(plan_date_iso)
-    room = PLAN_MAX_CANDIDATES - len(overdue) - len(on_day)
-    later = later[:max(room, 0)]
-    ordered = overdue + on_day + later
+    overdue, on_day, later, no_due = _candidates(plan_date_iso)
+    ordered = (overdue + on_day + later + no_due)[:PLAN_MAX_CANDIDATES]
     if not ordered:
         return None, []
 
-    numbered = append_to_last_list(user_id, ordered)
+    numbered = set_last_list(user_id, ordered)
     num_by_id = {it['id']: it['num'] for it in numbered}
 
     def block(title, arr):
+        arr = [t for t in arr if t['id'] in num_by_id]
         if not arr:
             return ''
         lines = []
         for t in arr:
-            due_part = f"（{config.jp(t['due'])}）" if t['due'] else '（期限なし）'
+            due_part = f"（{config.jp(t['due'])}）" if t['due'] else ''
             lines.append(f"{num_by_id[t['id']]}. {t['title']}{due_part}")
         return f'\n{title}\n' + '\n'.join(lines) + '\n'
 
@@ -94,9 +97,11 @@ def build_plan_prompt(user_id, plan_date_iso):
     msg = f'🌙 {label}（{config.jp2(d)}）やることを決めましょう\n'
     msg += block('🔴 期限切れ', overdue)
     msg += block(f'📅 {label}が期限', on_day)
-    msg += block('⏳ その他の候補', later)
+    msg += block('⏳ 期限はこの先', later)
+    msg += block('⚪ 期限なし', no_due)
     msg += ('\nやる番号を送ってください（例：1,3,5）。'
             '\n全部なら「全部」、決めないなら「なし」。'
+            '\nここで新しいタスクを送れば、そのまま候補に足せます。'
             f'\n⏰ 朝{PLAN_DEADLINE[0]}時までに決めてください。')
     return msg, [{'num': num_by_id[t['id']], 'id': t['id'], 'title': t['title']} for t in ordered]
 
@@ -160,8 +165,39 @@ def send_plan_nudge(push_text_fn, get_users_fn, now, hm):
 
 
 # ============ 予定への返信 ============
-_ONLY_NUMBERS = re.compile(r'^[\d\s,、，\.。・/／と]+$')
+# 「6/30」のような日付の返信と取り違えないよう、区切りはカンマ類と空白だけに絞る
+_ONLY_NUMBERS = re.compile(r'^[\d\s,、，と]+$')
 _ZEN2HAN = str.maketrans('０１２３４５６７８９', '0123456789')
+
+
+def get_pending_plan(user_id):
+    """予定を選んでもらっている最中かどうか。最中ならその状態を返す。"""
+    pending = get_state(_pending_key(user_id))
+    if not pending:
+        return None
+    if (config.now_ms() - pending.get('createdAt', 0)) / 3600000 > PENDING_VALID_HOURS:
+        return None
+    return pending
+
+
+def looks_like_plan_reply(user_id, text):
+    """予定の選択（「1,3,5」）らしい返信かどうか。期限・時刻の確認待ちより優先させるための判定。"""
+    if not get_pending_plan(user_id):
+        return False
+    return bool(_ONLY_NUMBERS.match(text.strip().translate(_ZEN2HAN)))
+
+
+def add_plan_candidate(user_id, task_id, title):
+    """予定を決めている最中に追加されたタスクを、候補の続き番号として足す。→ 番号（足せなければNone）"""
+    pending = get_pending_plan(user_id)
+    if not pending:
+        return None
+    items = pending.get('items') or []
+    num = max((it['num'] for it in items), default=0) + 1
+    items.append({'num': num, 'id': task_id, 'title': title})
+    pending['items'] = items
+    set_state(_pending_key(user_id), pending)
+    return num
 
 
 def handle_pending_plan_reply(user_id, text):
