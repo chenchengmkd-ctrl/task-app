@@ -245,6 +245,22 @@
   .badge.due.overdue { background: var(--hi-bg); color: var(--hi-fg); }
   .status-toggle { cursor: pointer; }
   .status-toggle:hover { outline: 1px solid var(--accent); outline-offset: 1px; }
+  .status-toggle .caret { font-size: 9px; opacity: .65; margin-left: 1px; }
+
+  /* 状態を選ぶポップアップ（バッジをタップで開く） */
+  .status-menu {
+    position: fixed; z-index: 60; min-width: 150px; padding: 5px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.22);
+  }
+  .status-menu button {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 9px 10px; font: inherit; font-size: 14px; text-align: left;
+    background: none; border: 0; border-radius: 7px; color: var(--text); cursor: pointer;
+  }
+  .status-menu button:hover { background: var(--due-bg); }
+  .status-menu button.current { color: var(--accent); font-weight: 700; }
+  .status-menu .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
   /* 進捗メモ */
   .task-note {
@@ -351,9 +367,10 @@
     <input type="search" id="search" class="search" placeholder="🔍 検索…">
     <span class="spacer"></span>
     <select id="sort" title="並べ替え">
-      <option value="custom">カスタム順 (ドラッグ可)</option>
-      <option value="due">期限順</option>
-      <option value="priority">優先度順</option>
+      <option value="custom">↕ カスタム順 (ドラッグ可)</option>
+      <option value="due">↕ 期限が近い順</option>
+      <option value="priority">↕ 優先度が高い順</option>
+      <option value="recent">↕ 最近さわった順</option>
     </select>
     <div class="export-wrap">
       <button type="button" class="chip" id="colToggleBtn" title="列の表示/非表示">🗂 列</button>
@@ -421,7 +438,8 @@ const SUPABASE_URL = 'https://xldkfkhgazpugfuscpqt.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZGtma2hnYXpwdWdmdXNjcHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NDg3MzgsImV4cCI6MjA5OTQyNDczOH0.C3_TYQI8R3HeXYWTzca9erUMjpTWm2sneB7hk5Bre8Y';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let filter = "all";
-let sortBy = "custom";
+const SORT_KEY = "taskapp.sortBy";
+let sortBy = localStorage.getItem(SORT_KEY) || "custom";   // 前回選んだ並び順を覚えておく
 let searchText = "";
 let editingId = null;
 let editFocus = null;   // 編集を開いたときに最初にフォーカスする項目
@@ -611,14 +629,61 @@ function deleteTask(id) {
   t.updated = Date.now();
   save(); render();
 }
-function cycleStatus(id) {
+/* 状態を選んで変更（バッジのメニューから呼ばれる） */
+function setTaskStatus(id, key) {
   const t = tasks.find(t => t.id === id);
   if (!t) return;
-  const i = STATUS_CYCLE.indexOf(t.status);
-  t.status = STATUS_CYCLE[(i + 1) % STATUS_CYCLE.length];
+  if (key === "done") { markDone(t, true); }
+  else { markDone(t, false); t.status = key; }
   t.updated = Date.now();
   save(); render();
 }
+
+let statusMenuEl = null;
+function closeStatusMenu() {
+  if (statusMenuEl) { statusMenuEl.remove(); statusMenuEl = null; }
+}
+function openStatusMenu(anchor, t) {
+  const wasOpen = statusMenuEl && statusMenuEl.dataset.for === t.id;
+  closeStatusMenu();
+  if (wasOpen) return;      // 同じバッジをもう一度押したら閉じるだけ
+
+  const opts = STATUS_CYCLE.map(k => ({ key: k, label: STATUS_LABEL[k] }));
+  opts.push({ key: "done", label: "完了" });
+
+  const menu = document.createElement("div");
+  menu.className = "status-menu";
+  menu.dataset.for = t.id;
+  menu.innerHTML = opts.map(o => {
+    const current = o.key === "done" ? t.done : (!t.done && (t.status || "todo") === o.key);
+    return `<button type="button" data-key="${o.key}" class="${current ? "current" : ""}">
+      <i class="dot dot-${o.key}"></i>${o.label}${current ? " ✓" : ""}</button>`;
+  }).join("");
+  document.body.appendChild(menu);
+
+  // 画面からはみ出さない位置に置く
+  const r = anchor.getBoundingClientRect();
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+  let top = r.bottom + 6;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  menu.style.left = left + "px";
+  menu.style.top = top + "px";
+
+  menu.addEventListener("click", e => {
+    const btn = e.target.closest("button[data-key]");
+    if (!btn) return;
+    setTaskStatus(t.id, btn.dataset.key);
+    closeStatusMenu();
+  });
+  statusMenuEl = menu;
+}
+document.addEventListener("click", e => {
+  if (statusMenuEl && !statusMenuEl.contains(e.target)) closeStatusMenu();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeStatusMenu(); });
+window.addEventListener("resize", closeStatusMenu);
+window.addEventListener("scroll", closeStatusMenu, true);
 function updateTask(id, fields) {
   const t = tasks.find(t => t.id === id);
   if (t) { Object.assign(t, fields, { updated: Date.now() }); save(); }
@@ -657,9 +722,27 @@ function visibleTasks() {
     list = list.filter(t => t.title.toLowerCase().includes(q));
   }
   if (sortBy === "due") {
-    list.sort((a, b) => { if (!a.due) return 1; if (!b.due) return -1; return a.due.localeCompare(b.due); });
+    // 期限が近い順。同じ日なら時刻の早い順 → 優先度の高い順。期限なしは最後にまとめる
+    list.sort((a, b) => {
+      if (!a.due && !b.due) return PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority];
+      if (!a.due) return 1;
+      if (!b.due) return -1;
+      if (a.due !== b.due) return a.due.localeCompare(b.due);
+      const at = a.dueTime || "99:99", bt = b.dueTime || "99:99";
+      if (at !== bt) return at.localeCompare(bt);
+      return PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority];
+    });
   } else if (sortBy === "priority") {
-    list.sort((a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority]);
+    // 優先度が高い順。同じ優先度なら期限が近い順
+    list.sort((a, b) => {
+      const p = PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority];
+      if (p !== 0) return p;
+      if (!a.due) return 1;
+      if (!b.due) return -1;
+      return a.due.localeCompare(b.due);
+    });
+  } else if (sortBy === "recent") {
+    list.sort((a, b) => (b.updated || b.created || 0) - (a.updated || a.created || 0));
   }
   return list;
 }
@@ -784,9 +867,9 @@ function buildTaskView(li, t, canDrag) {
   let meta = "";
   // 状態（完了 or 未着手/着手中/ペンディング。色は小さなドットで表現）
   if (t.done) {
-    meta += `<span class="badge"><i class="dot dot-done"></i>完了</span>`;
+    meta += `<span class="badge status-toggle" title="クリックで状態を選ぶ"><i class="dot dot-done"></i>完了<span class="caret">▾</span></span>`;
   } else {
-    meta += `<span class="badge status-toggle" title="クリックで状態を切り替え（未着手→着手中→対応待ち→ペンディング）"><i class="dot dot-${t.status}"></i>${STATUS_LABEL[t.status]}</span>`;
+    meta += `<span class="badge status-toggle" title="クリックで状態を選ぶ"><i class="dot dot-${t.status}"></i>${STATUS_LABEL[t.status]}<span class="caret">▾</span></span>`;
   }
   // 優先度（左の色帯＋小ドット）
   meta += `<span class="badge" title="優先度"><i class="dot dot-${t.priority}"></i>${PRIO_LABEL[t.priority]}</span>`;
@@ -823,9 +906,9 @@ function buildTaskView(li, t, canDrag) {
   // メモ部分をクリックしたらメモ欄にフォーカスして編集
   const noteEl = li.querySelector(".task-note") || li.querySelector(".add-note");
   if (noteEl) noteEl.addEventListener("click", () => openEdit("note"));
-  // 状態バッジをクリックで切り替え
+  // 状態バッジをクリックしたら、その場で選べるメニューを出す
   const stEl = li.querySelector(".status-toggle");
-  if (stEl) stEl.addEventListener("click", () => cycleStatus(t.id));
+  if (stEl) stEl.addEventListener("click", e => { e.stopPropagation(); openStatusMenu(stEl, t); });
 }
 
 /* 編集フォームを組み立て */
@@ -1086,7 +1169,12 @@ document.querySelectorAll(".chip[data-filter]").forEach(chip => {
 });
 
 document.getElementById("search").addEventListener("input", e => { searchText = e.target.value.trim(); render(); });
-document.getElementById("sort").addEventListener("change", e => { sortBy = e.target.value; render(); });
+document.getElementById("sort").value = sortBy;      // 前回の並び順を反映
+document.getElementById("sort").addEventListener("change", e => {
+  sortBy = e.target.value;
+  localStorage.setItem(SORT_KEY, sortBy);
+  render();
+});
 
 document.getElementById("syncBtn").addEventListener("click", async () => {
   await pullFromSupabase();
