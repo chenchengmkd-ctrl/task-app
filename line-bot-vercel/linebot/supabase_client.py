@@ -59,6 +59,16 @@ def patch_supabase(table, filter_query, body):
         return None
 
 
+def delete_supabase(table, filter_query):
+    """行を物理削除する（tasksのような論理削除=deletedフラグではなく、recurringのように削除列を持たないテーブル用）。"""
+    url = f'{config.SUPABASE_URL}/rest/v1/{table}?{filter_query}'
+    res = requests.delete(url, headers=_headers(), timeout=20)
+    if res.status_code >= 300:
+        print('Supabase delete error', res.status_code, res.text)
+        return False
+    return True
+
+
 # ============ bot_state（key/valueストア。PropertiesServiceの置き換え） ============
 def get_state(key):
     """保存されている値（dict/list等、JSON化されたもの）を返す。無ければNone。"""

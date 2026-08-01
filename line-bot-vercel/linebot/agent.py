@@ -170,13 +170,25 @@ def handle_create_calendar_event(user_id, input_args, intro):
     if not gcal.is_enabled():
         return '⚠️ Googleカレンダーが連携されていません。'
 
+    recurrence = str(a.get('recurrence') or '').strip()
+    weekday, monthday = a.get('weekday'), a.get('monthday')
+    rrule = gcal.build_rrule(recurrence, weekday, monthday) if recurrence else None
+    if recurrence and not rrule:
+        return '⚠️ 繰り返しの指定を理解できませんでした。毎週なら曜日、毎月なら日にちも教えてください。'
+    reminder = a.get('reminder_minutes')
+
     when = f'{config.jp(date)} {start}〜{end}' if start else f'{config.jp(date)} 終日'
     text = f'🗓 カレンダーに追加します\n・{title}\n・{when}'
+    if rrule:
+        text += f'\n・繰り返し：{recurring_mod.rec_desc({"recurrence": recurrence, "weekday": weekday, "monthday": monthday})}'
+    if reminder is not None:
+        text += f'\n・通知：{int(reminder)}分前'
     busy = gcal.conflict_at(date, start) if start else None
     if busy:
         text += f'\n\n⚠️ この時間は「{busy}」と重なっています'
-    return _ask_calendar_confirm(user_id, 'create', text,
-                                 {'title': title, 'date': date, 'start': start, 'end': end}, intro)
+    return _ask_calendar_confirm(user_id, 'create', text, {
+        'title': title, 'date': date, 'start': start, 'end': end, 'rrule': rrule, 'reminder': reminder,
+    }, intro)
 
 
 def handle_update_calendar_event(user_id, input_args, intro):
@@ -200,7 +212,8 @@ def handle_update_calendar_event(user_id, input_args, intro):
     new_start = str(a.get('new_start_time') or '').strip()[:5]
     new_end = str(a.get('new_end_time') or '').strip()[:5]
     new_title = str(a.get('new_title') or '').strip()
-    if not (new_start or new_end or new_title or new_date != date):
+    reminder = a.get('reminder_minutes')
+    if not (new_start or new_end or new_title or new_date != date or reminder is not None):
         return '⚠️ 変更内容が分かりませんでした。「17時からにして」のように、新しい時間を教えてください。'
 
     after = []
@@ -210,11 +223,15 @@ def handle_update_calendar_event(user_id, input_args, intro):
         after.append(f'日付：{config.jp(new_date)}')
     if new_start or new_end:
         after.append(f"時間：{new_start or '（そのまま）'}〜{new_end or '（自動）'}")
+    if reminder is not None:
+        after.append(f'通知：{int(reminder)}分前')
     text = ('🗓 カレンダーの予定を変更します\n'
             f'・変更前：{config.jp(date)} {gcal.event_label(ev)}\n'
             '・変更後：' + '／'.join(after))
+    if ev.get('is_recurring'):
+        text += '\n\n（この予定は繰り返しの一部です。この変更は指定した1回分だけに適用され、他の回には影響しません）'
     return _ask_calendar_confirm(user_id, 'update', text, {
-        'id': ev['id'], 'date': new_date, 'start': new_start, 'end': new_end, 'title': new_title,
+        'id': ev['id'], 'date': new_date, 'start': new_start, 'end': new_end, 'title': new_title, 'reminder': reminder,
     }, intro)
 
 
@@ -236,6 +253,8 @@ def handle_delete_calendar_event(user_id, input_args, intro):
         return f'⚠️ どの予定か特定できませんでした。{config.jp(date)} の予定はこちらです。\n{names}'
 
     text = f'🗓 カレンダーから削除します\n・{config.jp(date)} {gcal.event_label(ev)}'
+    if ev.get('is_recurring'):
+        text += '\n\n（この予定は繰り返しの一部です。削除されるのは指定した1回分だけで、他の回は残ります）'
     return _ask_calendar_confirm(user_id, 'delete', text, {'id': ev['id'], 'label': gcal.event_label(ev)}, intro)
 
 
@@ -261,10 +280,12 @@ def handle_pending_calendar_reply(user_id, text):
     p = pending.get('payload') or {}
     action = pending.get('action')
     if action == 'create':
-        ok, err = gcal.create_event(p['title'], p['date'], p.get('start') or '', p.get('end') or '')
+        ok, err = gcal.create_event(p['title'], p['date'], p.get('start') or '', p.get('end') or '',
+                                    p.get('rrule'), p.get('reminder'))
         done = f"✅ カレンダーに追加しました\n・{p['title']}（{config.jp(p['date'])}）"
     elif action == 'update':
-        ok, err = gcal.update_event(p['id'], p['date'], p.get('start') or '', p.get('end') or '', p.get('title') or '')
+        ok, err = gcal.update_event(p['id'], p['date'], p.get('start') or '', p.get('end') or '',
+                                    p.get('title') or '', p.get('reminder'))
         done = '✅ カレンダーの予定を変更しました。'
     elif action == 'delete':
         ok, err = gcal.delete_event(p['id'])
@@ -481,6 +502,8 @@ def ask_agent(user_id, user_text):
         '「〜を△△に書き換えて」のようにタスクの内容・タイトルそのものの変更が明確に依頼された場合はupdate_task_titleツールを、'
         '「資料を〜に直して」のように登録済みの参考資料の修正が明確に依頼された場合はupdate_materialツールを、'
         '「毎週〇曜日に〜する」「毎月〇日に〜」「毎日〜」のように繰り返しタスク（定期タスク）の新規登録が明確に依頼された場合はcreate_recurring_taskツールを、'
+        '「定期タスク」一覧にあるものの周期・曜日・日にち・リマインド時刻・タイトルの変更が依頼された場合はupdate_recurring_taskツールを、'
+        '「定期タスク」一覧にあるものの削除・停止が依頼された場合はdelete_recurring_taskツールを、'
         '「タスクの時間取れませんでした」「今日は忙しかった」のように、依頼や質問ではなくその日の状況・気持ちの報告・感想を述べている場合はrecord_reflectionツールを、\n'
         '「カレンダーに入れて」「予定を登録して」のようにGoogleカレンダーへの予定登録が依頼された場合はcreate_calendar_eventツールを、'
         '「明日のバイトを17時からにして」のようにカレンダーにある予定の変更が依頼された場合はupdate_calendar_eventツールを、'
@@ -517,6 +540,10 @@ def ask_agent(user_id, user_text):
         reply = materials_mod.handle_update_material(args, intro)
     elif name == 'create_recurring_task':
         reply = recurring_mod.handle_create_recurring_task(args, intro)
+    elif name == 'update_recurring_task':
+        reply = recurring_mod.handle_update_recurring_task(args, intro)
+    elif name == 'delete_recurring_task':
+        reply = recurring_mod.handle_delete_recurring_task(args, intro)
     elif name == 'record_reflection':
         reply = handle_record_reflection(args, intro)
     elif name == 'create_calendar_event':

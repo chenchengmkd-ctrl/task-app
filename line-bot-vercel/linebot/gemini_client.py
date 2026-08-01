@@ -154,6 +154,34 @@ AGENT_TOOLS = [{
             },
         },
         {
+            'name': 'update_recurring_task',
+            'description': 'ユーザーが登録済みの定期タスク（「定期タスク」一覧にあるもの）の周期・曜日・日にち・リマインド時刻・タイトルの変更を依頼した場合に使う。'
+                           '通常タスクの期限変更(update_task_due)やタイトル変更(update_task_title)とは別物なので、対象が定期タスク一覧にあるものなら必ずこちらを使うこと。',
+            'parameters': {
+                'type': 'OBJECT',
+                'properties': {
+                    'task_title': {'type': 'STRING', 'description': '対象の定期タスクのタイトル（「定期タスク」一覧にある通りの完全なタイトル）'},
+                    'recurrence': {'type': 'STRING', 'enum': ['daily', 'weekly', 'monthly'], 'description': '変更後の周期（変えない場合は省略）'},
+                    'weekday': {'type': 'NUMBER', 'description': '変更後の曜日（0=日曜〜6=土曜）。recurrenceをweeklyにする/weeklyのまま曜日だけ変える場合のみ'},
+                    'monthday': {'type': 'STRING', 'description': '変更後の日にち（1〜31、または月末なら"last"）。recurrenceをmonthlyにする/monthlyのまま日にちだけ変える場合のみ'},
+                    'remind_time': {'type': 'STRING', 'description': '変更後のリマインド時刻（HH:MM形式）。毎朝の通知と同じ時刻に戻したい場合は"なし"と入れる'},
+                    'new_title': {'type': 'STRING', 'description': '変更後のタイトル（タイトル自体を変える場合のみ）'},
+                },
+                'required': ['task_title'],
+            },
+        },
+        {
+            'name': 'delete_recurring_task',
+            'description': 'ユーザーが登録済みの定期タスク（「定期タスク」一覧にあるもの）の削除・停止を依頼した場合に使う。通常タスクの削除(delete_task)とは別物。',
+            'parameters': {
+                'type': 'OBJECT',
+                'properties': {
+                    'task_title': {'type': 'STRING', 'description': '削除対象の定期タスクのタイトル（「定期タスク」一覧にある通りの完全なタイトル）'},
+                },
+                'required': ['task_title'],
+            },
+        },
+        {
             'name': 'record_reflection',
             'description': 'ユーザーが「タスクの時間取れませんでした」「今日は忙しかった」のように、タスクの追加やコマンドではなく、その日の状況・出来事・気持ちを報告・感想として述べた場合に使う。振り返りログとして記録する。',
             'parameters': {
@@ -179,22 +207,28 @@ AGENT_TOOLS = [{
         {
             'name': 'create_calendar_event',
             'description': 'ユーザーが「カレンダーに入れて」「予定を登録して」のように、Googleカレンダーへの予定の新規登録を依頼した場合に使う。'
-                           'タスク（やること）の追加とは別物で、時間が決まっている予定をカレンダーに書き込む場合のみ使うこと。',
+                           'タスク（やること）の追加とは別物で、時間が決まっている予定をカレンダーに書き込む場合のみ使うこと。'
+                           '「毎週月曜」のように繰り返しの予定であれば recurrence 系のパラメータも指定すること。',
             'parameters': {
                 'type': 'OBJECT',
                 'properties': {
                     'title': {'type': 'STRING', 'description': '予定の名前'},
-                    'date': {'type': 'STRING', 'description': 'YYYY-MM-DD形式の日付'},
+                    'date': {'type': 'STRING', 'description': 'YYYY-MM-DD形式の日付（繰り返しの場合は開始日）'},
                     'start_time': {'type': 'STRING', 'description': 'HH:MM形式の開始時刻。終日の予定なら省略する'},
                     'end_time': {'type': 'STRING', 'description': 'HH:MM形式の終了時刻。ユーザーが言っていなければ省略（開始の1時間後になる）'},
+                    'recurrence': {'type': 'STRING', 'enum': ['daily', 'weekly', 'monthly'],
+                                   'description': '繰り返しの周期。「毎日/毎週/毎月」と言われた場合のみ指定し、1回だけの予定なら省略する'},
+                    'weekday': {'type': 'NUMBER', 'description': 'recurrenceがweeklyの場合の曜日（0=日曜〜6=土曜）'},
+                    'monthday': {'type': 'STRING', 'description': 'recurrenceがmonthlyの場合の日にち（1〜31、または月末なら"last"）'},
+                    'reminder_minutes': {'type': 'NUMBER', 'description': '開始の何分前に通知するか。ユーザーが具体的に言った場合のみ指定し、言っていなければ省略（Googleの標準設定のまま）'},
                 },
                 'required': ['title', 'date'],
             },
         },
         {
             'name': 'update_calendar_event',
-            'description': 'ユーザーが「明日のバイトを17時からにして」のように、Googleカレンダーにある既存の予定の時間・日付・名前の変更を依頼した場合に使う。'
-                           '「カレンダーの予定と空き時間」に載っている予定が対象。',
+            'description': 'ユーザーが「明日のバイトを17時からにして」「〇〇の通知を15分前にして」のように、Googleカレンダーにある既存の予定の時間・日付・名前・通知タイミングの変更を依頼した場合に使う。'
+                           '「カレンダーの予定と空き時間」に載っている予定が対象。繰り返しの予定の場合、この操作は指定した日の1回分だけに適用される（すべての回に適用したい場合はユーザーにその旨を伝えること）。',
             'parameters': {
                 'type': 'OBJECT',
                 'properties': {
@@ -204,6 +238,7 @@ AGENT_TOOLS = [{
                     'new_start_time': {'type': 'STRING', 'description': 'HH:MM形式の新しい開始時刻（変える場合のみ）'},
                     'new_end_time': {'type': 'STRING', 'description': 'HH:MM形式の新しい終了時刻（変える場合のみ）'},
                     'new_title': {'type': 'STRING', 'description': '新しい予定の名前（変える場合のみ）'},
+                    'reminder_minutes': {'type': 'NUMBER', 'description': '新しい通知タイミング（開始の何分前か）。変える場合のみ指定'},
                 },
                 'required': ['keyword', 'date'],
             },

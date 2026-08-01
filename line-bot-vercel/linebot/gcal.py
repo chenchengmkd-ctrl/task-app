@@ -134,8 +134,32 @@ def get_events_with_id(date_iso):
             'start': start.get('dateTime') or start.get('date'),
             'end': end.get('dateTime') or end.get('date'),
             'all_day': bool(start.get('date')),
+            # singleEvents=trueで展開した繰り返し予定の1回分には recurringEventId が付く。
+            # 「この操作は1回分だけに適用される」ことを利用側で案内するために使う。
+            'is_recurring': bool(ev.get('recurringEventId')),
         })
     return out
+
+
+# ical(RFC5545)の曜日コード。config/recurring.pyと同じ「0=日〜6=土」の並びに対応させる
+_WEEKDAY_ICAL = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+
+
+def build_rrule(recurrence, weekday=None, monthday=None):
+    """毎日/毎週/毎月の繰り返し指定を、Googleカレンダーが読めるRRULE文字列にする。該当なしはNone。"""
+    if recurrence == 'daily':
+        return 'RRULE:FREQ=DAILY'
+    if recurrence == 'weekly':
+        if weekday in (None, ''):
+            return None
+        return f'RRULE:FREQ=WEEKLY;BYDAY={_WEEKDAY_ICAL[int(weekday)]}'
+    if recurrence == 'monthly':
+        if monthday in (None, ''):
+            return None
+        if str(monthday) == 'last':
+            return 'RRULE:FREQ=MONTHLY;BYSETPOS=-1;BYDAY=MO,TU,WE,TH,FR,SA,SU'
+        return f'RRULE:FREQ=MONTHLY;BYMONTHDAY={int(monthday)}'
+    return None
 
 
 def find_event(date_iso, keyword):
@@ -195,7 +219,11 @@ def _dt(date_iso, hhmm):
     return {'dateTime': f'{date_iso}T{hhmm}:00+09:00', 'timeZone': 'Asia/Tokyo'}
 
 
-def create_event(title, date_iso, start_hhmm='', end_hhmm=''):
+def _reminders_body(reminder_minutes):
+    return {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': int(reminder_minutes)}]}
+
+
+def create_event(title, date_iso, start_hhmm='', end_hhmm='', rrule=None, reminder_minutes=None):
     """予定を追加する。時刻を省略すると終日予定になる。→ (成功したか, メッセージ)"""
     if start_hhmm:
         if not end_hhmm:
@@ -206,11 +234,15 @@ def create_event(title, date_iso, start_hhmm='', end_hhmm=''):
         day = config.parse_date(date_iso)
         body = {'summary': title, 'start': {'date': date_iso},
                 'end': {'date': config.iso_of_date(day + timedelta(days=1))}}
+    if rrule:
+        body['recurrence'] = [rrule]
+    if reminder_minutes is not None:
+        body['reminders'] = _reminders_body(reminder_minutes)
     return _write('POST', '/events', body)
 
 
-def update_event(event_id, date_iso, start_hhmm='', end_hhmm='', title=''):
-    """予定を書き換える（渡した項目だけ変更）。→ (成功したか, メッセージ)"""
+def update_event(event_id, date_iso, start_hhmm='', end_hhmm='', title='', reminder_minutes=None):
+    """予定を書き換える（渡した項目だけ変更）。繰り返し予定の場合、1回分だけに適用される。→ (成功したか, メッセージ)"""
     body = {}
     if title:
         body['summary'] = title
@@ -221,6 +253,8 @@ def update_event(event_id, date_iso, start_hhmm='', end_hhmm='', title=''):
         body['end'] = _dt(date_iso, end_hhmm)
     elif end_hhmm:
         body['end'] = _dt(date_iso, end_hhmm)
+    if reminder_minutes is not None:
+        body['reminders'] = _reminders_body(reminder_minutes)
     if not body:
         return False, '変更する内容がありません。'
     return _write('PATCH', f'/events/{quote(event_id, safe="")}', body)

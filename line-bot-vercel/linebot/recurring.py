@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from urllib.parse import quote
 
 from . import config
-from .supabase_client import get_supabase, post_supabase, patch_supabase, get_state, set_state, list_state_keys, delete_state
+from .supabase_client import (get_supabase, post_supabase, patch_supabase, delete_supabase,
+                              get_state, set_state, list_state_keys, delete_state)
 
 WEEKDAY_JP = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -222,3 +223,98 @@ def handle_create_recurring_task(input_args, intro):
         time_label = f'毎朝{config.REMIND_HOUR:02d}:{config.REMIND_MINUTE:02d}の通知と同じタイミングでリマインド'
     prefix = f'{intro}\n\n' if intro else ''
     return f'{prefix}🔁「{title}」を定期タスクとして登録しました\n{desc}・{time_label}\n次回：{config.jp(next_date)}'
+
+
+def find_recurring_by_title(title):
+    return get_supabase('recurring', f'title=eq.{quote(title)}&select=id,title,recurrence,weekday,monthday,next_date,remind_time')
+
+
+def handle_update_recurring_task(input_args, intro):
+    """定期タスクの周期・曜日・日にち・リマインド時刻・タイトルを変更する。AIツール update_recurring_task から呼ばれる。"""
+    a = input_args or {}
+    title = str(a.get('task_title') or '').strip()
+    if not title:
+        return '⚠️ 対象の定期タスクを理解できませんでした。'
+
+    matches = find_recurring_by_title(title)
+    if not matches:
+        return f'⚠️「{title}」という定期タスクが見つかりませんでした。「定期タスク」で確認してください。'
+    if len(matches) > 1:
+        return f'⚠️「{title}」に一致する定期タスクが複数あります。アプリ側で確認・変更してください。'
+    r = matches[0]
+
+    new_title = str(a.get('new_title') or '').strip()
+    recurrence = str(a.get('recurrence') or '').strip() or r['recurrence']
+    weekday = a.get('weekday')
+    monthday = a.get('monthday')
+    remind_time_raw = a.get('remind_time')
+
+    body = {}
+    if new_title:
+        body['title'] = new_title
+    if remind_time_raw is not None:
+        rt = str(remind_time_raw).strip()
+        body['remind_time'] = None if rt in ('なし', '未設定', 'none', '') else rt
+
+    schedule_changed = (
+        recurrence != r['recurrence']
+        or (weekday not in (None, '') and int(weekday) != (r.get('weekday') if r.get('weekday') is not None else -1))
+        or (monthday not in (None, '') and str(monthday) != str(r.get('monthday') or ''))
+    )
+    if schedule_changed:
+        if recurrence == 'weekly':
+            wd = weekday if weekday not in (None, '') else r.get('weekday')
+            if wd is None:
+                return '⚠️ 毎週の場合は曜日も教えてください（例：毎週月曜）。'
+            body['weekday'], body['monthday'] = int(wd), None
+            body['next_date'] = first_weekly(config.today_iso(), wd)
+        elif recurrence == 'monthly':
+            md = monthday if monthday not in (None, '') else r.get('monthday')
+            if md in (None, ''):
+                return '⚠️ 毎月の場合は日にちも教えてください（例：毎月15日、毎月末日）。'
+            body['weekday'], body['monthday'] = None, str(md)
+            body['next_date'] = first_monthly(config.today_iso(), md)
+        else:
+            body['weekday'], body['monthday'] = None, None
+            body['next_date'] = config.today_iso()
+        body['recurrence'] = recurrence
+
+    if not body:
+        return '⚠️ 変更内容が分かりませんでした。'
+
+    ok = patch_supabase('recurring', f"id=eq.{quote(r['id'])}", body)
+    if ok is None:
+        return f'⚠️「{title}」の変更に失敗しました。'
+
+    desc = rec_desc({'recurrence': body.get('recurrence', r['recurrence']),
+                     'weekday': body.get('weekday', r.get('weekday')),
+                     'monthday': body.get('monthday', r.get('monthday'))})
+    remind_time = body.get('remind_time', r.get('remind_time'))
+    time_label = f'{remind_time}にリマインド' if remind_time else f'毎朝{config.REMIND_HOUR:02d}:{config.REMIND_MINUTE:02d}の通知と同じタイミングでリマインド'
+    label = new_title or title
+    prefix = f'{intro}\n\n' if intro else ''
+    msg = f'{prefix}✅「{label}」を更新しました\n{desc}・{time_label}'
+    if 'next_date' in body:
+        msg += f'\n次回：{config.jp(body["next_date"])}'
+    return msg
+
+
+def handle_delete_recurring_task(input_args, intro):
+    """定期タスクを削除する。AIツール delete_recurring_task から呼ばれる。"""
+    a = input_args or {}
+    title = str(a.get('task_title') or '').strip()
+    if not title:
+        return '⚠️ 削除対象の定期タスクを理解できませんでした。'
+
+    matches = find_recurring_by_title(title)
+    if not matches:
+        return f'⚠️「{title}」という定期タスクが見つかりませんでした。「定期タスク」で確認してください。'
+    if len(matches) > 1:
+        return f'⚠️「{title}」に一致する定期タスクが複数あります。アプリ側で確認・削除してください。'
+
+    ok = delete_supabase('recurring', f"id=eq.{quote(matches[0]['id'])}")
+    if not ok:
+        return f'⚠️「{title}」の削除に失敗しました。'
+
+    prefix = f'{intro}\n\n' if intro else ''
+    return f'{prefix}🗑️「{title}」の定期タスクを削除しました。'
