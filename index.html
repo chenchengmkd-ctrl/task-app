@@ -243,11 +243,11 @@
   .rec-card-actions .btn { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
   .rec-card .rec-next { font-size: 11px; color: var(--muted); margin-top: 3px; }
   .badge.due.overdue { background: var(--hi-bg); color: var(--hi-fg); }
-  .status-toggle { cursor: pointer; }
-  .status-toggle:hover { outline: 1px solid var(--accent); outline-offset: 1px; }
-  .status-toggle .caret { font-size: 9px; opacity: .65; margin-left: 1px; }
+  .status-toggle, .prio-toggle, .due-toggle { cursor: pointer; }
+  .status-toggle:hover, .prio-toggle:hover, .due-toggle:hover { outline: 1px solid var(--accent); outline-offset: 1px; }
+  .status-toggle .caret, .prio-toggle .caret, .due-toggle .caret { font-size: 9px; opacity: .65; margin-left: 1px; }
 
-  /* 状態を選ぶポップアップ（バッジをタップで開く） */
+  /* 状態・優先度・期限を選ぶポップアップ（バッジをタップ/クリックで開く。スマホのタッチでも同じ挙動） */
   .status-menu {
     position: fixed; z-index: 60; min-width: 150px; padding: 5px;
     background: var(--card); border: 1px solid var(--border); border-radius: 10px;
@@ -261,6 +261,21 @@
   .status-menu button:hover { background: var(--due-bg); }
   .status-menu button.current { color: var(--accent); font-weight: 700; }
   .status-menu .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+  /* 期限ポップアップ（クイック選択＋日付/時刻の直接指定） */
+  .due-menu { width: 250px; padding: 10px; }
+  .due-menu .due-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
+  .due-menu .due-quick button {
+    flex: 1 1 auto; width: auto; display: block; text-align: center;
+    padding: 7px 4px; font-size: 12.5px; border: 1px solid var(--border); border-radius: 7px;
+  }
+  .due-menu .due-manual { display: flex; gap: 6px; margin-bottom: 9px; }
+  .due-menu .due-manual input {
+    flex: 1; min-width: 0; padding: 7px 8px; font: inherit; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--field-bg); color: var(--text);
+  }
+  .due-menu .due-actions { display: flex; gap: 6px; }
+  .due-menu .due-actions button { flex: 1; width: auto; display: block; text-align: center; padding: 8px; font-size: 13px; }
 
   /* 進捗メモ */
   .task-note {
@@ -629,7 +644,7 @@ function deleteTask(id) {
   t.updated = Date.now();
   save(); render();
 }
-/* 状態を選んで変更（バッジのメニューから呼ばれる） */
+/* 状態・優先度・期限を選んで変更（バッジのポップアップから呼ばれる） */
 function setTaskStatus(id, key) {
   const t = tasks.find(t => t.id === id);
   if (!t) return;
@@ -638,30 +653,43 @@ function setTaskStatus(id, key) {
   t.updated = Date.now();
   save(); render();
 }
-
-let statusMenuEl = null;
-function closeStatusMenu() {
-  if (statusMenuEl) { statusMenuEl.remove(); statusMenuEl = null; }
+function setTaskPriority(id, key) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  t.priority = key;
+  t.updated = Date.now();
+  save(); render();
 }
-function openStatusMenu(anchor, t) {
-  const wasOpen = statusMenuEl && statusMenuEl.dataset.for === t.id;
-  closeStatusMenu();
-  if (wasOpen) return;      // 同じバッジをもう一度押したら閉じるだけ
+function setTaskDue(id, due, dueTime) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  t.due = due || "";
+  t.dueTime = due ? (dueTime || "") : "";   // 期限を未設定に戻したら時刻も一緒に消す
+  t.updated = Date.now();
+  save(); render();
+}
+function isoLocal(d) {
+  // toISOString()はUTC変換されて日付がズレることがあるため、ローカルの年月日からそのまま組み立てる
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
-  const opts = STATUS_CYCLE.map(k => ({ key: k, label: STATUS_LABEL[k] }));
-  opts.push({ key: "done", label: "完了" });
+/* バッジをタップ/クリックすると出る小さなポップアップ（PC・スマホ共通の1つの仕組みで扱う） */
+let activeMenuEl = null;
+let activeMenuKey = null;
+function closeActiveMenu() {
+  if (activeMenuEl) { activeMenuEl.remove(); activeMenuEl = null; activeMenuKey = null; }
+}
+function openMenu(anchor, key, className, innerHTML) {
+  const wasOpen = activeMenuKey === key;
+  closeActiveMenu();
+  if (wasOpen) return null;   // 同じバッジをもう一度押したら閉じるだけ
 
   const menu = document.createElement("div");
-  menu.className = "status-menu";
-  menu.dataset.for = t.id;
-  menu.innerHTML = opts.map(o => {
-    const current = o.key === "done" ? t.done : (!t.done && (t.status || "todo") === o.key);
-    return `<button type="button" data-key="${o.key}" class="${current ? "current" : ""}">
-      <i class="dot dot-${o.key}"></i>${o.label}${current ? " ✓" : ""}</button>`;
-  }).join("");
+  menu.className = className;
+  menu.innerHTML = innerHTML;
   document.body.appendChild(menu);
 
-  // 画面からはみ出さない位置に置く
+  // 画面からはみ出さない位置に置く（スマホの狭い画面でも収まるように）
   const r = anchor.getBoundingClientRect();
   const w = menu.offsetWidth, h = menu.offsetHeight;
   const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
@@ -670,20 +698,88 @@ function openStatusMenu(anchor, t) {
   menu.style.left = left + "px";
   menu.style.top = top + "px";
 
+  activeMenuEl = menu;
+  activeMenuKey = key;
+  return menu;
+}
+document.addEventListener("click", e => {
+  if (activeMenuEl && !activeMenuEl.contains(e.target)) closeActiveMenu();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeActiveMenu(); });
+window.addEventListener("resize", closeActiveMenu);
+window.addEventListener("scroll", closeActiveMenu, true);
+
+function openStatusMenu(anchor, t) {
+  const opts = STATUS_CYCLE.map(k => ({ key: k, label: STATUS_LABEL[k] }));
+  opts.push({ key: "done", label: "完了" });
+  const html = opts.map(o => {
+    const current = o.key === "done" ? t.done : (!t.done && (t.status || "todo") === o.key);
+    return `<button type="button" data-key="${o.key}" class="${current ? "current" : ""}">
+      <i class="dot dot-${o.key}"></i>${o.label}${current ? " ✓" : ""}</button>`;
+  }).join("");
+  const menu = openMenu(anchor, "status:" + t.id, "status-menu", html);
+  if (!menu) return;
   menu.addEventListener("click", e => {
     const btn = e.target.closest("button[data-key]");
     if (!btn) return;
     setTaskStatus(t.id, btn.dataset.key);
-    closeStatusMenu();
+    closeActiveMenu();
   });
-  statusMenuEl = menu;
 }
-document.addEventListener("click", e => {
-  if (statusMenuEl && !statusMenuEl.contains(e.target)) closeStatusMenu();
-});
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeStatusMenu(); });
-window.addEventListener("resize", closeStatusMenu);
-window.addEventListener("scroll", closeStatusMenu, true);
+
+function openPriorityMenu(anchor, t) {
+  const opts = [{ key: "high", label: "高" }, { key: "mid", label: "中" }, { key: "low", label: "低" }];
+  const html = opts.map(o => {
+    const current = t.priority === o.key;
+    return `<button type="button" data-key="${o.key}" class="${current ? "current" : ""}">
+      <i class="dot dot-${o.key}"></i>優先度: ${o.label}${current ? " ✓" : ""}</button>`;
+  }).join("");
+  const menu = openMenu(anchor, "prio:" + t.id, "status-menu", html);
+  if (!menu) return;
+  menu.addEventListener("click", e => {
+    const btn = e.target.closest("button[data-key]");
+    if (!btn) return;
+    setTaskPriority(t.id, btn.dataset.key);
+    closeActiveMenu();
+  });
+}
+
+function openDueMenu(anchor, t) {
+  const quick = [["今日", 0], ["明日", 1], ["明後日", 2], ["来週", 7]];
+  const html = `
+    <div class="due-quick">
+      ${quick.map(([label, days]) => `<button type="button" data-days="${days}">${label}</button>`).join("")}
+    </div>
+    <div class="due-manual">
+      <input type="date" class="due-date-input" value="${t.due || ""}">
+      <input type="time" class="due-time-input" value="${t.dueTime || ""}">
+    </div>
+    <div class="due-actions">
+      <button type="button" class="btn due-apply">設定</button>
+      <button type="button" class="btn ghost due-clear">未設定にする</button>
+    </div>
+  `;
+  const menu = openMenu(anchor, "due:" + t.id, "status-menu due-menu", html);
+  if (!menu) return;
+  const dateInput = menu.querySelector(".due-date-input");
+  const timeInput = menu.querySelector(".due-time-input");
+  menu.querySelectorAll(".due-quick button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const d = new Date();
+      d.setDate(d.getDate() + Number(btn.dataset.days));
+      setTaskDue(t.id, isoLocal(d), timeInput.value);
+      closeActiveMenu();
+    });
+  });
+  menu.querySelector(".due-apply").addEventListener("click", () => {
+    setTaskDue(t.id, dateInput.value, timeInput.value);
+    closeActiveMenu();
+  });
+  menu.querySelector(".due-clear").addEventListener("click", () => {
+    setTaskDue(t.id, "", "");
+    closeActiveMenu();
+  });
+}
 function updateTask(id, fields) {
   const t = tasks.find(t => t.id === id);
   if (t) { Object.assign(t, fields, { updated: Date.now() }); save(); }
@@ -871,11 +967,14 @@ function buildTaskView(li, t, canDrag) {
   } else {
     meta += `<span class="badge status-toggle" title="クリックで状態を選ぶ"><i class="dot dot-${t.status}"></i>${STATUS_LABEL[t.status]}<span class="caret">▾</span></span>`;
   }
-  // 優先度（左の色帯＋小ドット）
-  meta += `<span class="badge" title="優先度"><i class="dot dot-${t.priority}"></i>${PRIO_LABEL[t.priority]}</span>`;
+  // 優先度（左の色帯＋小ドット。クリックで変更）
+  meta += `<span class="badge prio-toggle" title="クリックで優先度を選ぶ"><i class="dot dot-${t.priority}"></i>${PRIO_LABEL[t.priority]}<span class="caret">▾</span></span>`;
+  // 期限（クリックで変更。未設定でもクリックして設定できるよう常に表示）
   if (t.due) {
     const f = fmtDue(t.due);
-    meta += `<span class="badge due${f.overdue && !t.done ? " overdue" : ""}">📅 ${f.text}${t.dueTime ? " " + escapeHtml(t.dueTime) : ""}</span>`;
+    meta += `<span class="badge due due-toggle${f.overdue && !t.done ? " overdue" : ""}" title="クリックで期限を変更">📅 ${f.text}${t.dueTime ? " " + escapeHtml(t.dueTime) : ""}<span class="caret">▾</span></span>`;
+  } else {
+    meta += `<span class="badge due-toggle" title="クリックで期限を設定">📅 期限を設定<span class="caret">▾</span></span>`;
   }
   if (t.estimate) meta += `<span class="badge">⏱ ${escapeHtml(t.estimate)}</span>`;
   if (t.fromLine) meta += `<span class="badge" title="LINEから追加">💬 LINE</span>`;
@@ -906,9 +1005,13 @@ function buildTaskView(li, t, canDrag) {
   // メモ部分をクリックしたらメモ欄にフォーカスして編集
   const noteEl = li.querySelector(".task-note") || li.querySelector(".add-note");
   if (noteEl) noteEl.addEventListener("click", () => openEdit("note"));
-  // 状態バッジをクリックしたら、その場で選べるメニューを出す
+  // 状態・優先度・期限のバッジをクリックしたら、その場で選べるポップアップを出す
   const stEl = li.querySelector(".status-toggle");
   if (stEl) stEl.addEventListener("click", e => { e.stopPropagation(); openStatusMenu(stEl, t); });
+  const prioEl = li.querySelector(".prio-toggle");
+  if (prioEl) prioEl.addEventListener("click", e => { e.stopPropagation(); openPriorityMenu(prioEl, t); });
+  const dueEl = li.querySelector(".due-toggle");
+  if (dueEl) dueEl.addEventListener("click", e => { e.stopPropagation(); openDueMenu(dueEl, t); });
 }
 
 /* 編集フォームを組み立て */
