@@ -23,7 +23,7 @@ from linebot.reports import build_daily_report, build_weekly_report
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 21
+APP_VERSION = 22
 
 
 def _respond(start_response, status, body, cors=False):
@@ -149,7 +149,9 @@ def _handle_health(environ, start_response):
                 'free': gcal.free_summary(config.today_iso()),
             }
         else:
-            info['calendar_check'] = {'enabled': False}
+            # 連携前でも、必要なライブラリが入っているかだけは確かめておく
+            from google.oauth2 import service_account  # noqa: F401
+            info['calendar_check'] = {'enabled': False, 'library': 'ok'}
     except Exception as e:
         info['calendar_check'] = {'enabled': True, 'error': repr(e)}
     # Geminiに実際に短い問い合わせをして、キー・モデル名が有効か確かめる
