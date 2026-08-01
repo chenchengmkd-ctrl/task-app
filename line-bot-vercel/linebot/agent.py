@@ -10,7 +10,7 @@ from . import tasks as tasks_mod
 from . import recurring as recurring_mod
 from . import materials as materials_mod
 from . import daily_log as daily_log_mod
-from .gemini_client import call_gemini, call_gemini_with_tools, extract_function_call, AGENT_TOOLS, TOOLS_REPRIORITIZE
+from .gemini_client import call_gemini, call_gemini_with_tools, extract_function_call, AGENT_TOOLS, TOOLS_REPRIORITIZE, FORCE_ANY_TOOL
 from .supabase_client import get_supabase, post_supabase, patch_supabase, get_state, set_state, delete_state
 
 
@@ -513,17 +513,18 @@ def ask_agent(user_id, user_text):
         'ユーザーが「カレンダー」「予定」と言っている場合はカレンダー側のツールを、それ以外はタスク側のツールを使ってください。\n'
         '上記のどれにも明確に当てはまらない場合、つまりユーザーが単に新しいやること・予定を追加したいだけの場合はadd_taskツールを使ってください。'
         '判断に迷う場合のデフォルトはadd_taskです（誤って追加してもユーザーは後から番号で簡単に削除・修正できるので、扱いに迷ったらまず追加を優先してください）。\n'
-        '【重要】「登録しました」「追加しました」「削除しました」「完了しました」のように、何かを実行済みであるかのように報告してよいのは、'
-        '実際に対応するツールを呼び出した場合だけです。ツールを呼ばずに実行完了を名乗ることは絶対にしないでください。'
-        'ツールを使わない返答は、質問・確認・説明・意見のみにしてください。\n'
-        '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n'
+        '「要約して」「言い換えて」「まとめて」「相談」のように、何かを実行するのではなく文章で答えるだけでよい場合はreply_with_textツールを使ってください。\n'
+        '【重要】上記のいずれの操作ツールも呼ばずに「登録しました」「追加しました」「削除しました」「完了しました」のように、'
+        '何かを実行済みであるかのように答えることは絶対にしないでください。必ず対応するツールを実際に呼び出してから、その結果として報告してください。\n'
         'ユーザーはタスク名を毎回全部書かず、一部の言葉やキーワードだけで指定することが多いです。「未完了タスク一覧」を見て該当するタスクが1つに絞れる場合は、'
-        '正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、ツールを使わず候補を挙げて確認してください。\n'
+        '正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、操作系ツールは呼ばずreply_with_textツールで候補を挙げて確認してください。\n'
         '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n'
         '「ユーザーが登録した参考資料」に関連する内容があれば、一般論より優先して、その資料の内容を踏まえて具体的に助言してください。\n\n'
         + context + '\n\n【ユーザーの相談】\n' + user_text
     )
-    res = call_gemini_with_tools(config.AGENT_PERSONA, prompt, AGENT_TOOLS, 700)
+    # ツールを呼ばず文章だけで済ませる（＝実行せずに「やりました」と言うだけになりかねない）ことができないよう、
+    # 必ず何らかのツール（操作系 or reply_with_text）を呼ぶよう強制する
+    res = call_gemini_with_tools(config.AGENT_PERSONA, prompt, AGENT_TOOLS, 900, FORCE_ANY_TOOL)
     if not res:
         # タスク追加もAI経由になったため、AIが一時的に使えないだけで入力を取りこぼさないよう、
         # ひとまずタスクとして追加しておく（操作の依頼だった場合も番号指定等で後から直せる）
@@ -562,10 +563,12 @@ def ask_agent(user_id, user_text):
         reply = handle_delete_calendar_event(user_id, args, intro)
     elif name == 'add_task':
         reply = tasks_mod.add_line(user_id, user_text)
+    elif name == 'reply_with_text':
+        reply = str((args or {}).get('message') or '').strip() or (intro or '⚠️ AIエージェントの応答取得に失敗しました。')
     else:
+        # FORCE_ANY_TOOLにより通常はここに来ないはずだが、モデルが万一ツール名を認識できない形で
+        # 返してきた場合の保険。ツールを呼ばずに実行済みを名乗っていないかも念のため確認する。
         reply = intro or '⚠️ AIエージェントの応答取得に失敗しました。'
-        # ツールを呼ばずに「登録しました」「削除しました」のように実行済みを名乗った場合、
-        # 実際には何も実行されていないので、その嘘の報告をそのまま返さず正直な案内に差し替える
         if _claims_completed_action(reply):
             print('agent hallucinated completion without a tool call:', reply[:200])
             reply = ('⚠️ 操作が実行できませんでした（AIが実行せずに完了したかのように返答してしまいました）。'

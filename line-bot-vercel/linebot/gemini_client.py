@@ -6,8 +6,11 @@ import requests
 from . import config
 
 
-def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800):
-    """user_text は文字列、または動画等を渡す場合はparts配列（例：[{'file_data':{'file_uri':url}},{'text':'...'}]）。"""
+def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800, tool_config=None):
+    """user_text は文字列、または動画等を渡す場合はparts配列（例：[{'file_data':{'file_uri':url}},{'text':'...'}]）。
+    tool_config: 例えばFORCE_ANY_TOOLを渡すと、モデルが「ツールを呼ばず文章だけで済ませる」ことを禁止できる
+    （AIが実行せずに「やりました」と口先だけで答えてしまう不具合の対策）。
+    """
     parts = user_text if isinstance(user_text, list) else [{'text': user_text}]
     payload = {
         'system_instruction': {'parts': [{'text': system_prompt}]},
@@ -16,6 +19,8 @@ def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800):
     }
     if tools:
         payload['tools'] = tools
+        if tool_config:
+            payload['tool_config'] = tool_config
     url = (
         f'https://generativelanguage.googleapis.com/v1beta/models/{config.GEMINI_MODEL}'
         f':generateContent?key={config.GEMINI_API_KEY}'
@@ -43,9 +48,15 @@ def call_gemini(system_prompt, user_text, max_tokens=800, tools=None):
     return None
 
 
-def call_gemini_with_tools(system_prompt, user_text, tools, max_tokens=800):
+def call_gemini_with_tools(system_prompt, user_text, tools, max_tokens=800, tool_config=None):
     """レスポンス全体（functionCallを含む）を返す（失敗時はNone）。"""
-    return call_gemini_raw(system_prompt, user_text, tools, max_tokens)
+    return call_gemini_raw(system_prompt, user_text, tools, max_tokens, tool_config)
+
+
+# 「ツールを呼ばず文章だけで返答する」という選択肢そのものを塞ぐための設定。
+# ask_agent側では文章だけの回答用に reply_with_text ツールを必ず用意しておき、
+# モデルは常にいずれかのツール（操作系 or reply_with_text）を呼ばざるを得なくする。
+FORCE_ANY_TOOL = {'function_calling_config': {'mode': 'ANY'}}
 
 
 def extract_function_call(res):
@@ -202,6 +213,19 @@ AGENT_TOOLS = [{
                     'instruction': {'type': 'STRING', 'description': 'ユーザーが伝えた修正内容・指示をそのまま入れる'},
                 },
                 'required': ['material_title', 'instruction'],
+            },
+        },
+        {
+            'name': 'reply_with_text',
+            'description': '他のどのツールにも当てはまらず、ツールで何かを実行するのではなく文章で答えるだけでよい場合に使う'
+                           '（相談への回答、進捗評価、要約、言い換え、確認の質問、聞き返しなど）。'
+                           'ここで書いた内容がそのままユーザーへの返信になる。',
+            'parameters': {
+                'type': 'OBJECT',
+                'properties': {
+                    'message': {'type': 'STRING', 'description': 'ユーザーへの回答本文。LINEにそのまま送るので、Markdown記法は使わないこと。'},
+                },
+                'required': ['message'],
             },
         },
         {
