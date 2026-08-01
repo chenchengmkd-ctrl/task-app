@@ -95,6 +95,11 @@ def build_plan_prompt(user_id, plan_date_iso):
     d = config.parse_date(plan_date_iso)
     label = '今日' if plan_date_iso == config.today_iso() else '明日'
     msg = f'🌙 {label}（{config.jp2(d)}）やることを決めましょう\n'
+    # Googleカレンダーを連携していれば、その日の空き時間を先に見せる（詰め込みすぎ防止）
+    from . import gcal
+    free = gcal.free_summary(plan_date_iso)
+    if free:
+        msg += '\n' + free + '\n'
     msg += block('🔴 期限切れ', overdue)
     msg += block(f'📅 {label}が期限', on_day)
     msg += block('⏳ 期限はこの先', later)

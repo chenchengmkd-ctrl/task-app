@@ -15,6 +15,11 @@ def _env(name, default=''):
     return re.sub(r'\s+', '', os.environ.get(name, default) or '')
 
 
+def _raw_env(name, default=''):
+    """前後の空白だけを落として読む。JSONのように途中の空白に意味がある値はこちらを使う。"""
+    return (os.environ.get(name, default) or '').strip()
+
+
 CHANNEL_ACCESS_TOKEN = _env('CHANNEL_ACCESS_TOKEN')
 SUPABASE_URL = _env('SUPABASE_URL')
 SUPABASE_ANON_KEY = _env('SUPABASE_ANON_KEY')
@@ -24,6 +29,14 @@ CRON_SECRET = _env('CRON_SECRET')
 POLL_SECRET = _env('POLL_SECRET')
 GITHUB_PAT = _env('GITHUB_PAT')
 GITHUB_REPO = _env('GITHUB_REPO')
+# Googleカレンダー連携（サービスアカウントのJSONキーと、読みに行くカレンダーID＝ふつうはGmailアドレス）
+GOOGLE_SERVICE_ACCOUNT_JSON = _raw_env('GOOGLE_SERVICE_ACCOUNT_JSON')
+GOOGLE_CALENDAR_ID = _env('GOOGLE_CALENDAR_ID')
+
+DAY_START = '07:00'          # 「空き時間」を数えはじめる時刻
+DAY_END = '23:00'            # 「空き時間」を数え終える時刻
+MIN_FREE_MINUTES = 30        # これより短い空きは数えない
+TASK_SLOT_MINUTES = 60       # 空き時間から「何件くらい入るか」を見積もるときの1件あたりの目安
 
 REMIND_HOUR = 6            # 毎朝の通知時刻（時・24時間制、JST）
 REMIND_MINUTE = 0

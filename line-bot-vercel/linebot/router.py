@@ -71,6 +71,9 @@ def route_command(user_id, text):
         return planning_mod.plan_prompt_on_demand(user_id)
     if re.match(r'^(今日の予定|予定|予定確認)$', text):
         return planning_mod.show_plan(user_id)
+    if re.match(r'^(カレンダー|空き時間|スケジュール)$', text):
+        from . import gcal
+        return gcal.calendar_command()
     if re.match(r'^(相談|アドバイス)$', text):
         return agent_mod.ask_agent(user_id, '最近のタスク状況について、率直な進捗評価とアドバイスをください。')
     if re.match(r'^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$', text):
@@ -160,6 +163,7 @@ def help_text():
         '・予定を決める（＝明日の予定）→ やる候補を番号つきで表示（「1,3,5」と番号を返して確定）',
         '　（20時より前に送るとその日ぶん、20時以降に送ると翌日ぶんの予定になります）',
         '・今日の予定 → 決めたぶんが今どこまで進んでいるかを表示',
+        '・カレンダー → Googleカレンダーの今日・明日の予定と空き時間を表示',
         '・相談・アドバイス → AIコーチに進捗評価を聞く',
         '　（「〜どう？」のような疑問文もAIコーチが拾って回答します）',
         '・AIコーチにはタスクの分解・状態変更・削除・優先度変更・期限変更も頼めます',

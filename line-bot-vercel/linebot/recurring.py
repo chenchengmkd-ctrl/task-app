@@ -101,6 +101,16 @@ def next_recur_date(current_iso, r):
     return config.iso_of_date(base + timedelta(days=1))
 
 
+def _defer_past_events(date_iso, hhmm):
+    """その時刻がカレンダーの予定と重なっていたら、空く時刻（HH:MM）を返す。重なっていなければNone。"""
+    from . import gcal
+    if not gcal.conflict_at(date_iso, hhmm):
+        return None
+    later = gcal.suggest_time(date_iso, after_hhmm=hhmm)
+    # ずらす先が見つからなければ（その日ずっと予定が詰まっている等）、そのまま通知する
+    return later if later and later > hhmm else None
+
+
 def check_recurring_reminders(push_text_fn, get_users_fn):
     """定期タスクのリマインド時刻（未設定なら毎朝の通知時刻）が到来したら、別メッセージで通知し次回予定日へ進める。"""
     today_str = config.today_iso()
@@ -111,6 +121,9 @@ def check_recurring_reminders(push_text_fn, get_users_fn):
 
     prop_key = f'REC_REMINDED_{today_str}'
     reminded = get_state(prop_key) or []
+    defer_key = f'REC_DEFERRED_{today_str}'
+    deferred = get_state(defer_key) or {}
+    defer_changed = False
 
     fire, overdue = [], []
     for r in items:
@@ -122,19 +135,29 @@ def check_recurring_reminders(push_text_fn, get_users_fn):
             overdue.append(r)
             reminded.append(r['id'])
             continue
-        hhmm = r['remindTime'] or f'{config.REMIND_HOUR:02d}:{config.REMIND_MINUTE:02d}'
+        hhmm = deferred.get(r['id']) or r['remindTime'] or f'{config.REMIND_HOUR:02d}:{config.REMIND_MINUTE:02d}'
         hh, mm = hhmm.split(':')
         target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
         diff_min = (target - now).total_seconds() / 60
         # 今日ぶんは、予定時刻を過ぎた直後（チェック間隔ぶんの幅）で1回だけ捕まえる
         if -config.TIME_CHECK_INTERVAL < diff_min <= 0:
+            # カレンダーに予定が入っている時間帯なら、その予定が終わるまで通知を後ろにずらす
+            later = _defer_past_events(today_str, hhmm)
+            if later:
+                deferred[r['id']] = later
+                defer_changed = True
+                continue
             fire.append(r)
             reminded.append(r['id'])
 
+    if defer_changed:
+        set_state(defer_key, deferred)
     if not fire:
         return
 
     msg = '🔁 今日の定期タスク\n' + '\n'.join(f"・{r['title']}" for r in fire)
+    if any(r['id'] in deferred for r in fire):
+        msg += '\n\n（カレンダーの予定と重なっていたため、空く時間まで通知をずらしました）'
     if overdue:
         msg += f'\n\n（うち{len(overdue)}件は予定日を過ぎていたぶんです。次回以降は設定時刻にお知らせします）'
     for uid in get_users_fn():

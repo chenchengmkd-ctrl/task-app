@@ -23,7 +23,7 @@ from linebot.reports import build_daily_report, build_weekly_report
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 20
+APP_VERSION = 21
 
 
 def _respond(start_response, status, body, cors=False):
@@ -134,8 +134,24 @@ def _handle_health(environ, start_response):
             'CRON_SECRET': bool(config.CRON_SECRET),
             'POLL_SECRET': bool(config.POLL_SECRET),
             'GITHUB_PAT': bool(config.GITHUB_PAT),
+            'GOOGLE_SERVICE_ACCOUNT_JSON': bool(config.GOOGLE_SERVICE_ACCOUNT_JSON),
+            'GOOGLE_CALENDAR_ID': config.GOOGLE_CALENDAR_ID,
         },
     }
+    # Googleカレンダーが読めるか（共有設定・カレンダーIDの確認用）
+    try:
+        from linebot import gcal
+        if gcal.is_enabled():
+            events = gcal.get_events(config.today_iso())
+            info['calendar_check'] = {
+                'enabled': True, 'today_events': len(events),
+                'sample': [e['summary'] for e in events[:3]],
+                'free': gcal.free_summary(config.today_iso()),
+            }
+        else:
+            info['calendar_check'] = {'enabled': False}
+    except Exception as e:
+        info['calendar_check'] = {'enabled': True, 'error': repr(e)}
     # Geminiに実際に短い問い合わせをして、キー・モデル名が有効か確かめる
     try:
         reply = call_gemini('返答は必ず日本語で。', 'テスト。「OK」とだけ返してください。', 20)

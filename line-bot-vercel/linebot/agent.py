@@ -63,6 +63,17 @@ def build_agent_context():
         return ['', f'【{title}】', '\n'.join(lines) if lines else 'なし']
 
     parts = ['【未完了タスク一覧】', '\n'.join(task_lines) or 'なし']
+    # Googleカレンダーを連携していれば、今日・明日の予定と空き時間も渡す（生活リズムを踏まえた助言のため）
+    from . import gcal
+    if gcal.is_enabled():
+        cal_lines = []
+        for label, iso in (('今日', config.today_iso()),
+                           ('明日', config.iso_of_date(now + timedelta(days=1)))):
+            text = gcal.schedule_text(iso, f'{label}（{config.jp(iso)}）')
+            if text:
+                cal_lines.append(text)
+        parts += section('カレンダーの予定と空き時間（この時間帯は手が空かない前提で助言すること）',
+                         ['\n'.join(cal_lines)] if cal_lines else [])
     parts += section('直近14日で完了したタスク', done_lines)
     parts += section('定期タスク', rec_lines)
     parts += section('直近の振り返りログ', log_lines)

@@ -342,6 +342,12 @@ def _prune_pending_time(user_id, task_ids):
         set_state(key, {**pending, 'tasks': remain})
 
 
+def _current_due(task_id):
+    """カレンダーとの重なりを見るために、そのタスクの今の期限を取り出す。"""
+    rows = get_supabase('tasks', f'id=eq.{quote(task_id)}&select=due')
+    return (rows[0].get('due') or '') if rows else ''
+
+
 def handle_numbered_due_time(user_id, text):
     """番号＋日付/時刻の指定を、期限・時間の設定として処理する。該当なしはNone。"""
     specs = _accepted_num_specs(text)
@@ -373,7 +379,18 @@ def handle_numbered_due_time(user_id, text):
         parts = [config.jp(due)] if due else []
         if time_val:
             parts.append(time_val)
-        applied.append(f"{num}. {target['title']} → {' '.join(parts)}")
+        line = f"{num}. {target['title']} → {' '.join(parts)}"
+        # カレンダーに予定が入っている時間帯なら、その場で知らせて空き時間を提案する
+        if time_val:
+            from . import gcal
+            check_date = due or _current_due(target['id'])
+            busy = gcal.conflict_at(check_date, time_val) if check_date else None
+            if busy:
+                alt = gcal.suggest_time(check_date)
+                line += f'\n　⚠️ この時間は「{busy}」と重なっています'
+                if alt:
+                    line += f'（空いているのは {alt} ごろ）'
+        applied.append(line)
 
     if timed_ids:
         _prune_pending_time(user_id, timed_ids)
@@ -534,17 +551,27 @@ def build_no_time_message(user_id, no_time):
         f"{it['num']}. {it['title']}" + (f"（{config.jp(due_by_id[it['id']])}）" if due_by_id.get(it['id']) else '')
         for it in numbered
     )
-    return ('⏰ 期限が近いのに時間未設定のタスク\n' + lines +
-            '\n\n番号と時間を送れば設定できます（例：1 15時／2は10時30分）。'
-            '\n日付もまとめて変えられます（例：3 明日10時）。不要なら「なし」。')
+    msg = ('⏰ 期限が近いのに時間未設定のタスク\n' + lines +
+           '\n\n番号と時間を送れば設定できます（例：1 15時／2は10時30分）。'
+           '\n日付もまとめて変えられます（例：3 明日10時）。不要なら「なし」。')
+    # カレンダーを連携していれば、今日の空き時間をヒントとして添える
+    from . import gcal
+    free = gcal.free_summary(config.today_iso(), from_now=True)
+    if free:
+        msg += '\n\n' + free
+    return msg
 
 
 def send_reminders(push_text_fn, get_users_fn):
     """毎朝のトリガーから呼ばれる。番号はユーザーごとに記憶する。"""
+    from . import gcal
+    schedule = gcal.schedule_text(config.today_iso(), '🗓 今日の予定（カレンダー）')
     for uid in get_users_fn():
         msg = build_reminder(uid)
         if msg:
             push_text_fn(uid, msg)
+        if schedule:
+            push_text_fn(uid, schedule)
 
     no_time = get_no_time_soon_tasks()
     if not no_time:
