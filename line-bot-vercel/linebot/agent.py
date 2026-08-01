@@ -142,6 +142,138 @@ def handle_pending_subtask_reply(user_id, text):
     return None
 
 
+# ============ カレンダーの予定を追加・変更・削除（必ず確認してから実行する） ============
+_CAL_PENDING_MINUTES = 5
+
+
+def _cal_pending_key(user_id):
+    return f'PENDING_CALENDAR_{user_id}'
+
+
+def _ask_calendar_confirm(user_id, action, summary_text, payload, intro=''):
+    set_state(_cal_pending_key(user_id), {
+        'action': action, 'payload': payload, 'summary': summary_text, 'createdAt': config.now_ms(),
+    })
+    prefix = f'{intro}\n\n' if intro else ''
+    return f'{prefix}{summary_text}\n\nこの内容でよければ「はい」と送ってください（5分以内）。'
+
+
+def handle_create_calendar_event(user_id, input_args, intro):
+    from . import gcal
+    a = input_args or {}
+    title = str(a.get('title') or '').strip()
+    date = str(a.get('date') or '').strip()
+    start = str(a.get('start_time') or '').strip()[:5]
+    end = str(a.get('end_time') or '').strip()[:5]
+    if not title or not config.parse_date(date):
+        return '⚠️ 予定の内容を理解できませんでした。「明日14時から16時 仕込み をカレンダーに入れて」のように送ってください。'
+    if not gcal.is_enabled():
+        return '⚠️ Googleカレンダーが連携されていません。'
+
+    when = f'{config.jp(date)} {start}〜{end}' if start else f'{config.jp(date)} 終日'
+    text = f'🗓 カレンダーに追加します\n・{title}\n・{when}'
+    busy = gcal.conflict_at(date, start) if start else None
+    if busy:
+        text += f'\n\n⚠️ この時間は「{busy}」と重なっています'
+    return _ask_calendar_confirm(user_id, 'create', text,
+                                 {'title': title, 'date': date, 'start': start, 'end': end}, intro)
+
+
+def handle_update_calendar_event(user_id, input_args, intro):
+    from . import gcal
+    a = input_args or {}
+    keyword = str(a.get('keyword') or '').strip()
+    date = str(a.get('date') or '').strip()
+    if not keyword or not config.parse_date(date):
+        return '⚠️ どの予定を変えるのか分かりませんでした。「明日のバイトを17時からにして」のように送ってください。'
+    if not gcal.is_enabled():
+        return '⚠️ Googleカレンダーが連携されていません。'
+
+    ev, candidates = gcal.find_event(date, keyword)
+    if not ev:
+        if not candidates:
+            return f'⚠️ {config.jp(date)} に予定が見つかりませんでした。'
+        names = '\n'.join(f'・{gcal.event_label(c)}' for c in candidates[:5])
+        return f'⚠️ どの予定か特定できませんでした。{config.jp(date)} の予定はこちらです。\n{names}'
+
+    new_date = str(a.get('new_date') or '').strip() or date
+    new_start = str(a.get('new_start_time') or '').strip()[:5]
+    new_end = str(a.get('new_end_time') or '').strip()[:5]
+    new_title = str(a.get('new_title') or '').strip()
+    if not (new_start or new_end or new_title or new_date != date):
+        return '⚠️ 変更内容が分かりませんでした。「17時からにして」のように、新しい時間を教えてください。'
+
+    after = []
+    if new_title:
+        after.append(f'名前：{new_title}')
+    if new_date != date:
+        after.append(f'日付：{config.jp(new_date)}')
+    if new_start or new_end:
+        after.append(f"時間：{new_start or '（そのまま）'}〜{new_end or '（自動）'}")
+    text = ('🗓 カレンダーの予定を変更します\n'
+            f'・変更前：{config.jp(date)} {gcal.event_label(ev)}\n'
+            '・変更後：' + '／'.join(after))
+    return _ask_calendar_confirm(user_id, 'update', text, {
+        'id': ev['id'], 'date': new_date, 'start': new_start, 'end': new_end, 'title': new_title,
+    }, intro)
+
+
+def handle_delete_calendar_event(user_id, input_args, intro):
+    from . import gcal
+    a = input_args or {}
+    keyword = str(a.get('keyword') or '').strip()
+    date = str(a.get('date') or '').strip()
+    if not keyword or not config.parse_date(date):
+        return '⚠️ どの予定を消すのか分かりませんでした。「明日の〇〇をキャンセルして」のように送ってください。'
+    if not gcal.is_enabled():
+        return '⚠️ Googleカレンダーが連携されていません。'
+
+    ev, candidates = gcal.find_event(date, keyword)
+    if not ev:
+        if not candidates:
+            return f'⚠️ {config.jp(date)} に予定が見つかりませんでした。'
+        names = '\n'.join(f'・{gcal.event_label(c)}' for c in candidates[:5])
+        return f'⚠️ どの予定か特定できませんでした。{config.jp(date)} の予定はこちらです。\n{names}'
+
+    text = f'🗓 カレンダーから削除します\n・{config.jp(date)} {gcal.event_label(ev)}'
+    return _ask_calendar_confirm(user_id, 'delete', text, {'id': ev['id'], 'label': gcal.event_label(ev)}, intro)
+
+
+def handle_pending_calendar_reply(user_id, text):
+    """カレンダー操作の確認への返信（「はい」「いいえ」）を処理。該当なしはNoneを返す。"""
+    from . import gcal
+    key = _cal_pending_key(user_id)
+    pending = get_state(key)
+    if not pending:
+        return None
+    if (config.now_ms() - pending.get('createdAt', 0)) / 60000 > _CAL_PENDING_MINUTES:
+        delete_state(key)
+        return None
+
+    t = text.strip()
+    if re.match(r'^(いいえ|キャンセル|やめて|no)$', t, re.IGNORECASE):
+        delete_state(key)
+        return '🙅 カレンダーの操作をやめました。'
+    if not re.match(r'^(はい|お願い(します)?|うん|ok|yes|登録|変更|削除)$', t, re.IGNORECASE):
+        return None
+
+    delete_state(key)
+    p = pending.get('payload') or {}
+    action = pending.get('action')
+    if action == 'create':
+        ok, err = gcal.create_event(p['title'], p['date'], p.get('start') or '', p.get('end') or '')
+        done = f"✅ カレンダーに追加しました\n・{p['title']}（{config.jp(p['date'])}）"
+    elif action == 'update':
+        ok, err = gcal.update_event(p['id'], p['date'], p.get('start') or '', p.get('end') or '', p.get('title') or '')
+        done = '✅ カレンダーの予定を変更しました。'
+    elif action == 'delete':
+        ok, err = gcal.delete_event(p['id'])
+        done = f"🗑️ カレンダーから削除しました\n・{p.get('label', '')}"
+    else:
+        return None
+    return done if ok else f'⚠️ {err}'
+
+
 # ============ タスク単体操作 ============
 def handle_update_task_status(input_args, intro):
     a = input_args or {}
@@ -349,7 +481,13 @@ def ask_agent(user_id, user_text):
         '「〜を△△に書き換えて」のようにタスクの内容・タイトルそのものの変更が明確に依頼された場合はupdate_task_titleツールを、'
         '「資料を〜に直して」のように登録済みの参考資料の修正が明確に依頼された場合はupdate_materialツールを、'
         '「毎週〇曜日に〜する」「毎月〇日に〜」「毎日〜」のように繰り返しタスク（定期タスク）の新規登録が明確に依頼された場合はcreate_recurring_taskツールを、'
-        '「タスクの時間取れませんでした」「今日は忙しかった」のように、依頼や質問ではなくその日の状況・気持ちの報告・感想を述べている場合はrecord_reflectionツールを使ってください。\n'
+        '「タスクの時間取れませんでした」「今日は忙しかった」のように、依頼や質問ではなくその日の状況・気持ちの報告・感想を述べている場合はrecord_reflectionツールを、\n'
+        '「カレンダーに入れて」「予定を登録して」のようにGoogleカレンダーへの予定登録が依頼された場合はcreate_calendar_eventツールを、'
+        '「明日のバイトを17時からにして」のようにカレンダーにある予定の変更が依頼された場合はupdate_calendar_eventツールを、'
+        '「明日の〇〇をキャンセルして」のようにカレンダーの予定の削除が依頼された場合はdelete_calendar_eventツールを使ってください。\n'
+        f'今日の日付は{config.today_iso()}です。日付は必ずYYYY-MM-DD形式に直してツールに渡してください。\n'
+        'カレンダーの予定（時間が決まっている用事）と、タスク（やること）は別物です。'
+        'ユーザーが「カレンダー」「予定」と言っている場合はカレンダー側のツールを、それ以外はタスク側のツールを使ってください。\n'
         '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n'
         'ユーザーはタスク名を毎回全部書かず、一部の言葉やキーワードだけで指定することが多いです。「未完了タスク一覧」を見て該当するタスクが1つに絞れる場合は、'
         '正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、ツールを使わず候補を挙げて確認してください。\n'
@@ -381,6 +519,12 @@ def ask_agent(user_id, user_text):
         reply = recurring_mod.handle_create_recurring_task(args, intro)
     elif name == 'record_reflection':
         reply = handle_record_reflection(args, intro)
+    elif name == 'create_calendar_event':
+        reply = handle_create_calendar_event(user_id, args, intro)
+    elif name == 'update_calendar_event':
+        reply = handle_update_calendar_event(user_id, args, intro)
+    elif name == 'delete_calendar_event':
+        reply = handle_delete_calendar_event(user_id, args, intro)
     else:
         reply = intro or '⚠️ AIエージェントの応答取得に失敗しました。'
 

@@ -28,6 +28,11 @@ def is_question_like(text):
     # 状態名だけ（例：「ペンディング案件の整理」）はタスク追加のままにしたいので、依頼表現とセットのときだけ拾う。
     if re.search(r'(完了|着手中|対応待ち|ペンディング|未着手)[にでへは]?\s*(して|しといて|しておいて|お願い|おねがい|変更|にし)', text):
         return True
+    # カレンダーの予定操作（タスク追加と紛れやすいので明示的に拾う）
+    if re.search(r'(カレンダー|スケジュール).{0,12}(入れて|登録|追加|変更|直して|消して|削除|ずらして|キャンセル)', text):
+        return True
+    if re.search(r'予定.{0,12}(入れて|登録して|追加して|変更して|ずらして|消して|削除して|キャンセル)', text):
+        return True
     if re.search(
         r'(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|'
         r'ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に|'
@@ -52,6 +57,9 @@ def route_command(user_id, text):
     pending_reprioritize = agent_mod.handle_pending_reprioritize_reply(user_id, text)
     if pending_reprioritize is not None:
         return pending_reprioritize
+    pending_calendar = agent_mod.handle_pending_calendar_reply(user_id, text)
+    if pending_calendar is not None:
+        return pending_calendar
     # 「1,3,5」のような番号だけの返信は、その日にやることの選択として受け取る
     pending_plan = planning_mod.handle_pending_plan_reply(user_id, text)
     if pending_plan is not None:
@@ -164,6 +172,10 @@ def help_text():
         '　（20時より前に送るとその日ぶん、20時以降に送ると翌日ぶんの予定になります）',
         '・今日の予定 → 決めたぶんが今どこまで進んでいるかを表示',
         '・カレンダー → Googleカレンダーの今日・明日の予定と空き時間を表示',
+        '　例）明日14時から16時 仕込み をカレンダーに入れて　→ 予定を追加（「はい」で確定）',
+        '　例）明日のバイトを17時からに変更して　→ 予定の時間を変更',
+        '　例）31日の神田をキャンセルして　→ 予定を削除',
+        '　（カレンダーの追加・変更・削除は、実行前に必ず確認が入ります）',
         '・相談・アドバイス → AIコーチに進捗評価を聞く',
         '　（「〜どう？」のような疑問文もAIコーチが拾って回答します）',
         '・AIコーチにはタスクの分解・状態変更・削除・優先度変更・期限変更も頼めます',

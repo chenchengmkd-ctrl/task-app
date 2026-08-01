@@ -14,7 +14,9 @@ import requests
 
 from . import config
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+# 読み書き両方のスコープ。実際に書き込めるかどうかは、ユーザーがカレンダー共有で
+# 「予定の変更」権限を渡しているかで決まる（閲覧のみのままなら書き込みは403になる）。
+SCOPES = ['https://www.googleapis.com/auth/calendar']
 _API = 'https://www.googleapis.com/calendar/v3'
 
 
@@ -98,6 +100,134 @@ def get_events(date_iso):
         out.append({'summary': ev.get('summary') or '(無題)', 'start_min': s_min, 'end_min': e_min,
                     'all_day': False})
     return out
+
+
+def get_events_with_id(date_iso):
+    """予定をイベントIDつきで取得（変更・削除の対象を選ぶ用）。"""
+    if not is_enabled():
+        return []
+    token = _access_token()
+    if not token:
+        return []
+    day = config.parse_date(date_iso)
+    if not day:
+        return []
+    time_min = quote(day.strftime('%Y-%m-%dT00:00:00+09:00'), safe='')
+    time_max = quote((day + timedelta(days=1)).strftime('%Y-%m-%dT00:00:00+09:00'), safe='')
+    url = (f'{_API}/calendars/{quote(config.GOOGLE_CALENDAR_ID, safe="")}/events'
+           f'?timeMin={time_min}&timeMax={time_max}&singleEvents=true&orderBy=startTime&maxResults=50')
+    try:
+        res = requests.get(url, headers={'Authorization': f'Bearer {token}'}, timeout=20)
+    except requests.RequestException as e:
+        print('gcal request error:', e)
+        return []
+    if res.status_code != 200:
+        print('gcal error', res.status_code, res.text[:300])
+        return []
+    out = []
+    for ev in res.json().get('items', []):
+        if ev.get('status') == 'cancelled':
+            continue
+        start, end = ev.get('start') or {}, ev.get('end') or {}
+        out.append({
+            'id': ev.get('id'), 'summary': ev.get('summary') or '(無題)',
+            'start': start.get('dateTime') or start.get('date'),
+            'end': end.get('dateTime') or end.get('date'),
+            'all_day': bool(start.get('date')),
+        })
+    return out
+
+
+def find_event(date_iso, keyword):
+    """その日の予定からキーワードに合うものを探す。→ (見つかった予定, 候補一覧)"""
+    events = get_events_with_id(date_iso)
+    kw = str(keyword or '').strip()
+    if not kw:
+        return None, events
+    exact = [e for e in events if e['summary'] == kw]
+    if len(exact) == 1:
+        return exact[0], events
+    partial = [e for e in events if kw in e['summary'] or e['summary'] in kw]
+    if len(partial) == 1:
+        return partial[0], events
+    return None, (partial or events)
+
+
+def event_label(ev):
+    """予定を「14:00-16:00 仕込み」の形で表す。"""
+    if ev.get('all_day'):
+        return f"終日 {ev['summary']}"
+    s, e = config.parse_timestamp(ev.get('start')), config.parse_timestamp(ev.get('end'))
+    if not s:
+        return ev['summary']
+    span = f'{s.hour:02d}:{s.minute:02d}'
+    if e:
+        span += f'-{e.hour:02d}:{e.minute:02d}'
+    return f"{span} {ev['summary']}"
+
+
+def _write(method, path, body=None):
+    """カレンダーへの書き込み共通処理。→ (成功したか, メッセージ)"""
+    if not is_enabled():
+        return False, 'カレンダーが連携されていません。'
+    token = _access_token()
+    if not token:
+        return False, 'カレンダーの認証に失敗しました。'
+    url = f'{_API}/calendars/{quote(config.GOOGLE_CALENDAR_ID, safe="")}{path}'
+    try:
+        res = requests.request(
+            method, url,
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            data=json.dumps(body) if body is not None else None, timeout=20,
+        )
+    except requests.RequestException as e:
+        return False, f'通信に失敗しました（{e}）'
+    if res.status_code in (200, 201, 204):
+        return True, ''
+    if res.status_code == 403:
+        return False, ('カレンダーへの書き込み権限がありません。\n'
+                       'Googleカレンダーの共有設定で、mytask-bot… の権限を「予定の変更」に変えてください。')
+    print('gcal write error', res.status_code, res.text[:300])
+    return False, f'カレンダーの更新に失敗しました（{res.status_code}）'
+
+
+def _dt(date_iso, hhmm):
+    return {'dateTime': f'{date_iso}T{hhmm}:00+09:00', 'timeZone': 'Asia/Tokyo'}
+
+
+def create_event(title, date_iso, start_hhmm='', end_hhmm=''):
+    """予定を追加する。時刻を省略すると終日予定になる。→ (成功したか, メッセージ)"""
+    if start_hhmm:
+        if not end_hhmm:
+            end_min = min(_hhmm_to_min(start_hhmm) + 60, 24 * 60 - 1)
+            end_hhmm = _min_to_hhmm(end_min)
+        body = {'summary': title, 'start': _dt(date_iso, start_hhmm), 'end': _dt(date_iso, end_hhmm)}
+    else:
+        day = config.parse_date(date_iso)
+        body = {'summary': title, 'start': {'date': date_iso},
+                'end': {'date': config.iso_of_date(day + timedelta(days=1))}}
+    return _write('POST', '/events', body)
+
+
+def update_event(event_id, date_iso, start_hhmm='', end_hhmm='', title=''):
+    """予定を書き換える（渡した項目だけ変更）。→ (成功したか, メッセージ)"""
+    body = {}
+    if title:
+        body['summary'] = title
+    if start_hhmm:
+        if not end_hhmm:
+            end_hhmm = _min_to_hhmm(min(_hhmm_to_min(start_hhmm) + 60, 24 * 60 - 1))
+        body['start'] = _dt(date_iso, start_hhmm)
+        body['end'] = _dt(date_iso, end_hhmm)
+    elif end_hhmm:
+        body['end'] = _dt(date_iso, end_hhmm)
+    if not body:
+        return False, '変更する内容がありません。'
+    return _write('PATCH', f'/events/{quote(event_id, safe="")}', body)
+
+
+def delete_event(event_id):
+    return _write('DELETE', f'/events/{quote(event_id, safe="")}')
 
 
 def busy_blocks(date_iso, events=None):

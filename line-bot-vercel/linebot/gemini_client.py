@@ -176,6 +176,51 @@ AGENT_TOOLS = [{
                 'required': ['material_title', 'instruction'],
             },
         },
+        {
+            'name': 'create_calendar_event',
+            'description': 'ユーザーが「カレンダーに入れて」「予定を登録して」のように、Googleカレンダーへの予定の新規登録を依頼した場合に使う。'
+                           'タスク（やること）の追加とは別物で、時間が決まっている予定をカレンダーに書き込む場合のみ使うこと。',
+            'parameters': {
+                'type': 'OBJECT',
+                'properties': {
+                    'title': {'type': 'STRING', 'description': '予定の名前'},
+                    'date': {'type': 'STRING', 'description': 'YYYY-MM-DD形式の日付'},
+                    'start_time': {'type': 'STRING', 'description': 'HH:MM形式の開始時刻。終日の予定なら省略する'},
+                    'end_time': {'type': 'STRING', 'description': 'HH:MM形式の終了時刻。ユーザーが言っていなければ省略（開始の1時間後になる）'},
+                },
+                'required': ['title', 'date'],
+            },
+        },
+        {
+            'name': 'update_calendar_event',
+            'description': 'ユーザーが「明日のバイトを17時からにして」のように、Googleカレンダーにある既存の予定の時間・日付・名前の変更を依頼した場合に使う。'
+                           '「カレンダーの予定と空き時間」に載っている予定が対象。',
+            'parameters': {
+                'type': 'OBJECT',
+                'properties': {
+                    'keyword': {'type': 'STRING', 'description': '変更したい予定の名前（カレンダーに載っている通りの名前、または特定できるキーワード）'},
+                    'date': {'type': 'STRING', 'description': 'YYYY-MM-DD形式。その予定が今入っている日付'},
+                    'new_date': {'type': 'STRING', 'description': 'YYYY-MM-DD形式の新しい日付（日付を動かす場合のみ）'},
+                    'new_start_time': {'type': 'STRING', 'description': 'HH:MM形式の新しい開始時刻（変える場合のみ）'},
+                    'new_end_time': {'type': 'STRING', 'description': 'HH:MM形式の新しい終了時刻（変える場合のみ）'},
+                    'new_title': {'type': 'STRING', 'description': '新しい予定の名前（変える場合のみ）'},
+                },
+                'required': ['keyword', 'date'],
+            },
+        },
+        {
+            'name': 'delete_calendar_event',
+            'description': 'ユーザーが「明日の〇〇をキャンセルして」「カレンダーから消して」のように、Googleカレンダーにある予定の削除を依頼した場合に使う。'
+                           'タスクの削除（delete_task）とは別物なので、カレンダーの予定を指している場合のみ使うこと。',
+            'parameters': {
+                'type': 'OBJECT',
+                'properties': {
+                    'keyword': {'type': 'STRING', 'description': '削除したい予定の名前、または特定できるキーワード'},
+                    'date': {'type': 'STRING', 'description': 'YYYY-MM-DD形式。その予定が入っている日付'},
+                },
+                'required': ['keyword', 'date'],
+            },
+        },
     ],
 }]
 
