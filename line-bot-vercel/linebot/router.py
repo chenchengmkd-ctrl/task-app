@@ -134,6 +134,10 @@ def route_command(user_id, text):
     pending_log = daily_log_mod.handle_pending_log_reply(text)
     if pending_log is not None:
         return pending_log
+    # AIコーチが「対象を明確にして」と聞き返した直後なら、自由文はタスク追加ではなく続きの返答として扱う
+    pending_clarify = agent_mod.handle_pending_ai_clarify(user_id, text)
+    if pending_clarify is not None:
+        return pending_clarify
     if is_question_like(text):
         return agent_mod.ask_agent(user_id, text)
     return tasks_mod.add_line(user_id, text)

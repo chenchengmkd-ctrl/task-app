@@ -206,7 +206,7 @@ def handle_update_calendar_event(user_id, input_args, intro):
         if not candidates:
             return f'⚠️ {config.jp(date)} に予定が見つかりませんでした。'
         names = '\n'.join(f'・{gcal.event_label(c)}' for c in candidates[:5])
-        return f'⚠️ どの予定か特定できませんでした。{config.jp(date)} の予定はこちらです。\n{names}'
+        return f'⚠️ どの予定か特定できませんでした。{config.jp(date)} の予定はこちらです。\n{names}\n\nどれのことか教えてください。'
 
     new_date = str(a.get('new_date') or '').strip() or date
     new_start = str(a.get('new_start_time') or '').strip()[:5]
@@ -250,7 +250,7 @@ def handle_delete_calendar_event(user_id, input_args, intro):
         if not candidates:
             return f'⚠️ {config.jp(date)} に予定が見つかりませんでした。'
         names = '\n'.join(f'・{gcal.event_label(c)}' for c in candidates[:5])
-        return f'⚠️ どの予定か特定できませんでした。{config.jp(date)} の予定はこちらです。\n{names}'
+        return f'⚠️ どの予定か特定できませんでした。{config.jp(date)} の予定はこちらです。\n{names}\n\nどれのことか教えてください。'
 
     text = f'🗓 カレンダーから削除します\n・{config.jp(date)} {gcal.event_label(ev)}'
     if ev.get('is_recurring'):
@@ -555,8 +555,38 @@ def ask_agent(user_id, user_text):
     else:
         reply = intro or '⚠️ AIエージェントの応答取得に失敗しました。'
 
+    # ツールを呼ばず「対象を明確にして」のように聞き返した場合、次の返信を新規タスク追加と
+    # 誤解しないよう、続きの返信として受け取る準備をしておく（例：「両方です」が定期タスクの新規追加になる不具合対策）
+    clarify_key = f'PENDING_AI_CLARIFY_{user_id}'
+    if _looks_like_clarifying_question(reply):
+        set_state(clarify_key, {'createdAt': config.now_ms()})
+    else:
+        delete_state(clarify_key)
+
     log_agent_interaction(user_id, user_text, reply)
     return reply
+
+
+def _looks_like_clarifying_question(reply):
+    """AIコーチの返信が「対象を教えてください」のような聞き返しかどうかを判定する。"""
+    tail = reply.strip()[-60:]
+    return bool(re.search(r'(？|でしょうか|どちら|教えてください|選んでください|お知らせください)', tail))
+
+
+_CLARIFY_PENDING_MINUTES = 5
+
+
+def handle_pending_ai_clarify(user_id, text):
+    """AIコーチの聞き返しへの返信を、続きの相談としてもう一度AIに渡す。該当なしはNone。"""
+    key = f'PENDING_AI_CLARIFY_{user_id}'
+    pending = get_state(key)
+    if not pending:
+        return None
+    if (config.now_ms() - pending.get('createdAt', 0)) / 60000 > _CLARIFY_PENDING_MINUTES:
+        delete_state(key)
+        return None
+    delete_state(key)
+    return ask_agent(user_id, text)
 
 
 # ============ 毎晩の進捗チェックイン・週次レポート（Cronから呼ばれる） ============
