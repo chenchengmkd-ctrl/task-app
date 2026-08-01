@@ -511,6 +511,8 @@ def ask_agent(user_id, user_text):
         f'今日の日付は{config.today_iso()}です。日付は必ずYYYY-MM-DD形式に直してツールに渡してください。\n'
         'カレンダーの予定（時間が決まっている用事）と、タスク（やること）は別物です。'
         'ユーザーが「カレンダー」「予定」と言っている場合はカレンダー側のツールを、それ以外はタスク側のツールを使ってください。\n'
+        '上記のどれにも明確に当てはまらない場合、つまりユーザーが単に新しいやること・予定を追加したいだけの場合はadd_taskツールを使ってください。'
+        '判断に迷う場合のデフォルトはadd_taskです（誤って追加してもユーザーは後から番号で簡単に削除・修正できるので、扱いに迷ったらまず追加を優先してください）。\n'
         '「要約して」「言い換えて」「まとめて」のような依頼には、ツールを使わず文章で簡潔に答えてください。\n'
         'ユーザーはタスク名を毎回全部書かず、一部の言葉やキーワードだけで指定することが多いです。「未完了タスク一覧」を見て該当するタスクが1つに絞れる場合は、'
         '正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、ツールを使わず候補を挙げて確認してください。\n'
@@ -520,7 +522,10 @@ def ask_agent(user_id, user_text):
     )
     res = call_gemini_with_tools(config.AGENT_PERSONA, prompt, AGENT_TOOLS, 700)
     if not res:
-        return '⚠️ AIエージェントの応答取得に失敗しました。時間をおいて再度お試しください。'
+        # タスク追加もAI経由になったため、AIが一時的に使えないだけで入力を取りこぼさないよう、
+        # ひとまずタスクとして追加しておく（操作の依頼だった場合も番号指定等で後から直せる）
+        fallback = tasks_mod.add_line(user_id, user_text)
+        return f'⚠️ AIコーチが一時的に応答できなかったため、ひとまずタスクとして追加しました。\n\n{fallback}'
 
     name, args, intro = extract_function_call(res)
 
@@ -552,6 +557,8 @@ def ask_agent(user_id, user_text):
         reply = handle_update_calendar_event(user_id, args, intro)
     elif name == 'delete_calendar_event':
         reply = handle_delete_calendar_event(user_id, args, intro)
+    elif name == 'add_task':
+        reply = tasks_mod.add_line(user_id, user_text)
     else:
         reply = intro or '⚠️ AIエージェントの応答取得に失敗しました。'
 

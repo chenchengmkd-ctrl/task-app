@@ -11,41 +11,10 @@ from . import planning as planning_mod
 from .line_client import remember_user, reply_text
 
 
-def is_question_like(text):
-    """疑問文・相談・タスク分解／状態変更／削除／要約／優先度／期限変更／報告の依頼っぽい文かどうかをざっくり判定（タスク追加との区別用）。"""
-    if re.search(r'[?？]$', text):
-        return True
-    if re.search(r'(か|かな|かしら)[。.!！]?$', text):
-        return True
-    if re.search(
-        r'(完了しました|完了した|終わりました|終わった|できました|やりました|'
-        r'できませんでした|できなかった|間に合わなかった|間に合いませんでした|取れませんでした|取れなかった|'
-        r'難しかった|大変だった|疲れました|疲れた)[。.!！]?$',
-        text,
-    ):
-        return True
-    # 「〇〇ペンディングでお願いします」「〇〇完了に変更」のように、状態名＋依頼表現なら状態変更の依頼とみなす。
-    # 状態名だけ（例：「ペンディング案件の整理」）はタスク追加のままにしたいので、依頼表現とセットのときだけ拾う。
-    if re.search(r'(完了|着手中|対応待ち|ペンディング|未着手)[にでへは]?\s*(して|しといて|しておいて|お願い|おねがい|変更|にし)', text):
-        return True
-    # カレンダーの予定操作（タスク追加と紛れやすいので明示的に拾う）。
-    # 「入れて」のような丁寧形だけでなく「入れ」「入れといて」のようなくだけた言い方も拾えるよう、
-    # 語幹（て/した等を付ける前の形）で判定する。
-    if re.search(r'(カレンダー|スケジュール).{0,15}(入れ|登録|追加|変更|直|消|削除|ずら|キャンセル)', text):
-        return True
-    if re.search(r'予定.{0,15}(カレンダー|入れ|登録|追加|変更|ずら|消|削除|キャンセル)', text):
-        return True
-    # 定期タスクのリマインド時刻・周期・曜日の変更（「定期」という言葉を含まない言い回しにも対応）
-    if re.search(r'(リマインド時間|通知時間|リマインド|通知|周期|曜日).{0,15}(にして|に変更|変更して|に変えて)', text):
-        return True
-    if re.search(
-        r'(どう|教えて|大丈夫|やばい|相談|アドバイス|優先|分解|やる意味|意味ある|完了に|着手中に|対応待ちに|'
-        r'ペンディングに|状態を|ステータスを|削除|消して|要約|言い換え|まとめて|整理して|並べ替え|期限を|期限に|'
-        r'書き換えて|タイトルを|名前を|修正して|直して|定期|に変更して|を変更して)',
-        text,
-    ):
-        return True
-    return False
+# かつては正規表現でキーワードを見て「AIに渡すか／そのままタスク追加するか」を振り分けていたが、
+# 新しい言い回しや機能が増えるたびにキーワード漏れで誤動作する問題が繰り返し起きていたため廃止。
+# 現在は下のフォールバック（route_command末尾）で必ずAI（agent_mod.ask_agent）に渡し、
+# タスク追加自体もAIが持つ add_task ツールとして扱う。判定はAI自身に任せる。
 
 
 def route_command(user_id, text):
@@ -140,9 +109,9 @@ def route_command(user_id, text):
     pending_clarify = agent_mod.handle_pending_ai_clarify(user_id, text)
     if pending_clarify is not None:
         return pending_clarify
-    if is_question_like(text):
-        return agent_mod.ask_agent(user_id, text)
-    return tasks_mod.add_line(user_id, text)
+    # ここまでのどのパターンにも当てはまらない自由文は、すべてAIに渡して判断させる
+    # （タスク追加そのものも add_task ツールとしてAIが扱う。詳細は agent.py の ask_agent を参照）
+    return agent_mod.ask_agent(user_id, text)
 
 
 def handle_event(ev):
