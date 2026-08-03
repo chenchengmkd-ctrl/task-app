@@ -51,7 +51,8 @@ def handle_pending_log_reply(text):
         return None
 
     # 催促から時間が経ちすぎている場合は、もう振り返りへの返信とはみなさない
-    if (config.now_jst() - prompted_at).total_seconds() / 3600 > 12:
+    # （催促は0時・再催促は1時間後なので、それ以降＝翌朝の活動を誤って振り返りにしないよう短めに区切る）
+    if (config.now_jst() - prompted_at).total_seconds() / 3600 > 3:
         delete_state('PENDING_LOG_PROMPT')
         return None
 

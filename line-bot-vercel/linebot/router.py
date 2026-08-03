@@ -18,6 +18,12 @@ from .line_client import remember_user, reply_text
 
 
 def route_command(user_id, text):
+    # 「タスク ○○」「タスク：○○」のように明示的に接頭辞がついている場合は、
+    # 振り返り催促の返信待ちなど他の保留状態が残っていても、確実にタスク追加として扱う（最優先）。
+    explicit_task = re.match(r'^タスク[\s　:：]+([\s\S]+)$', text)
+    if explicit_task:
+        return tasks_mod.add_line(user_id, explicit_task.group(1).strip())
+
     # 保留中の返信（サブタスク提案／期限確認／時刻確認／優先順位見直し案）への「はい/いいえ」等を最優先で処理
     pending_subtask = agent_mod.handle_pending_subtask_reply(user_id, text)
     if pending_subtask is not None:
@@ -134,6 +140,8 @@ def help_text():
         '　例）会議の準備 6/25 15:00  ← 日付＋時刻もつけられる',
         '　例）今日17時に小室くんにチラシの件伝える  ← 自然な文中の日付・時刻もOK',
         '　（今日／明日／明後日、HH時MM分／HH時／HH:MM に対応）',
+        '　※ 何かの返信待ち（振り返りの催促直後など）と誤認識されて意図と違う扱いになった場合は、',
+        '　　先頭に「タスク 」をつけて送ると必ずタスク追加として扱われます（例：タスク 牛乳を買う 6/25）',
         '・一覧 → 未完了タスクを番号つきで表示',
         '　番号だけで操作できます（一覧・通知の番号は12時間有効）',
         '　例）1削除／5ペンディング／3完了／2着手中／4対応待ち',
