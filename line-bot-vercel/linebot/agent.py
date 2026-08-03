@@ -641,7 +641,11 @@ def send_agent_checkin(push_text_fn, get_users_fn):
         push_text_fn(uid, reports_mod.build_daily_report(uid))
 
     # 期限未設定タスクの棚卸し（すでに確認待ちがあれば重複して聞かない）
-    no_due = get_supabase('tasks', 'done=eq.false&deleted=eq.false&due=is.null&select=id,title&limit=10')
+    # ペンディング状態のタスクは、期限をあえて決めずに保留しているものなので対象から除く
+    no_due = get_supabase(
+        'tasks',
+        'done=eq.false&deleted=eq.false&due=is.null&status=neq.pending&select=id,title&limit=10',
+    )
     if no_due:
         from . import tasks as tasks_mod
         for uid in get_users_fn():
