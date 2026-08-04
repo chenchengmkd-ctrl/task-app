@@ -104,9 +104,8 @@ def handle_propose_subtasks(user_id, input_args, intro):
         'parentTitle': parent_title, 'subtasks': subtasks, 'createdAt': config.now_ms(),
     })
 
-    prefix = f'{intro}\n\n' if intro else ''
     numbered = '\n'.join(f'{i + 1}. {s}' for i, s in enumerate(subtasks))
-    return f'{prefix}🧩「{parent_title}」の分解案\n{numbered}\n\n追加してよければ「はい」と送ってください（5分以内）。'
+    return f'🧩「{parent_title}」の分解案\n{numbered}\n\n追加してよければ「はい」と送ってください（5分以内）。'
 
 
 def add_subtasks_to_app(parent_title, subtasks):
@@ -133,10 +132,10 @@ def handle_pending_subtask_reply(user_id, text):
         return None
 
     t = text.strip()
-    if re.match(r'^(はい|追加|うん|お願い(します)?|ok|yes)$', t, re.IGNORECASE):
+    if re.match(r'^(はい|追加|うん|お願い(します)?|ok|yes)[。.!！]*$', t, re.IGNORECASE):
         delete_state(key)
         return add_subtasks_to_app(pending['parentTitle'], pending['subtasks'])
-    if re.match(r'^(いいえ|キャンセル|やめて|no)$', t, re.IGNORECASE):
+    if re.match(r'^(いいえ|キャンセル|やめて|no)[。.!！]*$', t, re.IGNORECASE):
         delete_state(key)
         return '🙅 分解案の追加をキャンセルしました。'
     return None
@@ -154,8 +153,9 @@ def _ask_calendar_confirm(user_id, action, summary_text, payload, intro=''):
     set_state(_cal_pending_key(user_id), {
         'action': action, 'payload': payload, 'summary': summary_text, 'createdAt': config.now_ms(),
     })
-    prefix = f'{intro}\n\n' if intro else ''
-    return f'{prefix}{summary_text}\n\nこの内容でよければ「はい」と送ってください（5分以内）。'
+    # intro（AIが付け足すコメント）は、カレンダー確認のような機械的な操作では余計な説教や
+    # 誤った既成事実（「今回で最後です」等）を混ぜてしまうことがあるため使わない
+    return f'{summary_text}\n\nこの内容でよければ「はい」と送ってください（5分以内）。'
 
 
 def handle_create_calendar_event(user_id, input_args, intro):
@@ -270,10 +270,10 @@ def handle_pending_calendar_reply(user_id, text):
         return None
 
     t = text.strip()
-    if re.match(r'^(いいえ|キャンセル|やめて|no)$', t, re.IGNORECASE):
+    if re.match(r'^(いいえ|キャンセル|やめて|no)[。.!！]*$', t, re.IGNORECASE):
         delete_state(key)
         return '🙅 カレンダーの操作をやめました。'
-    if not re.match(r'^(はい|お願い(します)?|うん|ok|yes|登録|変更|削除)$', t, re.IGNORECASE):
+    if not re.match(r'^(はい|お願い(します)?|うん|ok|yes|登録|変更|削除)[。.!！]*$', t, re.IGNORECASE):
         return None
 
     delete_state(key)
@@ -323,8 +323,7 @@ def handle_update_task_status(input_args, intro):
         return f'⚠️「{title}」の更新に失敗しました。'
 
     label = '完了' if new_status == 'done' else config.STATUS_LABEL_JP.get(new_status, new_status)
-    prefix = f'{intro}\n\n' if intro else ''
-    return f'{prefix}✅「{title}」を{label}に変更しました。'
+    return f'✅「{title}」を{label}に変更しました。'
 
 
 def handle_delete_task(input_args, intro):
@@ -343,8 +342,7 @@ def handle_delete_task(input_args, intro):
     if updated is None:
         return f'⚠️「{title}」の削除に失敗しました。'
 
-    prefix = f'{intro}\n\n' if intro else ''
-    return f'{prefix}🗑️「{title}」を削除しました。'
+    return f'🗑️「{title}」を削除しました。'
 
 
 def handle_update_task_priority(input_args, intro):
@@ -365,8 +363,7 @@ def handle_update_task_priority(input_args, intro):
         return f'⚠️「{title}」の更新に失敗しました。'
 
     label = {'high': '高', 'mid': '中', 'low': '低'}[new_priority]
-    prefix = f'{intro}\n\n' if intro else ''
-    return f'{prefix}✅「{title}」の優先度を{label}に変更しました。'
+    return f'✅「{title}」の優先度を{label}に変更しました。'
 
 
 def handle_update_task_due(input_args, intro):
@@ -389,9 +386,8 @@ def handle_update_task_due(input_args, intro):
     if updated is None:
         return f'⚠️「{title}」の更新に失敗しました。'
 
-    prefix = f'{intro}\n\n' if intro else ''
     time_part = f' {due_time}' if due_time else ''
-    return f'{prefix}✅「{title}」の期限を {config.jp(due)}{time_part} に変更しました。'
+    return f'✅「{title}」の期限を {config.jp(due)}{time_part} に変更しました。'
 
 
 def handle_update_task_title(input_args, intro):
@@ -411,8 +407,7 @@ def handle_update_task_title(input_args, intro):
     if updated is None:
         return f'⚠️「{title}」の更新に失敗しました。'
 
-    prefix = f'{intro}\n\n' if intro else ''
-    return f'{prefix}✅「{title}」を「{new_title}」に書き換えました。'
+    return f'✅「{title}」を「{new_title}」に書き換えました。'
 
 
 def handle_record_reflection(input_args, intro):
@@ -420,8 +415,7 @@ def handle_record_reflection(input_args, intro):
     content = str((input_args or {}).get('content') or '').strip()
     if not content:
         return '⚠️ 振り返りの内容を理解できませんでした。'
-    prefix = f'{intro}\n\n' if intro else ''
-    return prefix + daily_log_mod.add_daily_log(content)
+    return daily_log_mod.add_daily_log(content)
 
 
 # ============ 優先順位の見直し ============
@@ -467,7 +461,7 @@ def handle_pending_reprioritize_reply(user_id, text):
         return None
 
     t = text.strip()
-    if re.match(r'^(はい|適用|うん|お願い(します)?|ok|yes)$', t, re.IGNORECASE):
+    if re.match(r'^(はい|適用|うん|お願い(します)?|ok|yes)[。.!！]*$', t, re.IGNORECASE):
         delete_state(key)
         tasks = get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title')
         id_by_title = {tk['title']: tk['id'] for tk in tasks}
@@ -482,7 +476,7 @@ def handle_pending_reprioritize_reply(user_id, text):
         if not applied:
             return '⚠️ 適用できませんでした。タスクの状態が変わっている可能性があります。'
         return '✅ 優先順位を更新しました\n' + '\n'.join(applied)
-    if re.match(r'^(いいえ|キャンセル|やめて|no)$', t, re.IGNORECASE):
+    if re.match(r'^(いいえ|キャンセル|やめて|no)[。.!！]*$', t, re.IGNORECASE):
         delete_state(key)
         return '🙅 優先順位の変更をキャンセルしました。'
     return None
@@ -511,13 +505,24 @@ def ask_agent(user_id, user_text):
         f'今日の日付は{config.today_iso()}です。日付は必ずYYYY-MM-DD形式に直してツールに渡してください。\n'
         'カレンダーの予定（時間が決まっている用事）と、タスク（やること）は別物です。'
         'ユーザーが「カレンダー」「予定」と言っている場合はカレンダー側のツールを、それ以外はタスク側のツールを使ってください。\n'
-        '上記のどれにも明確に当てはまらない場合、つまりユーザーが単に新しいやること・予定を追加したいだけの場合はadd_taskツールを使ってください。'
+        '上記のどれにも明確に当てはまらない場合、つまりユーザーが単に新しいやること・予定を追加したいだけの場合はadd_taskツールを、'
+        '1つのメッセージに独立した複数のやることが含まれている場合はadd_tasksツールを使ってください。'
         '判断に迷う場合のデフォルトはadd_taskです（誤って追加してもユーザーは後から番号で簡単に削除・修正できるので、扱いに迷ったらまず追加を優先してください）。\n'
         '「要約して」「言い換えて」「まとめて」「相談」のように、何かを実行するのではなく文章で答えるだけでよい場合はreply_with_textツールを使ってください。\n'
+        '【重要・最優先】ユーザーが次にやるべき具体的な作業を1つでも述べている場合は、それが業務の背景説明や既存タスクへの言及を伴っていても、'
+        '必ずadd_task（複数ならadd_tasks）で実際にタスクとして追加してください。'
+        '追加せずに、進捗評価・助言・状況コメントだけを返して終わることは禁止です'
+        '（例：「1尾あたりの原価を報告」→報告というタスクをadd_taskで追加する。「関連タスクの状況はこうです」で終わらせて追加しないのは誤りです）。\n'
+        '【重要】update_task_status／delete_task／update_task_priority／update_task_due／update_task_titleは、'
+        'ユーザーが「完了にして」「削除して」「優先度を上げて」「期限を〜にして」「〜に書き換えて」のように、'
+        '既存タスクへの明確な変更・削除の依頼をした場合にのみ使ってください。'
+        'そうした変更の言葉が無く、単に新しい作業内容を述べているだけなら、既存タスクと名前が似ていても更新系ツールは使わず、必ずadd_task／add_tasksを使ってください'
+        '（名前が似ているというだけでユーザーに聞き返すのではなく、新規タスクとして追加するのがデフォルトです）。\n'
         '【重要】上記のいずれの操作ツールも呼ばずに「登録しました」「追加しました」「削除しました」「完了しました」のように、'
         '何かを実行済みであるかのように答えることは絶対にしないでください。必ず対応するツールを実際に呼び出してから、その結果として報告してください。\n'
         'ユーザーはタスク名を毎回全部書かず、一部の言葉やキーワードだけで指定することが多いです。「未完了タスク一覧」を見て該当するタスクが1つに絞れる場合は、'
-        '正式なタイトルを補ってツールを呼び出してください。似たタスクが複数あり判断できない場合のみ、操作系ツールは呼ばずreply_with_textツールで候補を挙げて確認してください。\n'
+        '正式なタイトルを補ってツールを呼び出してください。'
+        '明確な変更・削除の依頼であるにもかかわらず似たタスクが複数あり対象を1つに絞れない場合のみ、操作系ツールは呼ばずreply_with_textツールで候補を挙げて確認してください。\n'
         '「直近14日で完了したタスク」や「直近の会話」も参考に、繰り返し先延ばしにしている傾向や、前回の相談からの変化があれば触れてください。\n'
         '「ユーザーが登録した参考資料」に関連する内容があれば、一般論より優先して、その資料の内容を踏まえて具体的に助言してください。\n\n'
         + context + '\n\n【ユーザーの相談】\n' + user_text
@@ -563,6 +568,12 @@ def ask_agent(user_id, user_text):
         reply = handle_delete_calendar_event(user_id, args, intro)
     elif name == 'add_task':
         reply = tasks_mod.add_line(user_id, user_text)
+    elif name == 'add_tasks':
+        items = [str(s).strip() for s in (args or {}).get('items') or [] if str(s).strip()]
+        if not items:
+            reply = tasks_mod.add_line(user_id, user_text)
+        else:
+            reply = '\n\n'.join(tasks_mod.add_line(user_id, item) for item in items)
     elif name == 'reply_with_text':
         reply = str((args or {}).get('message') or '').strip() or (intro or '⚠️ AIエージェントの応答取得に失敗しました。')
     else:

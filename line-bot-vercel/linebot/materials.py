@@ -99,5 +99,4 @@ def handle_update_material(input_args, intro):
     if updated is None:
         return f'⚠️「{title}」の修正に失敗しました。'
 
-    prefix = f'{intro}\n\n' if intro else ''
-    return f'{prefix}📚「{new_title}」を修正しました\n\n{new_summary}'
+    return f'📚「{new_title}」を修正しました\n\n{new_summary}'

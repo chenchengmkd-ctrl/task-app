@@ -87,8 +87,12 @@ def cleanup_task_text(text):
 def ai_parse_date(text):
     """「来週」「月末」のような曖昧な日付表現をAIでYYYY-MM-DDに変換する（失敗時はNone）。"""
     reply = call_gemini(
-        f'今日の日付は{config.today_iso()}（YYYY-MM-DD）です。渡された文章に含まれる日付表現を、YYYY-MM-DD形式の1行だけで返してください。'
-        '日付表現が無い・特定できない場合は「なし」とだけ返してください。説明は不要です。',
+        f'今日の日付は{config.today_iso()}（YYYY-MM-DD）です。渡された文章から、このタスク自体の締め切り・期限を表す日付表現を1つだけ探し、'
+        'YYYY-MM-DD形式の1行だけで返してください。'
+        '文章中には「6月30日時点の在庫」のように、タスクが扱う対象データの時点を表すだけの日付が含まれることがありますが、'
+        'それらはタスクの期限ではないので無視してください。「今週中」「来週」「月末までに」のように、'
+        'このタスク自体をいつまでに終わらせたいかを示す表現があれば、そちらを優先してください。'
+        '期限表現が無い・特定できない場合は「なし」とだけ返してください。説明は不要です。',
         text, 20,
     )
     if not reply:
@@ -686,7 +690,11 @@ def handle_pending_due_reply(user_id, text):
             if not looks_like_date_reply(t):
                 delete_state(key)
                 return None
-            return '日付を認識できませんでした。「6/30」「今日」のように送ってください（設定しない場合は「なし」）。'
+            # 「今週金曜日」「来週」「月末」のような曖昧な表現は、正規表現では拾えないのでAIに判定させる
+            ai_due = ai_parse_date(t)
+            if not ai_due:
+                return '日付を認識できませんでした。「6/30」「今日」「今週金曜」のように送ってください（設定しない場合は「なし」）。'
+            parsed = {'due': ai_due, 'due_time': parsed['due_time']}
         task = pending['tasks'][0]
         updated = patch_supabase('tasks', f"id=eq.{quote(task['id'])}", {
             'due': parsed['due'], 'due_time': parsed['due_time'] or None, 'updated_at': config.now_iso(),

@@ -221,8 +221,7 @@ def handle_create_recurring_task(input_args, intro):
         time_label = f'{remind_time}にリマインド'
     else:
         time_label = f'毎朝{config.REMIND_HOUR:02d}:{config.REMIND_MINUTE:02d}の通知と同じタイミングでリマインド'
-    prefix = f'{intro}\n\n' if intro else ''
-    return f'{prefix}🔁「{title}」を定期タスクとして登録しました\n{desc}・{time_label}\n次回：{config.jp(next_date)}'
+    return f'🔁「{title}」を定期タスクとして登録しました\n{desc}・{time_label}\n次回：{config.jp(next_date)}'
 
 
 def find_recurring_by_title(title):
@@ -292,8 +291,7 @@ def handle_update_recurring_task(input_args, intro):
     remind_time = body.get('remind_time', r.get('remind_time'))
     time_label = f'{remind_time}にリマインド' if remind_time else f'毎朝{config.REMIND_HOUR:02d}:{config.REMIND_MINUTE:02d}の通知と同じタイミングでリマインド'
     label = new_title or title
-    prefix = f'{intro}\n\n' if intro else ''
-    msg = f'{prefix}✅「{label}」を更新しました\n{desc}・{time_label}'
+    msg = f'✅「{label}」を更新しました\n{desc}・{time_label}'
     if 'next_date' in body:
         msg += f'\n次回：{config.jp(body["next_date"])}'
     return msg
@@ -316,5 +314,4 @@ def handle_delete_recurring_task(input_args, intro):
     if not ok:
         return f'⚠️「{title}」の削除に失敗しました。'
 
-    prefix = f'{intro}\n\n' if intro else ''
-    return f'{prefix}🗑️「{title}」の定期タスクを削除しました。'
+    return f'🗑️「{title}」の定期タスクを削除しました。'
