@@ -138,6 +138,17 @@ def plan_prompt_on_demand(user_id):
     return msg
 
 
+def plan_today_on_demand(user_id):
+    """「今日の予定を決める」で、時間帯に関係なく必ず今日ぶんの候補を出して選んでもらう。"""
+    plan_date = config.today_iso()
+    msg, items = build_plan_prompt(user_id, plan_date)
+    if not msg:
+        return '🌙 今日やる候補のタスクはありません。'
+    set_state(_sent_key(user_id, plan_date, 'prompt'), True)
+    set_state(_pending_key(user_id), {'date': plan_date, 'items': items, 'createdAt': config.now_ms()})
+    return msg
+
+
 def show_plan(user_id):
     """「今日の予定」で、決めたぶんの進み具合をその場で確認する。"""
     msg = build_plan_review(user_id, config.today_iso())
