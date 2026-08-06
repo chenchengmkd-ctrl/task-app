@@ -50,6 +50,11 @@ UNDO_KEY = 'FINANCE_UNDO'
 APP_URL = 'https://oneburg-finance.vercel.app'
 
 
+def entry_url(date_iso):
+    """その日の「日次入力」を直接開くURL（Webアプリ側がクエリを読んで該当日を表示する）。"""
+    return f'{APP_URL}/?page=daily&date={date_iso}'
+
+
 def _report(date_iso):
     """指定日の残高報告を返す。無ければNone。"""
     key = f'{PREFIX}report:{date_iso}'
@@ -140,7 +145,7 @@ def build_daily_finance_report(date_iso=None):
         lines.append(f'損益　{_signed(m_rev - m_exp)}')
 
     lines.append('')
-    lines.append(APP_URL)
+    lines.append(entry_url(date_iso))
     return '\n'.join(lines)
 
 
@@ -581,50 +586,48 @@ def handle_finance_input(user_id, text):
 
 
 def build_input_template(date_iso=None):
-    """コピーして数字を書き入れて送り返すためのテンプレート。説明と本体を別メッセージで返す。"""
+    """コピーして数字を書き入れるための最小限のひな形。説明と本体を別メッセージで返す。
+
+    まとめて入力したいときはアプリ（entry_url）のほうが速いので、
+    ここでは「LINEで済ませたい人向けの最小限」に絞っている。
+    """
     date_iso = date_iso or config.today_iso()
-    d = config.parse_date(date_iso)
-    wd = '月火水木金土日'[d.weekday()] if d else ''
     master = _item_master()
-    staff = _staff_list()
 
     def first(seq, fallback):
         return seq[0] if seq else fallback
 
     ing_vendor = first(master['vendors'].get('ingredient', []), '肉のハナマサ')
-    sup_vendor = first(master['vendors'].get('supplies', []), 'シモジマ')
 
     guide = '\n'.join([
-        f'📋 {config.jp(date_iso)}({wd}) の入力テンプレート',
+        f'📋 {config.jp(date_iso)} の入力ひな形',
         '',
-        '下のメッセージを長押し →「コピー」→',
-        '貼り付けて数字を入れて送り返してください。',
-        '',
+        '下のメッセージをコピーして数字を入れ、',
+        'そのまま送り返してください。',
         '・使わない行は消してOK',
-        '・金額は税抜（売上だけ税込）',
         '・空欄のままの行は無視されます',
-        '・行は増やしても大丈夫です',
+        '・行は増やせます',
+        '',
+        f'まとめて入れるならアプリのほうが速いです：\n{entry_url(date_iso)}',
     ])
 
-    body_lines = [config.jp(date_iso), '売上 ']
-    for s in staff[:3]:
-        body_lines.append(f'シフト {s["name"]} 10:00 14:30')
-    body_lines.append(f'食材 {ing_vendor} お米 ')
-    body_lines.append(f'備品 {sup_vendor} タレ瓶 ')
-    body_lines.append('経費 ATM手数料 ')
-
+    body_lines = [
+        config.jp(date_iso),
+        '売上 ',
+        f'食材 {ing_vendor} お米 ',
+        '経費 ATM手数料 ',
+    ]
     return [guide, '\n'.join(body_lines)]
 
 
 def finance_help():
     return '\n'.join([
-        '💰 LINEからの入力',
+        '💰 財務の入力',
         '',
-        '「テンプレ」と送ると記入用のひな形が届きます。',
-        'コピーして数字を入れ、そのまま送り返せば',
-        '複数行まとめて登録できます。',
+        '▼ まとめて入力するとき',
+        f'アプリが速いです：{entry_url(config.today_iso())}',
         '',
-        '▼ 1行ずつ送る場合',
+        '▼ 1件だけサッと入れるとき',
         '・売上 52000',
         '・食材 お米 1000',
         '・食材 肉のハナマサ お米 1000　← 仕入れ先も分ける場合',
@@ -669,14 +672,14 @@ def build_finance_reminder(date_iso=None):
         lines.append(f'未入力：{"・".join(missing)}')
 
     lines.append('')
-    lines.append('↓のテンプレートをコピーして、')
-    lines.append('数字を入れて送り返してください。')
-    lines.append('（使わない行は消してOK・空欄の行は無視されます）')
+    lines.append('▼ アプリで入力（この日が開きます）')
+    lines.append(entry_url(date_iso))
     lines.append('')
-    lines.append(APP_URL)
-
-    # 2通目としてテンプレート本体を送る（そのままコピーして書き込めるように）
-    return [('\n'.join(lines)), build_input_template(date_iso)[1]]
+    lines.append('▼ LINEで入力（1行でも複数行でもOK）')
+    lines.append('　売上 41200')
+    lines.append('　食材 肉のハナマサ お米 1000')
+    lines.append('（書き方は「入力ヘルプ」）')
+    return '\n'.join(lines)
 
 
 def send_finance_reminder(push_text, get_users):

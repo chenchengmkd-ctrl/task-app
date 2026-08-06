@@ -27,7 +27,7 @@ from linebot.finance import (
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 38
+APP_VERSION = 39
 
 
 def _respond(start_response, status, body, cors=False):
