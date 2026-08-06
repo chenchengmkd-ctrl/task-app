@@ -48,13 +48,19 @@ def plan_date_for(now):
 
 # ============ 候補の洗い出し ============
 def _candidates(plan_date_iso):
-    """未完了タスクを全部、期限切れ → その日が期限 → それ以降 → 期限なし に分けて返す。"""
-    rows = get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title,status,due')
+    """未完了タスクを全部、期限切れ → その日が期限 → それ以降 → 期限なし に分けて返す。
+    各グループの中は「優先順位のダブルマトリックス」順（すぐ終わるものが先）に並べる。
+    """
+    from . import priority as priority_mod
+
+    rows = get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title,status,due,priority,estimate')
     overdue, on_day, later, no_due = [], [], [], []
     for r in rows:
         item = {'id': r['id'], 'title': str(r['title']),
                 'status': config.STATUS_LABEL_JP.get(r.get('status'), r.get('status') or '未着手'),
-                'due': r.get('due') or ''}
+                'due': r.get('due') or '',
+                'priority': r.get('priority') or 'mid',
+                'estimate': r.get('estimate') or ''}
         if not item['due']:
             no_due.append(item)
         elif item['due'] < plan_date_iso:
@@ -63,8 +69,8 @@ def _candidates(plan_date_iso):
             on_day.append(item)
         else:
             later.append(item)
-    overdue.sort(key=lambda t: t['due'])
-    later.sort(key=lambda t: t['due'])
+    for arr in (overdue, on_day, later, no_due):
+        arr.sort(key=lambda t: priority_mod.sort_key(t, plan_date_iso))
     return overdue, on_day, later, no_due
 
 
@@ -89,7 +95,8 @@ def build_plan_prompt(user_id, plan_date_iso):
         lines = []
         for t in arr:
             due_part = f"（{config.jp(t['due'])}）" if t['due'] else ''
-            lines.append(f"{num_by_id[t['id']]}. {t['title']}{due_part}")
+            est_part = f"［{t['estimate']}］" if t.get('estimate') else ''
+            lines.append(f"{num_by_id[t['id']]}. {t['title']}{due_part}{est_part}")
         return f'\n{title}\n' + '\n'.join(lines) + '\n'
 
     d = config.parse_date(plan_date_iso)
@@ -104,7 +111,9 @@ def build_plan_prompt(user_id, plan_date_iso):
     msg += block(f'📅 {label}が期限', on_day)
     msg += block('⏳ 期限はこの先', later)
     msg += block('⚪ 期限なし', no_due)
-    msg += ('\nやる番号を送ってください（例：1,3,5）。'
+    msg += ('\n（各グループは「重要度が高い順・すぐ終わる順」に並べてあります。'
+            '上から選ぶほど成果につながりやすいです）'
+            '\n\nやる番号を送ってください（例：1,3,5）。'
             '\n全部なら「全部」、決めないなら「なし」。'
             '\nここで新しいタスクを送れば、そのまま候補に足せます。'
             f'\n⏰ 朝{PLAN_DEADLINE[0]}時までに決めてください。')

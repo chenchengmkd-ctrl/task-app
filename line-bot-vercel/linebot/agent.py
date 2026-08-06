@@ -17,16 +17,31 @@ from .supabase_client import get_supabase, post_supabase, patch_supabase, get_st
 # ============ タスク状況・文脈の構築 ============
 def build_agent_context():
     """タスク状況（Supabase）＋定期タスク＋直近の完了実績＋過去の会話をAI用にまとめる。"""
-    tasks = get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=title,status,priority,due,updated_at&order=updated_at.asc')
-    now = config.now_jst()
+    from . import priority as priority_mod
 
+    tasks = get_supabase(
+        'tasks',
+        'done=eq.false&deleted=eq.false&select=title,status,priority,due,estimate,updated_at&order=updated_at.asc',
+    )
+    now = config.now_jst()
+    today_iso = config.today_iso()
+
+    # ダブルマトリックスの順に並べて渡す（AIが優先順位を語るときの土台をこちらで作っておく）
+    tasks = sorted(tasks, key=lambda t: priority_mod.sort_key(t, today_iso))
     task_lines = []
     for t in tasks:
         updated = config.parse_timestamp(t.get('updated_at'))
         days = int((now - updated).total_seconds() // 86400) if updated else 0
         due = f" 期限:{t['due']}" if t.get('due') else ''
         status = config.STATUS_LABEL_JP.get(t.get('status'), t.get('status'))
-        task_lines.append(f"・{t['title']}（状態:{status}{due} 優先度:{t['priority']} 最終更新:{days}日前）")
+        est = f" 目安:{t['estimate']}" if t.get('estimate') else ' 目安:未設定'
+        minutes = priority_mod.parse_estimate_minutes(t.get('estimate'))
+        rank = priority_mod.double_matrix_rank(
+            t.get('priority') or 'mid', priority_mod.urgency_high(t.get('due'), today_iso), minutes)
+        task_lines.append(
+            f"・{t['title']}（状態:{status}{due} 優先度:{t['priority']}{est} 最終更新:{days}日前"
+            f" ／ダブルマトリックス総合{rank}位:{priority_mod.rank_label(rank)}）"
+        )
 
     rec = recurring_mod.get_recurring()
     rec_lines = []
@@ -62,7 +77,9 @@ def build_agent_context():
     def section(title, lines):
         return ['', f'【{title}】', '\n'.join(lines) if lines else 'なし']
 
-    parts = ['【未完了タスク一覧】', '\n'.join(task_lines) or 'なし']
+    parts = [priority_mod.DOUBLE_MATRIX_RULE, '',
+             '【未完了タスク一覧】（すでにダブルマトリックス順に並べてある）',
+             '\n'.join(task_lines) or 'なし']
     # Googleカレンダーを連携していれば、今日・明日の予定と空き時間も渡す（生活リズムを踏まえた助言のため）
     from . import gcal
     if gcal.is_enabled():
@@ -429,7 +446,10 @@ def propose_reprioritization(user_id):
     context = build_agent_context()
     res = call_gemini_with_tools(
         config.AGENT_PERSONA,
-        '以下は現在のタスク状況です。期限・停滞日数・状態を踏まえて、優先度を変えたほうがよいタスクだけをreprioritize_tasksツールで提案してください。'
+        '以下は現在のタスク状況です。優先度を変えたほうがよいタスクだけをreprioritize_tasksツールで提案してください。'
+        '判断は必ず冒頭の「優先順位の判断基準：ダブルマトリックス」に従ってください。'
+        'とくに、期限が近いだけで重要度の低いタスク（結果への影響が小さいもの）に高い優先度をつけないこと。'
+        '逆に、期限が先でも結果への影響が大きいタスクは優先度を上げること。'
         '変更不要なタスクは含めないでください。\n\n' + context,
         TOOLS_REPRIORITIZE, 500,
     )
@@ -567,13 +587,21 @@ def ask_agent(user_id, user_text):
     elif name == 'delete_calendar_event':
         reply = handle_delete_calendar_event(user_id, args, intro)
     elif name == 'add_task':
-        reply = tasks_mod.add_line(user_id, user_text)
+        reply = tasks_mod.add_line(user_id, user_text, (args or {}).get('estimate') or '')
     elif name == 'add_tasks':
-        items = [str(s).strip() for s in (args or {}).get('items') or [] if str(s).strip()]
+        items = []
+        for it in (args or {}).get('items') or []:
+            # 旧形式（文字列の配列）で返ってくる場合にも備えておく
+            if isinstance(it, dict):
+                text_part, est = str(it.get('text') or '').strip(), str(it.get('estimate') or '').strip()
+            else:
+                text_part, est = str(it).strip(), ''
+            if text_part:
+                items.append((text_part, est))
         if not items:
             reply = tasks_mod.add_line(user_id, user_text)
         else:
-            reply = '\n\n'.join(tasks_mod.add_line(user_id, item) for item in items)
+            reply = '\n\n'.join(tasks_mod.add_line(user_id, t, e) for t, e in items)
     elif name == 'reply_with_text':
         reply = str((args or {}).get('message') or '').strip() or (intro or '⚠️ AIエージェントの応答取得に失敗しました。')
     else:

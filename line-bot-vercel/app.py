@@ -20,11 +20,14 @@ from linebot.heartbeat import push_heartbeat_commit
 from linebot.richmenu import setup_rich_menu
 from linebot.gemini_client import call_gemini
 from linebot.reports import build_daily_report, build_weekly_report
-from linebot.finance import send_finance_report, build_daily_finance_report, build_month_finance_report
+from linebot.finance import (
+    send_finance_report, send_finance_reminder,
+    build_daily_finance_report, build_month_finance_report, build_finance_reminder,
+)
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 36
+APP_VERSION = 37
 
 
 def _respond(start_response, status, body, cors=False):
@@ -187,6 +190,8 @@ def _handle_preview(environ, start_response):
             body = build_daily_finance_report()
         elif kind == 'finance_month':
             body = build_month_finance_report()
+        elif kind == 'finance_reminder':
+            body = build_finance_reminder()
         else:
             body = build_daily_report(None)
     except Exception as e:
@@ -239,6 +244,8 @@ def app(environ, start_response):
         return _run_weekly_report(environ, start_response)
     if path == '/api/cron_finance_report' and method == 'GET':
         return _run_cron(environ, start_response, send_finance_report, 'send_finance_report')
+    if path == '/api/cron_finance_reminder' and method == 'GET':
+        return _run_cron(environ, start_response, send_finance_reminder, 'send_finance_reminder')
     if path == '/api/cron_poll' and method == 'GET':
         return _run_poll(environ, start_response)
 

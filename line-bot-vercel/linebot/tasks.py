@@ -104,9 +104,10 @@ def ai_parse_date(text):
 
 
 # ============ タスク追加・一覧 ============
-def add_line(user_id, text):
+def add_line(user_id, text, estimate=''):
     """タスクをその場でSupabaseに追加する。
     予定を決めている最中（PENDING_PLAN）なら、期限をその日にして候補にも足す。
+    estimate は「30分」のような見積り時間（AIが推定して渡す）。優先順位の判断に使う。
     """
     from . import planning as planning_mod
 
@@ -130,11 +131,12 @@ def add_line(user_id, text):
         if cleaned:
             title = cleaned
 
+    estimate = str(estimate or '').strip()
     row_id = config.new_id()
     row = {
         'id': row_id, 'title': title, 'status': 'todo', 'priority': 'mid',
         'due': due or None, 'due_time': due_time or None,
-        'estimate': '', 'recurrence': 'none', 'note': '', 'tags': [],
+        'estimate': estimate, 'recurrence': 'none', 'note': '', 'tags': [],
         'done': False, 'deleted': False, 'from_line': True,
         'updated_at': config.now_iso(),
     }
@@ -143,6 +145,8 @@ def add_line(user_id, text):
 
     cnt = len(get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id'))
     msg = f'✅ 追加しました\n「{title}」'
+    if estimate:
+        msg += f'（目安 {estimate}）'
 
     # 予定を決めている最中なら、期限の質問はせずに候補へ追加して番号を返す
     if plan_pending:
@@ -153,6 +157,11 @@ def add_line(user_id, text):
                     f'\n予定に入れるなら、{num} も一緒に番号で送ってください。')
         return msg + f'\n\n未完了: {cnt}件'
 
+    # すぐ終わるものは「今すぐ／今日中」と促す（ダブルマトリックスの2段階目。詳細は priority.py）
+    from . import priority as priority_mod
+    minutes = priority_mod.parse_estimate_minutes(estimate)
+    guideline = priority_mod.deadline_guideline(minutes)
+
     if due:
         msg += f'\n📅 {config.jp(due)}' + (f' {due_time}' if due_time else '')
         due_date = config.parse_date(due)
@@ -161,11 +170,20 @@ def add_line(user_id, text):
                 'mode': 'single', 'taskId': row_id, 'title': title, 'createdAt': config.now_ms(),
             })
             msg += '\n\n⏰ 時間は何時ですか？（例：15:00、15時、未定なら「なし」）'
+    elif minutes is not None and minutes <= priority_mod.DO_NOW_MINUTES:
+        # 10分以内で終わるものは、期限を聞くより先に片づけたほうが早い
+        msg += ('\n\n⚡ これは今すぐ片づけてしまうのが一番早いです。'
+                '\n終わったら「完了」、後回しにするなら期限を送ってください（例：明日、なし）。')
+        set_state(f'PENDING_DUE_{user_id}', {
+            'mode': 'single', 'tasks': [{'id': row_id, 'title': title}], 'createdAt': config.now_ms(),
+        })
     else:
         set_state(f'PENDING_DUE_{user_id}', {
             'mode': 'single', 'tasks': [{'id': row_id, 'title': title}], 'createdAt': config.now_ms(),
         })
         msg += '\n\n📅 期限はいつにしますか？（例：6/30、今日、なし）'
+        if guideline:
+            msg += f'\n（{estimate}なら {guideline} が目安です）'
     msg += f'\n\n未完了: {cnt}件'
     return msg
 

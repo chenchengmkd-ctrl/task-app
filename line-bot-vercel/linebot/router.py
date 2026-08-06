@@ -64,13 +64,22 @@ def route_command(user_id, text):
     if re.match(r'^(カレンダー|空き時間|スケジュール)$', text):
         from . import gcal
         return gcal.calendar_command()
-    # 財務管理アプリ（oneburg-finance）の売上・損益を見る。データは同じSupabaseのbirdmen_kvから読むだけ
+    # 財務管理アプリ（oneburg-finance）の売上・損益。データは同じSupabaseのbirdmen_kvを読み書きする
     if re.match(r'^(収支|売上|財務|今日の収支|今日の売上)$', text):
         from . import finance as finance_mod
         return finance_mod.build_daily_finance_report()
     if re.match(r'^(今月の収支|今月の売上|月次収支|当月収支)$', text):
         from . import finance as finance_mod
         return finance_mod.build_month_finance_report()
+    if re.match(r'^(入力ヘルプ|財務ヘルプ|収支ヘルプ)$', text):
+        from . import finance as finance_mod
+        return finance_mod.finance_help()
+    # 「売上 52000」「食材 お米 1000」「シフト 都丸 10:00 14:30」「取り消し」など。
+    # 該当しなければNoneが返るので、そのまま下のタスク系ルーティングへ流れる
+    from . import finance as finance_mod
+    finance_input = finance_mod.handle_finance_input(user_id, text)
+    if finance_input is not None:
+        return finance_input
     if re.match(r'^(相談|アドバイス)$', text):
         return agent_mod.ask_agent(user_id, '最近のタスク状況について、率直な進捗評価とアドバイスをください。')
     if re.match(r'^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$', text):
@@ -204,7 +213,15 @@ def help_text():
         '💰 財務管理（株式会社ワンバーグ）',
         '・収支／売上 → 今日の売上・費用・当日損益と、当月の累計を表示',
         '・今月の収支 → 当月の売上・費用（カテゴリ別内訳つき）・損益を表示',
-        '　（数字の入力は https://oneburg-finance.vercel.app から。LINEは表示のみです）',
+        '・LINEから入力もできます（金額は税抜。売上だけ税込）',
+        '　例）売上 52000',
+        '　例）食材 お米 1000／食材 肉のハナマサ お米 1000',
+        '　例）備品 シモジマ タレ瓶 500／経費 ATM手数料 110',
+        '　例）シフト 都丸 10:00 14:30',
+        '　例）8/5 売上 52000　← 先頭に日付で別の日',
+        '・取り消し → 直前の入力を1件戻す',
+        '・入力ヘルプ → 書き方の一覧',
+        '　（画面での入力は https://oneburg-finance.vercel.app ）',
         '',
         '・定期タスク → 登録済みの繰り返し予定を表示',
         '・定期タスク（毎日／毎週〇曜／毎月〇日）はLINEで登録・変更・削除できます',
@@ -224,6 +241,7 @@ def help_text():
         '　決まらない場合は 0:30／6:30／8:00 に催促（朝8時が最終期限）',
         '・毎晩24時：振り返りの催促（1時間たっても届かなければもう一度だけ催促）',
         '・毎週日曜21時：週報',
+        '・毎日16時：その日の入力リマインド（未入力の項目を表示）',
         '・毎晩22時：その日の収支（売上・費用・損益と当月累計）',
         f'・時刻つきタスクは開始{config.TIME_LEAD_MINUTES}分前にもリマインド',
         '・定期タスクは設定時刻（未設定なら毎朝の通知と同じ時刻）にリマインド',

@@ -74,6 +74,15 @@ def extract_function_call(res):
 
 
 # ============ AIエージェントが使えるツール（Gemini Function Calling形式） ============
+# 見積り時間。「優先順位のダブルマトリックス」の2軸目（かかる時間）に使うので、
+# タスクを追加するたびに必ず見積もらせる。詳しくは priority.py を参照。
+_ESTIMATE_PARAM = {
+    'type': 'STRING',
+    'description': 'そのタスクが完了までにかかる見込み時間。「5分」「30分」「1時間」「半日」「1日」のように、'
+                   '数字＋単位で必ず答えること。ユーザーが明示していなくても、作業内容から常識的に推定して入れること。'
+                   '優先順位の判断（すぐ終わるものを先にやる）に使うため、省略しないこと。',
+}
+
 AGENT_TOOLS = [{
     'functionDeclarations': [
         {
@@ -233,8 +242,13 @@ AGENT_TOOLS = [{
             'description': '他のどのツールにも明確に当てはまらない場合、つまりユーザーが新しいやること（タスク）を1件追加したいと判断した場合に使う。'
                            '判断に迷う場合のデフォルトとしてもこれを使うこと（例：「〇〇を買う」「〇〇の準備」のような、単に新しい作業を述べているだけの文）。'
                            'メッセージの中に別々のやることが複数含まれている場合はこちらではなくadd_tasksを使うこと。'
-                           'パラメータは不要。ユーザーの元の文章はこちら側で自動的に解析（日付・時刻の抽出や長文の整理を含む）するので、ツール呼び出し自体に情報を含める必要はない。',
-            'parameters': {'type': 'OBJECT', 'properties': {}, 'required': []},
+                           'ユーザーの元の文章はこちら側で自動的に解析（日付・時刻の抽出や長文の整理を含む）するので、'
+                           'estimate以外のパラメータは指定しなくてよい。',
+            'parameters': {
+                'type': 'OBJECT',
+                'properties': {'estimate': _ESTIMATE_PARAM},
+                'required': [],
+            },
         },
         {
             'name': 'add_tasks',
@@ -246,8 +260,16 @@ AGENT_TOOLS = [{
                 'properties': {
                     'items': {
                         'type': 'ARRAY',
-                        'items': {'type': 'STRING'},
-                        'description': 'タスクごとの元の文章の抜粋（日付・時刻の表現があればそのまま含めること。こちら側で自動的に解析する）',
+                        'items': {
+                            'type': 'OBJECT',
+                            'properties': {
+                                'text': {'type': 'STRING',
+                                         'description': 'そのタスクにあたる元の文章の抜粋（日付・時刻の表現があればそのまま含めること）'},
+                                'estimate': _ESTIMATE_PARAM,
+                            },
+                            'required': ['text'],
+                        },
+                        'description': 'タスクごとの内容',
                     },
                 },
                 'required': ['items'],
