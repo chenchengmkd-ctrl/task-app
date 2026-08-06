@@ -243,9 +243,9 @@
   .rec-card-actions .btn { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
   .rec-card .rec-next { font-size: 11px; color: var(--muted); margin-top: 3px; }
   .badge.due.overdue { background: var(--hi-bg); color: var(--hi-fg); }
-  .status-toggle, .prio-toggle, .due-toggle { cursor: pointer; }
-  .status-toggle:hover, .prio-toggle:hover, .due-toggle:hover { outline: 1px solid var(--accent); outline-offset: 1px; }
-  .status-toggle .caret, .prio-toggle .caret, .due-toggle .caret { font-size: 9px; opacity: .65; margin-left: 1px; }
+  .status-toggle, .prio-toggle, .due-toggle, .est-toggle { cursor: pointer; }
+  .status-toggle:hover, .prio-toggle:hover, .due-toggle:hover, .est-toggle:hover { outline: 1px solid var(--accent); outline-offset: 1px; }
+  .status-toggle .caret, .prio-toggle .caret, .due-toggle .caret, .est-toggle .caret { font-size: 9px; opacity: .65; margin-left: 1px; }
 
   /* 状態・優先度・期限を選ぶポップアップ（バッジをタップ/クリックで開く。スマホのタッチでも同じ挙動） */
   .status-menu {
@@ -321,6 +321,75 @@
   }
   .empty .emoji { font-size: 34px; display: block; margin-bottom: 6px; }
 
+  /* ---------- 優先順位マトリックス（図表4・図表5） ---------- */
+  .mx-intro {
+    background: var(--card); border: 1px solid var(--border); border-radius: 11px;
+    padding: 12px 14px; margin-bottom: 14px; font-size: 13px; line-height: 1.7; color: var(--muted);
+  }
+  .mx-intro b { color: var(--text); }
+  .mx-block { margin-bottom: 22px; }
+  .mx-caption { font-size: 13px; font-weight: 700; margin: 0 0 2px; color: var(--muted); }
+  .mx-title { font-size: 15px; font-weight: 700; margin: 0 0 10px; }
+  /* 行ラベル列＋2列。ヘッダー行が2段（軸名／高低）ある */
+  .mx-grid {
+    display: grid; grid-template-columns: 34px 60px 1fr 1fr; gap: 6px;
+    align-items: stretch;
+  }
+  .mx-axis-col {
+    grid-column: 3 / span 2; text-align: center; font-size: 12px; font-weight: 700;
+    padding: 5px; background: var(--col-bg); border-radius: 7px;
+  }
+  .mx-axis-row {
+    grid-row: span 2; writing-mode: vertical-rl; text-orientation: upright;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; background: var(--col-bg); border-radius: 7px; padding: 4px 1px;
+  }
+  .mx-head {
+    text-align: center; font-size: 12px; font-weight: 700; padding: 5px;
+    background: var(--col-bg); border-radius: 7px;
+  }
+  .mx-rowlabel {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; background: var(--col-bg); border-radius: 7px; padding: 4px;
+  }
+  .mx-cell {
+    background: var(--card); border: 1px solid var(--border); border-radius: 9px;
+    padding: 7px; min-height: 92px; display: flex; flex-direction: column; gap: 5px;
+  }
+  /* 本と同じく、上位2マスを黄色で強調する */
+  .mx-cell.mx-top { background: var(--mi-bg); border-color: var(--mi-fg); }
+  .mx-rank {
+    font-size: 11px; font-weight: 700; color: var(--muted); display: flex;
+    align-items: center; gap: 5px;
+  }
+  .mx-rank .mx-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; background: var(--muted);
+    color: var(--card); font-size: 11px; font-weight: 700;
+  }
+  .mx-cell.mx-top .mx-rank .mx-num { background: var(--mi-fg); color: #fff; }
+  .mx-empty { font-size: 11px; color: var(--muted); opacity: .65; padding: 2px; }
+  .mx-task {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+    padding: 5px 7px; font-size: 12px; line-height: 1.45;
+  }
+  .mx-cell.mx-top .mx-task { background: var(--card); }
+  .mx-task-title { font-weight: 600; word-break: break-word; }
+  .mx-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .mx-badges .badge { cursor: pointer; }
+  .mx-tray {
+    background: var(--card); border: 1px dashed var(--border); border-radius: 9px;
+    padding: 10px 12px; margin-top: 10px;
+  }
+  .mx-tray-title { font-size: 12px; font-weight: 700; margin-bottom: 7px; }
+  .mx-tray-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mx-tray .mx-task { flex: 0 1 240px; }
+  @media (max-width: 600px) {
+    .mx-grid { grid-template-columns: 26px 48px 1fr 1fr; gap: 4px; }
+    .mx-cell { min-height: 78px; padding: 5px; }
+    .mx-task { font-size: 11px; }
+  }
+
   footer { margin-top: 14px; text-align: center; color: var(--muted); font-size: 12px; }
   footer button {
     background: none; border: none; color: var(--muted); cursor: pointer;
@@ -346,6 +415,7 @@
 
   <div class="tabs">
     <button type="button" class="tab active" data-view="board">📋 ボード</button>
+    <button type="button" class="tab" data-view="matrix">🎯 優先順位</button>
     <button type="button" class="tab" data-view="recurring">🔁 定期タスク</button>
   </div>
 
@@ -395,6 +465,31 @@
   </div>
 
   <div id="board"></div>
+  </section>
+
+  <section id="matrixView" hidden>
+    <div class="mx-intro">
+      未完了タスクを「優先順位のダブルマトリックス」で配置しています。<br>
+      <b>1段階目</b>は<b>緊急度より重要度</b>を優先。<b>2段階目</b>は、重要度・緊急度が低くても
+      <b>すぐ終わるものを先に</b>片づけます。<br>
+      各タスクの<b>優先度・期限・見積り</b>のバッジを押すとその場で変更でき、位置がすぐ入れ替わります。
+    </div>
+
+    <div class="mx-block">
+      <p class="mx-caption">図表4</p>
+      <h2 class="mx-title">1段階目：重要度 × 緊急度</h2>
+      <div class="mx-grid" id="matrix1"></div>
+    </div>
+
+    <div class="mx-block">
+      <p class="mx-caption">図表5</p>
+      <h2 class="mx-title">2段階目：重要度＆緊急度 × かかる時間</h2>
+      <div class="mx-grid" id="matrix2"></div>
+      <div class="mx-tray" id="mxNoEstimate" hidden>
+        <div class="mx-tray-title">⏱ 見積り未設定（押して時間を入れると図表5に並びます）</div>
+        <div class="mx-tray-list" id="mxNoEstimateList"></div>
+      </div>
+    </div>
   </section>
 
   <section id="recurringView" hidden>
@@ -854,6 +949,196 @@ function fmtDue(due) {
   return { text: base, overdue: false };
 }
 
+/* ---------- 優先順位のダブルマトリックス ----------
+   LINEボット側の line-bot-vercel/linebot/priority.py と同じ判定にそろえている。
+   片方だけ直すと画面とボットで順番がズレるので、変更するときは両方直すこと。 */
+const MX_SHORT_MINUTES = 60;   // これ以内なら「すぐ終わる」
+const MX_SOON_DAYS = 3;        // 期限がこの日数以内なら「緊急度が高い」
+
+function parseEstimateMinutes(text) {
+  if (!text) return null;
+  const s = String(text).trim().replace(/[０-９．]/g, c => "0123456789.".charAt("０１２３４５６７８９．".indexOf(c)));
+  if (/半日/.test(s)) return 240;
+  // 「終日」「一日」は数字が無いのでここで拾う（「1日」は下の解析に任せる。「21日」の誤検出を避けるため）
+  if (/終日|一日/.test(s)) return 480;
+
+  const units = { "分": 1, "ふん": 1, "時間": 60, "日": 480 };
+  let total = 0, found = false;
+  const re = /(\d+(?:\.\d+)?)\s*(時間|分|ふん|日|hours?|hrs?|h|mins?|m|d)/gi;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const raw = m[2], low = raw.toLowerCase();
+    let mult = units[raw];
+    if (mult === undefined) {
+      if (low.startsWith("hour") || low.startsWith("hr") || low === "h") mult = 60;
+      else if (low.startsWith("min") || low === "m") mult = 1;
+      else if (low === "d") mult = 480;
+    }
+    if (mult === undefined) continue;
+    total += parseFloat(m[1]) * mult;
+    found = true;
+  }
+  if (found && /時間半/.test(s)) total += 30;      // 「1時間半」の“半”
+  if (found) return Math.round(total);
+  const only = s.match(/^\s*(\d+)\s*$/);           // 単位なしの数字は分とみなす
+  return only ? Number(only[1]) : null;
+}
+
+function mxIsUrgent(due) {
+  if (!due) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(due + "T00:00:00");
+  return Math.round((d - today) / 86400000) <= MX_SOON_DAYS;
+}
+// 1段階目（重要度×緊急度）。1が最優先、4は「やらない」検討
+function mxFirstRank(priority, isUrgent) {
+  if (priority === "high") return isUrgent ? 1 : 2;
+  return isUrgent ? 3 : 4;
+}
+// 2段階目まで含めた総合順位。見積り未設定は「短時間」の優遇を与えない
+function mxDoubleRank(priority, isUrgent, minutes) {
+  const highValue = mxFirstRank(priority, isUrgent) <= 2;
+  const isShort = minutes !== null && minutes <= MX_SHORT_MINUTES;
+  if (isShort) return highValue ? 1 : 2;
+  return highValue ? 3 : 4;
+}
+
+const MX_ESTIMATE_CHOICES = ["5分", "10分", "30分", "1時間", "半日", "1日"];
+function setTaskEstimate(id, value) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  t.estimate = value || "";
+  t.updated = Date.now();
+  save(); render();
+}
+function openEstimateMenu(anchor, t) {
+  const html = MX_ESTIMATE_CHOICES.map(v =>
+    `<button type="button" data-v="${v}"${(t.estimate || "") === v ? ' class="current"' : ""}>⏱ ${v}</button>`
+  ).join("") + `<button type="button" data-v="">✕ 見積りを消す</button>`;
+  const menu = openMenu(anchor, "est:" + t.id, "status-menu", html);
+  if (!menu) return;
+  menu.querySelectorAll("button").forEach(b => {
+    b.addEventListener("click", () => { closeActiveMenu(); setTaskEstimate(t.id, b.dataset.v); });
+  });
+}
+
+// マトリックスの1マス分のタスクカード（バッジを押すとその場で分類を変えられる）
+function buildMatrixCard(t) {
+  const el = document.createElement("div");
+  el.className = "mx-task";
+  const f = t.due ? fmtDue(t.due) : null;
+  const dueText = f ? `📅 ${f.text}` : "📅 期限なし";
+  el.innerHTML = `
+    <div class="mx-task-title">${escapeHtml(t.title)}</div>
+    <div class="mx-badges">
+      <span class="badge prio-toggle" title="クリックで優先度を選ぶ"><i class="dot dot-${t.priority}"></i>${PRIO_LABEL[t.priority]}<span class="caret">▾</span></span>
+      <span class="badge${f ? " due" : ""} due-toggle${f && f.overdue ? " overdue" : ""}" title="クリックで期限を変更">${dueText}<span class="caret">▾</span></span>
+      <span class="badge est-toggle" title="クリックで見積りを変更">⏱ ${t.estimate ? escapeHtml(t.estimate) : "未設定"}<span class="caret">▾</span></span>
+    </div>`;
+  el.querySelector(".prio-toggle").addEventListener("click", e => { e.stopPropagation(); openPriorityMenu(e.currentTarget, t); });
+  el.querySelector(".due-toggle").addEventListener("click", e => { e.stopPropagation(); openDueMenu(e.currentTarget, t); });
+  el.querySelector(".est-toggle").addEventListener("click", e => { e.stopPropagation(); openEstimateMenu(e.currentTarget, t); });
+  return el;
+}
+
+/* 2x2のマトリックスを1つ描く。
+   spec = { colAxis, colLabels:[高,低], rowAxis, rowLabels:[上,下], ranks:[[1,2],[3,4]],
+            topRow:0（黄色で強調する行）, buckets:[[[],[]],[[],[]]] } */
+function renderMatrixGrid(el, spec) {
+  el.innerHTML = "";
+  const add = (cls, text) => {
+    const d = document.createElement("div");
+    d.className = cls;
+    if (text !== undefined) d.textContent = text;
+    el.appendChild(d);
+    return d;
+  };
+
+  // 1行目：列の軸名（行ラベル2列ぶんを空ける）
+  add("mx-spacer"); add("mx-spacer");
+  add("mx-axis-col", spec.colAxis);
+  // 2行目：列の見出し（高／低）
+  add("mx-spacer"); add("mx-spacer");
+  add("mx-head", spec.colLabels[0]);
+  add("mx-head", spec.colLabels[1]);
+
+  for (let r = 0; r < 2; r++) {
+    if (r === 0) add("mx-axis-row", spec.rowAxis);   // 行の軸名は2行ぶん縦にまたぐ
+    add("mx-rowlabel", spec.rowLabels[r]);
+    for (let c = 0; c < 2; c++) {
+      const cell = add("mx-cell" + (r === spec.topRow ? " mx-top" : ""));
+      const rank = spec.ranks[r][c];
+      const head = document.createElement("div");
+      head.className = "mx-rank";
+      head.innerHTML = `<span class="mx-num">${rank}</span><span>${spec.rankNotes[rank] || ""}</span>`;
+      cell.appendChild(head);
+      const list = spec.buckets[r][c];
+      if (!list.length) {
+        const empty = document.createElement("div");
+        empty.className = "mx-empty";
+        empty.textContent = "なし";
+        cell.appendChild(empty);
+      }
+      list.forEach(t => cell.appendChild(buildMatrixCard(t)));
+    }
+  }
+}
+
+function renderMatrices() {
+  const open = tasks.filter(t => !t.deleted && !t.done);
+  const empty2 = () => [[[], []], [[], []]];
+
+  // 図表4：重要度（高/低）×緊急度（高/低）
+  const b1 = empty2();
+  // 図表5：重要度＆緊急度（高/低）×かかる時間（短/長）。見積り未設定は下のトレイへ
+  const b2 = empty2();
+  const noEst = [];
+
+  for (const t of open) {
+    const urgent = mxIsUrgent(t.due);
+    const important = t.priority === "high";
+    b1[important ? 0 : 1][urgent ? 0 : 1].push(t);
+
+    const minutes = parseEstimateMinutes(t.estimate);
+    if (minutes === null) { noEst.push(t); continue; }
+    const highValue = mxFirstRank(t.priority, urgent) <= 2;
+    b2[minutes <= MX_SHORT_MINUTES ? 0 : 1][highValue ? 0 : 1].push(t);
+  }
+
+  // 各マスの中は、ボット側と同じ「総合順位→1段階目→短い順→期限が近い順」で並べる
+  const sortCell = list => list.sort((a, b) => {
+    const ma = parseEstimateMinutes(a.estimate), mb = parseEstimateMinutes(b.estimate);
+    const ua = mxIsUrgent(a.due), ub = mxIsUrgent(b.due);
+    return (mxDoubleRank(a.priority, ua, ma) - mxDoubleRank(b.priority, ub, mb))
+        || (mxFirstRank(a.priority, ua) - mxFirstRank(b.priority, ub))
+        || ((ma === null ? 1e6 : ma) - (mb === null ? 1e6 : mb))
+        || String(a.due || "9999-99-99").localeCompare(String(b.due || "9999-99-99"));
+  });
+  [b1, b2].forEach(b => b.forEach(row => row.forEach(sortCell)));
+  sortCell(noEst);
+
+  renderMatrixGrid(document.getElementById("matrix1"), {
+    colAxis: "緊急度", colLabels: ["高", "低"],
+    rowAxis: "重要度", rowLabels: ["高", "低"],
+    ranks: [[1, 2], [3, 4]], topRow: 0,
+    rankNotes: { 1: "すぐやる", 2: "重要・先に確保", 3: "急ぐが影響は小", 4: "やらない検討" },
+    buckets: b1,
+  });
+  renderMatrixGrid(document.getElementById("matrix2"), {
+    colAxis: "重要度＆緊急度", colLabels: ["高", "低"],
+    rowAxis: "かかる時間", rowLabels: ["短", "長"],
+    ranks: [[1, 2], [3, 4]], topRow: 0,
+    rankNotes: { 1: "最優先", 2: "すぐ終わるので先に", 3: "腰を据えてやる", 4: "やらない検討" },
+    buckets: b2,
+  });
+
+  const tray = document.getElementById("mxNoEstimate");
+  const trayList = document.getElementById("mxNoEstimateList");
+  tray.hidden = noEst.length === 0;
+  trayList.innerHTML = "";
+  noEst.forEach(t => trayList.appendChild(buildMatrixCard(t)));
+}
+
 const COLUMNS = [
   { key: "todo",      label: "未着手",      done: false },
   { key: "doing",     label: "着手中",      done: false },
@@ -933,6 +1218,9 @@ function render() {
   const remaining = active.filter(t => !t.done).length;
   document.getElementById("count").textContent = `残り ${remaining}`;
   document.getElementById("footerText").textContent = `全 ${active.length} 件 / 完了 ${active.length - remaining} 件　`;
+
+  // 優先順位マトリックスも同じデータから描き直す（タブを切り替えたときにズレないように）
+  renderMatrices();
 }
 
 /* 定期タスク列のカードを組み立て */
@@ -1292,7 +1580,7 @@ document.getElementById("clearDone").addEventListener("click", () => {
 });
 
 // タブ切り替え
-const VIEW_IDS = ["boardView", "recurringView"];
+const VIEW_IDS = ["boardView", "matrixView", "recurringView"];
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
