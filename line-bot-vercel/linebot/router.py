@@ -64,6 +64,13 @@ def route_command(user_id, text):
     if re.match(r'^(カレンダー|空き時間|スケジュール)$', text):
         from . import gcal
         return gcal.calendar_command()
+    # 財務管理アプリ（oneburg-finance）の売上・損益を見る。データは同じSupabaseのbirdmen_kvから読むだけ
+    if re.match(r'^(収支|売上|財務|今日の収支|今日の売上)$', text):
+        from . import finance as finance_mod
+        return finance_mod.build_daily_finance_report()
+    if re.match(r'^(今月の収支|今月の売上|月次収支|当月収支)$', text):
+        from . import finance as finance_mod
+        return finance_mod.build_month_finance_report()
     if re.match(r'^(相談|アドバイス)$', text):
         return agent_mod.ask_agent(user_id, '最近のタスク状況について、率直な進捗評価とアドバイスをください。')
     if re.match(r'^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$', text):
@@ -193,6 +200,12 @@ def help_text():
         '・振り返り：本文　の形式で送ると、その日の一言メモとして記録します',
         '　例）振り返り：今日はうなぎの仕込みが予定より早く終わった',
         '　（週次レポートや相談時にAIコーチが参考にします）',
+        '',
+        '💰 財務管理（株式会社ワンバーグ）',
+        '・収支／売上 → 今日の売上・費用・当日損益と、当月の累計を表示',
+        '・今月の収支 → 当月の売上・費用（カテゴリ別内訳つき）・損益を表示',
+        '　（数字の入力は https://oneburg-finance.vercel.app から。LINEは表示のみです）',
+        '',
         '・定期タスク → 登録済みの繰り返し予定を表示',
         '・定期タスク（毎日／毎週〇曜／毎月〇日）はLINEで登録・変更・削除できます',
         '　例）毎週月曜19時に週報を出すのを定期タスクにして　→ その場で登録',
@@ -211,6 +224,7 @@ def help_text():
         '　決まらない場合は 0:30／6:30／8:00 に催促（朝8時が最終期限）',
         '・毎晩24時：振り返りの催促（1時間たっても届かなければもう一度だけ催促）',
         '・毎週日曜21時：週報',
+        '・毎晩22時：その日の収支（売上・費用・損益と当月累計）',
         f'・時刻つきタスクは開始{config.TIME_LEAD_MINUTES}分前にもリマインド',
         '・定期タスクは設定時刻（未設定なら毎朝の通知と同じ時刻）にリマインド',
     ]
