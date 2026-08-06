@@ -482,24 +482,35 @@ def _undo(user_id):
     ])
 
 
-def handle_finance_input(user_id, text):
-    """財務の入力コマンドを処理する。該当しなければ None を返して他のルーティングに任せる。"""
-    t = _norm(text)
-    if not t:
+def _only_date(line):
+    """「8/6」「8/6(木)」「8月6日」のように日付だけの行なら日付を返す。違えばNone。"""
+    m = re.fullmatch(r'(\d{1,2})[/月](\d{1,2})日?(?:\([^)]*\))?', line)
+    if not m:
         return None
+    today = config.now_jst()
+    mo, da = int(m.group(1)), int(m.group(2))
+    year = today.year
+    if today.month == 12 and mo == 1:
+        year += 1
+    elif today.month == 1 and mo == 12:
+        year -= 1
+    return f'{year:04d}-{mo:02d}-{da:02d}'
 
-    if re.fullmatch(r'(取り消し|取消|とりけし|undo)', t, re.IGNORECASE):
-        return _undo(user_id)
 
-    date_iso, body = _resolve_date(t)
+def _apply_one_line(user_id, date_iso, line):
+    """1行を処理する。財務コマンドでなければNone。"""
+    d, body = _resolve_date(line)
+    # 行頭に日付が無ければ、テンプレートで指定された日付を使う
+    if not re.match(r'^\d{1,2}[/月]\d{1,2}日?\s', line):
+        d = date_iso
 
     m = re.match(r'^(売上|うりあげ)[\s:：]+([\s\S]+)$', body)
     if m:
-        return _set_sales(user_id, date_iso, m.group(2))
+        return _set_sales(user_id, d, m.group(2))
 
     m = re.match(r'^(シフト|出勤)[\s:：]+([\s\S]+)$', body)
     if m:
-        return _add_shift(user_id, date_iso, m.group(2))
+        return _add_shift(user_id, d, m.group(2))
 
     for cat, words in (
         ('ingredient', r'食材|食品|仕入れ?'),
@@ -508,15 +519,112 @@ def handle_finance_input(user_id, text):
     ):
         m = re.match(rf'^({words})[\s:：]+([\s\S]+)$', body)
         if m:
-            return _add_expense_item(user_id, date_iso, cat, m.group(2))
-
+            return _add_expense_item(user_id, d, cat, m.group(2))
     return None
+
+
+def handle_finance_input(user_id, text):
+    """財務の入力コマンドを処理する。該当しなければ None を返して他のルーティングに任せる。
+
+    テンプレートをそのまま送り返せるよう、複数行のメッセージにも対応する。
+    ・日付だけの行（8/6）が現れたら、それ以降の行はその日付として扱う
+    ・金額が空のままの行・見出し行・区切り線などは黙って読み飛ばす
+    """
+    t = _norm(text)
+    if not t:
+        return None
+
+    if re.fullmatch(r'(取り消し|取消|とりけし|undo)', t, re.IGNORECASE):
+        return _undo(user_id)
+
+    if re.fullmatch(r'(テンプレ|テンプレート|入力フォーム|フォーム|入力)', t):
+        return build_input_template()
+
+    lines = [ln.strip() for ln in t.split('\n')]
+    date_iso = config.today_iso()
+    results = []
+    touched = []
+
+    for line in lines:
+        if not line:
+            continue
+        d = _only_date(line)
+        if d:
+            date_iso = d
+            continue
+        res = _apply_one_line(user_id, date_iso, line)
+        if res is not None:
+            results.append(res)
+            if date_iso not in touched:
+                touched.append(date_iso)
+
+    if not results:
+        return None
+    if len(results) == 1:
+        return results[0]
+
+    # 複数行まとめて入力された場合は、1行ずつの結果ではなく最終的な集計だけ返す
+    ok = sum(1 for r in results if r.startswith('✅'))
+    ng = [r for r in results if not r.startswith('✅')]
+    out = [f'✅ {ok}件を登録しました']
+    for date_iso in touched:
+        rep = _report(date_iso)
+        if rep:
+            out.append(f'{config.jp(date_iso)}　{_day_summary(rep)}')
+    if ng:
+        out.append('')
+        out.append('⚠️ 登録できなかったもの')
+        out.extend(ng)
+    out.append('')
+    out.append('（間違えたら「取り消し」）')
+    return '\n'.join(out)
+
+
+def build_input_template(date_iso=None):
+    """コピーして数字を書き入れて送り返すためのテンプレート。説明と本体を別メッセージで返す。"""
+    date_iso = date_iso or config.today_iso()
+    d = config.parse_date(date_iso)
+    wd = '月火水木金土日'[d.weekday()] if d else ''
+    master = _item_master()
+    staff = _staff_list()
+
+    def first(seq, fallback):
+        return seq[0] if seq else fallback
+
+    ing_vendor = first(master['vendors'].get('ingredient', []), '肉のハナマサ')
+    sup_vendor = first(master['vendors'].get('supplies', []), 'シモジマ')
+
+    guide = '\n'.join([
+        f'📋 {config.jp(date_iso)}({wd}) の入力テンプレート',
+        '',
+        '下のメッセージを長押し →「コピー」→',
+        '貼り付けて数字を入れて送り返してください。',
+        '',
+        '・使わない行は消してOK',
+        '・金額は税抜（売上だけ税込）',
+        '・空欄のままの行は無視されます',
+        '・行は増やしても大丈夫です',
+    ])
+
+    body_lines = [config.jp(date_iso), '売上 ']
+    for s in staff[:3]:
+        body_lines.append(f'シフト {s["name"]} 10:00 14:30')
+    body_lines.append(f'食材 {ing_vendor} お米 ')
+    body_lines.append(f'備品 {sup_vendor} タレ瓶 ')
+    body_lines.append('経費 ATM手数料 ')
+
+    return [guide, '\n'.join(body_lines)]
 
 
 def finance_help():
     return '\n'.join([
         '💰 LINEからの入力',
         '',
+        '「テンプレ」と送ると記入用のひな形が届きます。',
+        'コピーして数字を入れ、そのまま送り返せば',
+        '複数行まとめて登録できます。',
+        '',
+        '▼ 1行ずつ送る場合',
         '・売上 52000',
         '・食材 お米 1000',
         '・食材 肉のハナマサ お米 1000　← 仕入れ先も分ける場合',
@@ -561,18 +669,18 @@ def build_finance_reminder(date_iso=None):
         lines.append(f'未入力：{"・".join(missing)}')
 
     lines.append('')
-    lines.append('この画面にそのまま送れます：')
-    lines.append('　売上 52000')
-    lines.append('　シフト 都丸 10:00 14:30')
-    lines.append('　食材 肉のハナマサ お米 1000')
-    lines.append('（書き方は「入力ヘルプ」）')
+    lines.append('↓のテンプレートをコピーして、')
+    lines.append('数字を入れて送り返してください。')
+    lines.append('（使わない行は消してOK・空欄の行は無視されます）')
     lines.append('')
     lines.append(APP_URL)
-    return '\n'.join(lines)
+
+    # 2通目としてテンプレート本体を送る（そのままコピーして書き込めるように）
+    return [('\n'.join(lines)), build_input_template(date_iso)[1]]
 
 
 def send_finance_reminder(push_text, get_users):
-    """cronから呼ぶ。毎日16時の入力リマインド。"""
+    """cronから呼ぶ。毎日16時の入力リマインド（本文＋テンプレートの2通）。"""
     body = build_finance_reminder()
     for uid in get_users():
         push_text(uid, body)
