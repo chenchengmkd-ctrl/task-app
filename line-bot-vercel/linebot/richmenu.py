@@ -15,11 +15,12 @@ APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/'
 GUIDE_URL = 'https://chenchengmkd-ctrl.github.io/task-app/guide.html'
 
 # 1200x810の画像を 4列×2行（各 300x405）に分割したときの各ボタン。
-# 並びは画像（Canvasで描く CELLS）と必ず一致させること。
-# 文字列＝そのテキストを送信、URL_APP/URL_GUIDE＝リンクを開く。
+# 並びは画像（line-assets/richmenu-setup.html の CELLS）と必ず一致させること。
+# 文字列＝そのテキストを送信、URL_APP＝リンクを開く。
 # 定期タスク／資料／日報／週報は、ボタンからは外したがコマンドとしてはそのまま使える
 # （日報・週報は自動でも届くため、ボタンを減らす際にここを優先的に外した）。
-URL_APP, URL_GUIDE = object(), object()
+# マニュアルは毎日使うものではないためボタンから外した（「ヘルプ」コマンドから開ける）。
+URL_APP = object()
 AREAS = [
     (0, 0, '今日の予定'),
     (300, 0, '今日決める'),
@@ -28,7 +29,7 @@ AREAS = [
     (0, 405, '相談'),
     (300, 405, '振り返り'),
     (600, 405, URL_APP),
-    (900, 405, URL_GUIDE),
+    (900, 405, '収支'),
 ]
 CELL_W, CELL_H = 300, 405
 
@@ -42,8 +43,6 @@ def build_menu_definition():
     for x, y, message in AREAS:
         if message is URL_APP:
             action = {'type': 'uri', 'label': 'アプリ', 'uri': APP_URL}
-        elif message is URL_GUIDE:
-            action = {'type': 'uri', 'label': 'マニュアル', 'uri': GUIDE_URL}
         else:
             action = {'type': 'message', 'label': message, 'text': message}
         areas.append({

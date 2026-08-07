@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>リッチメニュー設定</title>
+<style>
+  body { font-family: system-ui, -apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif;
+         margin: 0; padding: 24px; background: #f5f6f8; color: #1f2430; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.lead { color: #6b7280; font-size: 13px; margin: 0 0 20px; }
+  canvas { width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 10px;
+           background: #fff; display: block; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 16px 0 8px; flex-wrap: wrap; }
+  input { flex: 1; min-width: 220px; padding: 10px 12px; font-size: 14px;
+          border: 1px solid #d1d5db; border-radius: 8px; }
+  button { padding: 10px 18px; font-size: 14px; font-weight: 700; color: #fff;
+           background: #1d4ed8; border: 0; border-radius: 8px; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  #log { white-space: pre-wrap; font-size: 12.5px; background: #fff; border: 1px solid #e5e7eb;
+         border-radius: 8px; padding: 12px; margin-top: 12px; min-height: 20px; }
+  .note { font-size: 12px; color: #6b7280; margin-top: 14px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>LINEリッチメニューの設定</h1>
+  <p class="lead">下の画像をそのままLINEに登録します。並びは <code>linebot/richmenu.py</code> の AREAS と一致させてあります。</p>
+
+  <canvas id="cv" width="1200" height="810"></canvas>
+
+  <div class="row">
+    <input id="key" type="password" placeholder="POLL_SECRET（Vercelの環境変数）" autocomplete="off">
+    <button id="go">LINEに登録する</button>
+  </div>
+  <div id="log">画像を描画しました。POLL_SECRET を入れて「LINEに登録する」を押してください。</div>
+
+  <p class="note">
+    ・登録すると既存のリッチメニューは削除され、これが全ユーザーの既定メニューになります。<br>
+    ・POLL_SECRET はこのページから送信先（自分のVercel）にのみ送られ、保存はされません。<br>
+    ・画像だけ欲しい場合は、キャンバスを右クリック →「画像を保存」。
+  </p>
+</div>
+
+<script>
+// richmenu.py の AREAS と同じ並び（4列×2行）
+const CELLS = [
+  { emoji: '📅', label: '今日の予定', sub: '進捗を見る',  color: '#2563EB' },
+  { emoji: '🎯', label: '今日決める', sub: 'やること選択', color: '#4F46E5' },
+  { emoji: '📋', label: '一覧',       sub: '未完了タスク', color: '#7C3AED' },
+  { emoji: '🔔', label: '通知',       sub: '期限を確認',   color: '#0EA5E9' },
+  { emoji: '💬', label: '相談',       sub: 'AIコーチ',     color: '#0D9488' },
+  { emoji: '📝', label: '振り返り',   sub: '一言メモ',     color: '#D97706' },
+  { emoji: '📱', label: 'アプリ',     sub: 'ボードを開く', color: '#475569' },
+  { emoji: '💰', label: '収支',       sub: '売上・損益',   color: '#16A34A' },
+];
+const W = 1200, H = 810, COLS = 4, ROWS = 2;
+const CW = W / COLS, CH = H / ROWS;
+const JP = "'Hiragino Sans','Yu Gothic','Meiryo',system-ui,sans-serif";
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function draw() {
+  const ctx = document.getElementById('cv').getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, W, H);
+
+  CELLS.forEach((c, i) => {
+    const col = i % COLS, row = Math.floor(i / COLS);
+    const x = col * CW, y = row * CH;
+    const cx = x + CW / 2;
+
+    // セルの区切り
+    ctx.strokeStyle = '#EDEFF3';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, CW - 2, CH - 2);
+
+    // アイコンの丸
+    const cy = y + 145;
+    ctx.fillStyle = c.color;
+    ctx.globalAlpha = 0.12;
+    ctx.beginPath(); ctx.arc(cx, cy, 74, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.font = `76px ${JP}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(c.emoji, cx, cy + 4);
+
+    // 見出し
+    ctx.fillStyle = '#1F2430';
+    ctx.font = `bold 44px ${JP}`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(c.label, cx, y + 288);
+
+    // 補足
+    ctx.fillStyle = '#98A0AF';
+    ctx.font = `26px ${JP}`;
+    ctx.fillText(c.sub, cx, y + 336);
+
+    // 下線のアクセント
+    ctx.fillStyle = c.color;
+    roundRect(ctx, cx - 34, y + 356, 68, 6, 3);
+    ctx.fill();
+  });
+}
+
+draw();
+
+document.getElementById('go').addEventListener('click', async () => {
+  const key = document.getElementById('key').value.trim();
+  const log = document.getElementById('log');
+  const btn = document.getElementById('go');
+  if (!key) { log.textContent = 'POLL_SECRET を入力してください。'; return; }
+  btn.disabled = true;
+  log.textContent = '送信中…';
+  try {
+    const image = document.getElementById('cv').toDataURL('image/png');
+    const res = await fetch(
+      'https://task-app-nine-liard.vercel.app/api/setup_richmenu?key=' + encodeURIComponent(key),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image }) }
+    );
+    const text = await res.text();
+    log.textContent = `HTTP ${res.status}\n${text}`;
+    if (res.ok) log.textContent += '\n\n✅ 完了しました。LINEのトーク画面を開き直すと新しいメニューになります。';
+  } catch (e) {
+    log.textContent = '送信に失敗しました：' + e;
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
