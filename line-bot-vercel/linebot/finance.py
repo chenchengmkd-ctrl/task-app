@@ -13,6 +13,7 @@ Webアプリ側（oneburg-finance/src/utils/storage.ts）が書いた JSON を�
 書き込みは「1日分のJSONを丸ごと上書き」する方式なので、Web画面で同じ日を同時に編集していると
 あとから書いたほうで上書きされる。単独利用を前提とした割り切り（取り消しは1回分だけ保持）。
 """
+import calendar
 import re
 from urllib.parse import quote
 
@@ -143,10 +144,60 @@ def build_daily_finance_report(date_iso=None):
         lines.append(f'売上　{_yen(m_rev)}')
         lines.append(f'費用　{_yen(m_exp)}')
         lines.append(f'損益　{_signed(m_rev - m_exp)}')
+        lines.extend(_budget_lines(month, m_rev, m_exp, date_iso))
 
     lines.append('')
     lines.append(entry_url(date_iso))
     return '\n'.join(lines)
+
+
+def _budget_for(month):
+    """その月に適用される予算（Webアプリの storage.budgetFor と同じ考え方）。未設定ならNone。"""
+    raw = _kv_get('budget') or {}
+    base = raw.get('default') or {}
+    over = (raw.get('months') or {}).get(month) or {}
+    revenue = over.get('revenue', base.get('revenue', 0)) or 0
+    expenses = {**(base.get('expenses') or {}), **(over.get('expenses') or {})}
+    total_expense = sum(int(expenses.get(c) or 0) for c in CATEGORY_LABEL)
+    if not revenue and not total_expense:
+        return None
+    return {'revenue': int(revenue), 'expenses': expenses, 'expenseTotal': total_expense}
+
+
+def _budget_lines(month, revenue_actual, expense_actual, today_iso=None):
+    """予実の進捗を数行のテキストで返す。予算未設定なら空リスト。"""
+    b = _budget_for(month)
+    if not b:
+        return []
+    today_iso = today_iso or config.today_iso()
+    y, m = int(month[:4]), int(month[5:7])
+    total_days = calendar.monthrange(y, m)[1]
+    if month < today_iso[:7]:
+        elapsed = total_days
+    elif month > today_iso[:7]:
+        elapsed = 0
+    else:
+        elapsed = min(total_days, int(today_iso[8:10]))
+    pace = elapsed / total_days if total_days else 0
+
+    def pct(actual, plan):
+        return round(actual / plan * 100) if plan else None
+
+    lines = ['', f'▼ 予算（{elapsed}/{total_days}日経過 {round(pace * 100)}%）']
+    r_pct = pct(revenue_actual, b['revenue'])
+    if r_pct is not None:
+        mark = '⚠️' if r_pct < round(pace * 100) else ''
+        lines.append(f'売上　{r_pct}%（目標 {b["revenue"]:,}円）{mark}')
+    e_pct = pct(expense_actual, b['expenseTotal'])
+    if e_pct is not None:
+        mark = '⚠️' if e_pct > round(pace * 100) else ''
+        lines.append(f'費用　{e_pct}%（予算 {b["expenseTotal"]:,}円）{mark}')
+        remain = b['expenseTotal'] - expense_actual
+        lines.append(f'　費用の残り {remain:,}円')
+    target_profit = b['revenue'] - b['expenseTotal']
+    if target_profit:
+        lines.append(f'目標損益　{_signed(target_profit)}')
+    return lines
 
 
 def build_month_finance_report(month=None):
@@ -173,6 +224,7 @@ def build_month_finance_report(month=None):
             lines.append(f'　{label}　{totals[k]:,}円')
     lines.append('')
     lines.append(f'損益　{_signed(m_rev - m_exp)}')
+    lines.extend(_budget_lines(month, m_rev, m_exp))
     lines.append('')
     lines.append(APP_URL)
     return '\n'.join(lines)
