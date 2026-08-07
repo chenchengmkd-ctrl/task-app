@@ -390,6 +390,26 @@
     .mx-task { font-size: 11px; }
   }
 
+  /* ---------- ゴミ箱 ---------- */
+  .trash-bar { margin-bottom: 10px; }
+  #trashList { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  .trash-item {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; box-shadow: var(--shadow);
+  }
+  .trash-main { flex: 1; min-width: 160px; }
+  .trash-title { font-weight: 600; font-size: 14px; word-break: break-word; }
+  .trash-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .trash-actions { display: flex; gap: 6px; flex: none; }
+  .trash-actions .btn { padding: 5px 11px; font-size: 12px; white-space: nowrap; }
+  .btn.danger { background: var(--high); color: #fff; border: 0; }
+  .btn.danger:hover { filter: brightness(.92); }
+  #trashCount:not(:empty) {
+    display: inline-block; min-width: 17px; padding: 0 5px; margin-left: 2px;
+    background: var(--high); color: #fff; border-radius: 999px; font-size: 11px;
+  }
+
   footer { margin-top: 14px; text-align: center; color: var(--muted); font-size: 12px; }
   footer button {
     background: none; border: none; color: var(--muted); cursor: pointer;
@@ -417,6 +437,7 @@
     <button type="button" class="tab active" data-view="board">📋 ボード</button>
     <button type="button" class="tab" data-view="matrix">🎯 優先順位</button>
     <button type="button" class="tab" data-view="recurring">🔁 定期タスク</button>
+    <button type="button" class="tab" data-view="trash">🗑 ゴミ箱 <span id="trashCount"></span></button>
   </div>
 
   <section id="boardView">
@@ -433,10 +454,9 @@
         <option value="waiting">対応待ち</option>
         <option value="pending">ペンディング</option>
       </select>
-      <select id="priority" title="優先度">
-        <option value="mid">優先度: 中</option>
-        <option value="high">優先度: 高</option>
-        <option value="low">優先度: 低</option>
+      <select id="priority" title="重要度（結果への影響の大きさ）">
+        <option value="low">重要度: 低</option>
+        <option value="high">重要度: 高</option>
       </select>
       <input type="date" id="due" title="期限">
       <input type="time" id="dueTime" title="時刻（任意）">
@@ -514,10 +534,9 @@
           <option value="6">土曜</option>
         </select>
         <select id="recMonthday" title="日にち" hidden></select>
-        <select id="recPriority" title="優先度">
-          <option value="mid">優先度: 中</option>
-          <option value="high">優先度: 高</option>
-          <option value="low">優先度: 低</option>
+        <select id="recPriority" title="重要度（結果への影響の大きさ）">
+          <option value="low">重要度: 低</option>
+          <option value="high">重要度: 高</option>
         </select>
         <input type="text" id="recEstimate" placeholder="見積り (例: 30分)">
         <input type="date" id="recStart" title="開始日">
@@ -526,6 +545,17 @@
     </form>
     <p class="rec-hint">💡 登録すると、開始日以降に <b>毎日 / 毎週◯曜 / 毎月◯日</b> のペースで、指定した時刻（未指定なら毎朝の通知と同じ時刻）にLINEでリマインドが届きます。ボードへの自動追加はされません。「今すぐ作成」を押すとその場でボードの未着手に手動追加できます。</p>
     <ul id="recList"></ul>
+  </section>
+
+  <section id="trashView" hidden>
+    <div class="mx-intro">
+      「×」で消したタスクはここに入ります。<b>まだ完全には消えていません</b>。<br>
+      <b>元に戻す</b>でボードに復帰、<b>完全に削除</b>でデータベースからも消えます（こちらは取り消せません）。
+    </div>
+    <div class="trash-bar">
+      <button type="button" class="chip" id="emptyTrashBtn">🗑 ゴミ箱を空にする（完全に削除）</button>
+    </div>
+    <ul id="trashList"></ul>
   </section>
 
   <footer>
@@ -554,8 +584,12 @@ let searchText = "";
 let editingId = null;
 let editFocus = null;   // 編集を開いたときに最初にフォーカスする項目
 
-const PRIO_LABEL = { high: "高", mid: "中", low: "低" };
-const PRIO_ORDER = { high: 0, mid: 1, low: 2 };
+// 優先度＝ダブルマトリックスの「重要度」。本にならって高／低の2段階だけにしている。
+// （旧データの "mid" は load() で "low" に寄せる。マトリックス上ではもともと低と同じ扱いだった）
+const PRIO_LABEL = { high: "高", low: "低" };
+const PRIO_ORDER = { high: 0, low: 1 };
+const PRIO_KEYS = ["high", "low"];
+function normPrio(p) { return p === "high" ? "high" : "low"; }
 const RECUR_LABEL = { none: "", daily: "毎日", weekly: "毎週", monthly: "毎月" };
 const STATUS_LABEL = { todo: "未着手", doing: "着手中", waiting: "対応待ち", pending: "ペンディング" };
 const STATUS_CYCLE = ["todo", "doing", "waiting", "pending"];
@@ -569,6 +603,7 @@ function load() {
   tasks = parsed.map(t => ({
     note: "", estimate: "", recurrence: "none", status: "todo", deleted: false, dueTime: "",
     ...t,
+    priority: normPrio(t.priority),   // 優先度は高／低の2段階に寄せる（旧「中」は低扱い）
     tags: Array.isArray(t.tags) ? t.tags : [],
     updated: t.updated || t.created || 0
   }));
@@ -731,6 +766,10 @@ function toggleTask(id) {
   t.updated = Date.now();
   save(); render();
 }
+/* 削除は2段階。
+   1) deleteTask …… ゴミ箱へ移すだけ（deleted=true）。データベースには残るので元に戻せる。
+   2) hardDeleteTask …… Supabaseの行ごと消す。取り消せない。
+   ※1)だけで消したつもりにならないよう、ゴミ箱タブから2)を実行できるようにしてある。 */
 function deleteTask(id) {
   const t = tasks.find(t => t.id === id);
   if (!t) return;
@@ -738,6 +777,30 @@ function deleteTask(id) {
   t.deleted = true;
   t.updated = Date.now();
   save(); render();
+  toast("🗑 ゴミ箱に移しました（ゴミ箱タブから元に戻せます）");
+}
+function restoreTask(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  t.deleted = false;
+  t.updated = Date.now();
+  save(); render();
+  toast("↩️ 元に戻しました");
+}
+// Supabaseから行ごと消す。ローカルからも取り除く（消し損ねると次回同期で復活してしまうため）
+async function hardDeleteTasks(ids) {
+  if (!ids.length) return;
+  try {
+    const { error } = await db.from('tasks').delete().in('id', ids);
+    if (error) throw error;
+  } catch (e) {
+    console.error('hard delete error:', e);
+    toast("⚠️ 完全削除に失敗しました（通信エラー）。もう一度お試しください");
+    return;
+  }
+  tasks = tasks.filter(t => !ids.includes(t.id));
+  save(); render();
+  toast(`✅ ${ids.length}件を完全に削除しました`);
 }
 /* 状態・優先度・期限を選んで変更（バッジのポップアップから呼ばれる） */
 function setTaskStatus(id, key) {
@@ -823,7 +886,7 @@ function openStatusMenu(anchor, t) {
 }
 
 function openPriorityMenu(anchor, t) {
-  const opts = [{ key: "high", label: "高" }, { key: "mid", label: "中" }, { key: "low", label: "低" }];
+  const opts = PRIO_KEYS.map(k => ({ key: k, label: PRIO_LABEL[k] }));
   const html = opts.map(o => {
     const current = t.priority === o.key;
     return `<button type="button" data-key="${o.key}" class="${current ? "current" : ""}">
@@ -1221,6 +1284,48 @@ function render() {
 
   // 優先順位マトリックスも同じデータから描き直す（タブを切り替えたときにズレないように）
   renderMatrices();
+  renderTrash();
+}
+
+function renderTrash() {
+  const list = document.getElementById("trashList");
+  const trashed = tasks.filter(t => t.deleted);
+  document.getElementById("trashCount").textContent = trashed.length ? String(trashed.length) : "";
+  document.getElementById("emptyTrashBtn").disabled = trashed.length === 0;
+  list.innerHTML = "";
+
+  if (!trashed.length) {
+    list.innerHTML = `<li class="empty"><span class="emoji">🗑</span>ゴミ箱は空です</li>`;
+    return;
+  }
+  // 最近消したものから並べる
+  trashed.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  for (const t of trashed) {
+    const li = document.createElement("li");
+    li.className = "trash-item";
+    const when = t.updated ? new Date(t.updated) : null;
+    const parts = [];
+    if (when) parts.push(`削除: ${when.getMonth() + 1}/${when.getDate()}`);
+    if (t.due) parts.push(`期限: ${fmtDue(t.due).text}`);
+    if (t.estimate) parts.push(`目安: ${t.estimate}`);
+    if (t.done) parts.push("完了済み");
+    li.innerHTML = `
+      <div class="trash-main">
+        <div class="trash-title">${escapeHtml(t.title)}</div>
+        <div class="trash-meta">${escapeHtml(parts.join("　/　"))}</div>
+      </div>
+      <div class="trash-actions">
+        <button type="button" class="btn ghost restore">↩️ 元に戻す</button>
+        <button type="button" class="btn danger hard">完全に削除</button>
+      </div>`;
+    li.querySelector(".restore").addEventListener("click", () => restoreTask(t.id));
+    li.querySelector(".hard").addEventListener("click", () => {
+      if (confirm(`「${t.title}」を完全に削除します。\nこの操作は取り消せません。よろしいですか？`)) {
+        hardDeleteTasks([t.id]);
+      }
+    });
+    list.appendChild(li);
+  }
 }
 
 /* 定期タスク列のカードを組み立て */
@@ -1316,9 +1421,8 @@ function buildEditForm(t) {
         <option value="pending">ペンディング</option>
       </select>
       <select class="e-prio">
-        <option value="high">優先度: 高</option>
-        <option value="mid">優先度: 中</option>
-        <option value="low">優先度: 低</option>
+        <option value="high">重要度: 高</option>
+        <option value="low">重要度: 低</option>
       </select>
       <input type="date" class="e-due" value="${t.due || ""}">
       <input type="time" class="e-due-time" title="時刻（任意）" value="${escapeHtml(t.dueTime || "")}">
@@ -1409,7 +1513,7 @@ function escapeHtml(s) {
 function taskToRow(t) {
   return {
     id: t.id, title: t.title,
-    status: t.status || 'todo', priority: t.priority || 'mid',
+    status: t.status || 'todo', priority: normPrio(t.priority),
     due: t.due || null, due_time: t.dueTime || null, estimate: t.estimate || '',
     recurrence: t.recurrence || 'none', note: t.note || '',
     tags: t.tags || [], done: t.done || false,
@@ -1423,7 +1527,7 @@ function taskToRow(t) {
 function rowToTask(row) {
   return {
     id: row.id, title: row.title,
-    status: row.status || 'todo', priority: row.priority || 'mid',
+    status: row.status || 'todo', priority: normPrio(row.priority),
     due: row.due || null, dueTime: row.due_time || '', estimate: row.estimate || '',
     recurrence: row.recurrence || 'none', note: row.note || '',
     tags: row.tags || [], done: row.done || false,
@@ -1446,7 +1550,7 @@ async function syncAllToSupabase() {
         weekday: r.weekday != null ? Number(r.weekday) : null,
         monthday: r.monthday || null, next_date: r.next || null,
         remind_time: r.remindTime || null,
-        priority: r.priority || 'mid', estimate: r.estimate || ''
+        priority: normPrio(r.priority), estimate: r.estimate || ''
       })));
     }
   } catch (e) { console.error('Supabase sync error:', e); }
@@ -1480,7 +1584,7 @@ async function pullFromSupabase() {
         id: r.id, title: r.title, recurrence: r.recurrence,
         weekday: r.weekday, monthday: r.monthday, next: r.next_date,
         remindTime: r.remind_time || null,
-        priority: r.priority || 'mid', estimate: r.estimate || '',
+        priority: normPrio(r.priority), estimate: r.estimate || '',
         created: new Date(r.created_at).getTime()
       }));
       changed = true;
@@ -1573,14 +1677,27 @@ document.getElementById("syncBtn").addEventListener("click", async () => {
   toast("同期しました");
 });
 
+// 以前はローカルの配列から取り除くだけだったため、Supabaseには残ったままで
+// 次回の同期でそのまま復活してしまっていた。ゴミ箱への移動（deleted=true）に統一する。
 document.getElementById("clearDone").addEventListener("click", () => {
-  if (tasks.some(t => t.done) && confirm("完了したタスクをすべて削除しますか?")) {
-    tasks = tasks.filter(t => !t.done); save(); render();
-  }
+  const done = tasks.filter(t => t.done && !t.deleted);
+  if (!done.length) { toast("完了したタスクはありません"); return; }
+  if (!confirm(`完了した ${done.length} 件をゴミ箱に移しますか？\n（ゴミ箱から元に戻せます）`)) return;
+  const now = Date.now();
+  done.forEach(t => { t.deleted = true; t.updated = now; });
+  save(); render();
+  toast(`🗑 ${done.length}件をゴミ箱に移しました`);
+});
+
+document.getElementById("emptyTrashBtn").addEventListener("click", () => {
+  const ids = tasks.filter(t => t.deleted).map(t => t.id);
+  if (!ids.length) return;
+  if (!confirm(`ゴミ箱の ${ids.length} 件を完全に削除します。\nこの操作は取り消せません。よろしいですか？`)) return;
+  hardDeleteTasks(ids);
 });
 
 // タブ切り替え
-const VIEW_IDS = ["boardView", "matrixView", "recurringView"];
+const VIEW_IDS = ["boardView", "matrixView", "recurringView", "trashView"];
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));

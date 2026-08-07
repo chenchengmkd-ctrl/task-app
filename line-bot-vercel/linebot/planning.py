@@ -59,7 +59,7 @@ def _candidates(plan_date_iso):
         item = {'id': r['id'], 'title': str(r['title']),
                 'status': config.STATUS_LABEL_JP.get(r.get('status'), r.get('status') or '未着手'),
                 'due': r.get('due') or '',
-                'priority': r.get('priority') or 'mid',
+                'priority': r.get('priority') or 'low',
                 'estimate': r.get('estimate') or ''}
         if not item['due']:
             no_due.append(item)

@@ -119,7 +119,7 @@ def sort_key(task, today_iso):
     """
     minutes = parse_estimate_minutes(task.get('estimate'))
     is_urgent = urgency_high(task.get('due'), today_iso)
-    priority = task.get('priority') or 'mid'
+    priority = task.get('priority') or 'low'
     first = first_matrix_rank(priority, is_urgent)
     total = double_matrix_rank(priority, is_urgent, minutes)
     return (total, first, minutes if minutes is not None else 10 ** 6, task.get('due') or '9999-99-99')

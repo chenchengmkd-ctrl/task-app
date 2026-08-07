@@ -127,7 +127,7 @@ AGENT_TOOLS = [{
                 'type': 'OBJECT',
                 'properties': {
                     'task_title': {'type': 'STRING', 'description': '優先度変更の対象タスクのタイトル（正式なタイトル。ユーザーが一部の言葉やキーワードだけで指定していても、渡されたタスク一覧から該当するものを選び、その一覧にある通りの完全なタイトルをここに入れること）'},
-                    'new_priority': {'type': 'STRING', 'enum': ['high', 'mid', 'low'], 'description': '変更後の優先度'},
+                    'new_priority': {'type': 'STRING', 'enum': ['high', 'low'], 'description': '変更後の重要度（結果への影響が大きいものだけhigh）'},
                 },
                 'required': ['task_title', 'new_priority'],
             },
@@ -395,7 +395,7 @@ TOOLS_REPRIORITIZE = [{
                         'type': 'OBJECT',
                         'properties': {
                             'task_title': {'type': 'STRING', 'description': 'タスク一覧の名称と完全一致'},
-                            'priority': {'type': 'STRING', 'enum': ['high', 'mid', 'low'], 'description': '新しい優先度'},
+                            'priority': {'type': 'STRING', 'enum': ['high', 'low'], 'description': '新しい重要度'},
                         },
                         'required': ['task_title', 'priority'],
                     },

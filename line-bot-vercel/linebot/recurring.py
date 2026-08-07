@@ -211,7 +211,7 @@ def handle_create_recurring_task(input_args, intro):
         'weekday': int(weekday) if recurrence == 'weekly' else None,
         'monthday': str(monthday) if recurrence == 'monthly' else None,
         'next_date': next_date, 'remind_time': remind_time or None,
-        'priority': 'mid', 'estimate': '', 'created_at': config.now_iso(),
+        'priority': 'low', 'estimate': '', 'created_at': config.now_iso(),
     }])
     if not ok:
         return '⚠️ 定期タスクの登録に失敗しました。時間をおいて再度お試しください。'

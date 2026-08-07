@@ -37,7 +37,7 @@ def build_agent_context():
         est = f" 目安:{t['estimate']}" if t.get('estimate') else ' 目安:未設定'
         minutes = priority_mod.parse_estimate_minutes(t.get('estimate'))
         rank = priority_mod.double_matrix_rank(
-            t.get('priority') or 'mid', priority_mod.urgency_high(t.get('due'), today_iso), minutes)
+            t.get('priority') or 'low', priority_mod.urgency_high(t.get('due'), today_iso), minutes)
         task_lines.append(
             f"・{t['title']}（状態:{status}{due} 優先度:{t['priority']}{est} 最終更新:{days}日前"
             f" ／ダブルマトリックス総合{rank}位:{priority_mod.rank_label(rank)}）"
@@ -128,7 +128,7 @@ def handle_propose_subtasks(user_id, input_args, intro):
 def add_subtasks_to_app(parent_title, subtasks):
     now = config.now_iso()
     rows = [{
-        'id': config.new_id(), 'title': title, 'status': 'todo', 'priority': 'mid', 'due': None, 'due_time': None,
+        'id': config.new_id(), 'title': title, 'status': 'todo', 'priority': 'low', 'due': None, 'due_time': None,
         'estimate': '', 'recurrence': 'none', 'note': '', 'tags': [],
         'done': False, 'deleted': False, 'from_line': True, 'updated_at': now,
     } for title in subtasks]
@@ -355,18 +355,19 @@ def handle_delete_task(input_args, intro):
     if len(matches) > 1:
         return f'⚠️「{title}」に一致するタスクが複数あります。アプリ側で確認・削除してください。'
 
+    # LINEからの削除はゴミ箱へ移すだけ（取り消せる）。完全削除はアプリの「ゴミ箱」タブから行う
     updated = patch_supabase('tasks', f"id=eq.{quote(matches[0]['id'])}", {'deleted': True, 'updated_at': config.now_iso()})
     if updated is None:
         return f'⚠️「{title}」の削除に失敗しました。'
 
-    return f'🗑️「{title}」を削除しました。'
+    return f'🗑️「{title}」をゴミ箱に移しました。\n（アプリの「🗑 ゴミ箱」タブから元に戻せます）'
 
 
 def handle_update_task_priority(input_args, intro):
     a = input_args or {}
     title = str(a.get('task_title') or '').strip()
     new_priority = str(a.get('new_priority') or '').strip()
-    if not title or new_priority not in ('high', 'mid', 'low'):
+    if not title or new_priority not in ('high', 'low'):
         return '⚠️ 優先度変更の内容を理解できませんでした。'
 
     matches = tasks_mod.find_task_by_title(title)
@@ -379,7 +380,7 @@ def handle_update_task_priority(input_args, intro):
     if updated is None:
         return f'⚠️「{title}」の更新に失敗しました。'
 
-    label = {'high': '高', 'mid': '中', 'low': '低'}[new_priority]
+    label = {'high': '高', 'low': '低'}[new_priority]
     return f'✅「{title}」の優先度を{label}に変更しました。'
 
 
@@ -465,7 +466,7 @@ def propose_reprioritization(user_id):
 
     set_state(f'PENDING_REPRIORITIZE_{user_id}', {'assignments': valid, 'createdAt': config.now_ms()})
 
-    label = {'high': '高', 'mid': '中', 'low': '低'}
+    label = {'high': '高', 'low': '低'}
     lines = [f"・{a['task_title']}：{label[priority_map[a['task_title']]]}→{label[a['priority']]}" for a in valid]
     return '🔀 優先順位の見直し案\n' + '\n'.join(lines) + '\n\n適用してよければ「はい」と送ってください。'
 

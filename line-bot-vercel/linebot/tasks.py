@@ -134,7 +134,7 @@ def add_line(user_id, text, estimate=''):
     estimate = str(estimate or '').strip()
     row_id = config.new_id()
     row = {
-        'id': row_id, 'title': title, 'status': 'todo', 'priority': 'mid',
+        'id': row_id, 'title': title, 'status': 'todo', 'priority': 'low',
         'due': due or None, 'due_time': due_time or None,
         'estimate': estimate, 'recurrence': 'none', 'note': '', 'tags': [],
         'done': False, 'deleted': False, 'from_line': True,
@@ -296,7 +296,7 @@ NUMBERED_ACTIONS = {
     '対応待ち': 'waiting', '待ち': 'waiting',
     '未着手': 'todo',
 }
-_ACTION_LABEL = {'delete': '削除', 'done': '完了', 'pending': 'ペンディング',
+_ACTION_LABEL = {'delete': 'ゴミ箱へ', 'done': '完了', 'pending': 'ペンディング',
                  'doing': '着手中', 'waiting': '対応待ち', 'todo': '未着手'}
 _ZEN2HAN = str.maketrans('０１２３４５６７８９', '0123456789')
 
