@@ -372,6 +372,17 @@
   .mx-task {
     background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
     padding: 5px 7px; font-size: 12px; line-height: 1.45;
+    cursor: grab;
+  }
+  .mx-task:active { cursor: grabbing; }
+  .mx-task.dragging { opacity: .4; }
+  /* ドラッグ中に落とせる場所をはっきり見せる */
+  .mx-cell.over, .mx-tray.over {
+    border-color: var(--accent); border-style: solid;
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+  .status-menu .menu-note {
+    font-size: 11px; color: var(--muted); padding: 3px 10px 6px; line-height: 1.5;
   }
   .mx-cell.mx-top .mx-task { background: var(--card); }
   .mx-task-title { font-weight: 600; word-break: break-word; }
@@ -492,7 +503,8 @@
       未完了タスクを「優先順位のダブルマトリックス」で配置しています。<br>
       <b>1段階目</b>は<b>緊急度より重要度</b>を優先。<b>2段階目</b>は、重要度・緊急度が低くても
       <b>すぐ終わるものを先に</b>片づけます。<br>
-      各タスクの<b>優先度・期限・見積り</b>のバッジを押すとその場で変更でき、位置がすぐ入れ替わります。
+      タスクは<b>マウスでつまんで別のマスへ移動できます</b>（重要度はその場で変わり、期限・見積りは選ぶ画面が出ます）。<br>
+      各タスクの<b>重要度・期限・見積り</b>のバッジを押して直接変えることもできます。
     </div>
 
     <div class="mx-block">
@@ -1074,10 +1086,17 @@ function setTaskEstimate(id, value) {
   t.updated = Date.now();
   save(); render();
 }
-function openEstimateMenu(anchor, t) {
-  const html = MX_ESTIMATE_CHOICES.map(v =>
+// band を渡すと「短時間だけ」「長時間だけ」に選択肢を絞る（マトリックスへドラッグしたときに使う）
+function openEstimateMenu(anchor, t, band) {
+  let choices = MX_ESTIMATE_CHOICES;
+  if (band === "short") choices = choices.filter(v => parseEstimateMinutes(v) <= MX_SHORT_MINUTES);
+  if (band === "long")  choices = choices.filter(v => parseEstimateMinutes(v) >  MX_SHORT_MINUTES);
+  const head = band
+    ? `<div class="menu-note">${band === "short" ? "すぐ終わる" : "時間がかかる"}ほうへ移動します。目安は？</div>`
+    : "";
+  const html = head + choices.map(v =>
     `<button type="button" data-v="${v}"${(t.estimate || "") === v ? ' class="current"' : ""}>⏱ ${v}</button>`
-  ).join("") + `<button type="button" data-v="">✕ 見積りを消す</button>`;
+  ).join("") + (band ? "" : `<button type="button" data-v="">✕ 見積りを消す</button>`);
   const menu = openMenu(anchor, "est:" + t.id, "status-menu", html);
   if (!menu) return;
   menu.querySelectorAll("button").forEach(b => {
@@ -1085,10 +1104,113 @@ function openEstimateMenu(anchor, t) {
   });
 }
 
+/* ---------- マトリックス上のドラッグ移動 ----------
+   マスに落としたとき、そのマスが表す位置になるよう値を変える。
+   ・重要度は high／low を入れるだけなので、そのまま確定させる。
+   ・緊急度は「期限」、かかる時間は「見積り」から決まる値で、
+     こちらが勝手に日付や時間をでっち上げるとユーザーの予定を壊すので、
+     いつもの選択メニューを出して選んでもらう。 */
+let mxDragId = null;
+
+// 再描画で元の要素が消えてもメニューを同じ位置に出せるよう、座標だけを持つ仮のアンカーを作る
+function rectAnchor(rect) { return { getBoundingClientRect: () => rect }; }
+
+function dropOnMatrixCell(taskId, which, row, col, cellRect) {
+  const t = tasks.find(x => x.id === taskId);
+  if (!t) return;
+  const minutes = parseEstimateMinutes(t.estimate);
+  const urgent = mxIsUrgent(t.due);
+
+  if (which === 1) {
+    // 図表4：縦＝重要度、横＝緊急度（期限）
+    const wantPrio = row === 0 ? "high" : "low";
+    const wantUrgent = col === 0;
+    const prioChanged = t.priority !== wantPrio;
+    if (prioChanged) setTaskPriority(t.id, wantPrio);   // ここで再描画が走る
+    if (wantUrgent !== urgent) {
+      openDueMenu(rectAnchor(cellRect), t);
+      toast(wantUrgent ? "期限を3日以内にすると「緊急度：高」になります" : "期限を4日以上先にすると「緊急度：低」になります");
+    } else if (!prioChanged) {
+      toast("すでにこの位置です");
+    }
+    return;
+  }
+
+  // 図表5：横＝重要度＆緊急度（重要度で切り替える）、縦＝かかる時間（見積り）
+  const wantPrio = col === 0 ? "high" : "low";
+  const wantShort = row === 0;
+  const isShort = minutes !== null && minutes <= MX_SHORT_MINUTES;
+  const prioChanged = t.priority !== wantPrio;
+  if (prioChanged) setTaskPriority(t.id, wantPrio);
+  if (wantShort !== isShort) {
+    openEstimateMenu(rectAnchor(cellRect), t, wantShort ? "short" : "long");
+  } else if (!prioChanged) {
+    toast("すでにこの位置です");
+  }
+}
+
+// 「見積り未設定」トレイに落としたら見積りを消す（図表5から外して考え直したいとき用）
+function attachTrayDrop() {
+  const tray = document.getElementById("mxNoEstimate");
+  tray.addEventListener("dragover", e => {
+    if (!mxDragId) return;
+    e.preventDefault();
+    tray.classList.add("over");
+  });
+  tray.addEventListener("dragleave", e => {
+    if (!tray.contains(e.relatedTarget)) tray.classList.remove("over");
+  });
+  tray.addEventListener("drop", e => {
+    e.preventDefault();
+    tray.classList.remove("over");
+    const id = e.dataTransfer.getData("text/plain") || mxDragId;
+    const t = id && tasks.find(x => x.id === id);
+    if (!t) return;
+    if (!t.estimate) { toast("すでに見積り未設定です"); return; }
+    setTaskEstimate(id, "");
+    toast("⏱ 見積りを消しました");
+  });
+}
+
+function attachMatrixDrop(cell, which, row, col) {
+  cell.addEventListener("dragover", e => {
+    if (!mxDragId) return;
+    e.preventDefault();
+    cell.classList.add("over");
+  });
+  cell.addEventListener("dragleave", e => {
+    if (!cell.contains(e.relatedTarget)) cell.classList.remove("over");
+  });
+  cell.addEventListener("drop", e => {
+    e.preventDefault();
+    cell.classList.remove("over");
+    const id = e.dataTransfer.getData("text/plain") || mxDragId;
+    if (id) dropOnMatrixCell(id, which, row, col, cell.getBoundingClientRect());
+  });
+}
+
 // マトリックスの1マス分のタスクカード（バッジを押すとその場で分類を変えられる）
 function buildMatrixCard(t) {
   const el = document.createElement("div");
   el.className = "mx-task";
+  el.setAttribute("draggable", "true");
+  el.addEventListener("dragstart", e => {
+    mxDragId = t.id;
+    el.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", t.id);
+    closeActiveMenu();
+    // 見積りを消す受け皿として、空でもドラッグ中だけは出しておく
+    document.getElementById("mxNoEstimate").hidden = false;
+  });
+  el.addEventListener("dragend", () => {
+    mxDragId = null;
+    el.classList.remove("dragging");
+    document.querySelectorAll(".mx-cell.over, .mx-tray.over").forEach(c => c.classList.remove("over"));
+    // 中身が無ければ元どおり隠す（ドロップで再描画された場合はそちらの判定が優先される）
+    const tray = document.getElementById("mxNoEstimate");
+    if (!tray.querySelector(".mx-task")) tray.hidden = true;
+  });
   const f = t.due ? fmtDue(t.due) : null;
   const dueText = f ? `📅 ${f.text}` : "📅 期限なし";
   el.innerHTML = `
@@ -1130,6 +1252,7 @@ function renderMatrixGrid(el, spec) {
     add("mx-rowlabel", spec.rowLabels[r]);
     for (let c = 0; c < 2; c++) {
       const cell = add("mx-cell" + (r === spec.topRow ? " mx-top" : ""));
+      attachMatrixDrop(cell, spec.which, r, c);
       const rank = spec.ranks[r][c];
       const head = document.createElement("div");
       head.className = "mx-rank";
@@ -1181,6 +1304,7 @@ function renderMatrices() {
   sortCell(noEst);
 
   renderMatrixGrid(document.getElementById("matrix1"), {
+    which: 1,
     colAxis: "緊急度", colLabels: ["高", "低"],
     rowAxis: "重要度", rowLabels: ["高", "低"],
     ranks: [[1, 2], [3, 4]], topRow: 0,
@@ -1188,6 +1312,7 @@ function renderMatrices() {
     buckets: b1,
   });
   renderMatrixGrid(document.getElementById("matrix2"), {
+    which: 2,
     colAxis: "重要度＆緊急度", colLabels: ["高", "低"],
     rowAxis: "かかる時間", rowLabels: ["短", "長"],
     ranks: [[1, 2], [3, 4]], topRow: 0,
@@ -1197,8 +1322,12 @@ function renderMatrices() {
 
   const tray = document.getElementById("mxNoEstimate");
   const trayList = document.getElementById("mxNoEstimateList");
-  tray.hidden = noEst.length === 0;
+  // 見積りが全部埋まっていても、ドラッグ中はここへ戻せるよう表示しておく
+  tray.hidden = noEst.length === 0 && !mxDragId;
   trayList.innerHTML = "";
+  if (!noEst.length) {
+    trayList.innerHTML = `<div class="mx-empty">（ここに落とすと見積りを消せます）</div>`;
+  }
   noEst.forEach(t => trayList.appendChild(buildMatrixCard(t)));
 }
 
@@ -1763,6 +1892,7 @@ loadRecurring();
 loadHiddenCols();
 buildColToggleMenu();
 initRecForm();
+attachTrayDrop();
 render();
 renderRecurring();
 pullFromSupabase();
