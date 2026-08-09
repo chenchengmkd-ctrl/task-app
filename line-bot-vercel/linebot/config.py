@@ -33,6 +33,8 @@ GITHUB_REPO = _env('GITHUB_REPO')
 GOOGLE_SERVICE_ACCOUNT_JSON = _raw_env('GOOGLE_SERVICE_ACCOUNT_JSON')
 GOOGLE_CALENDAR_ID = _env('GOOGLE_CALENDAR_ID')
 
+APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/'   # タスク管理アプリ（LINEで羅列せずアプリに誘導する時に使う）
+
 DAY_START = '07:00'          # 「空き時間」を数えはじめる時刻
 DAY_END = '23:00'            # 「空き時間」を数え終える時刻
 MIN_FREE_MINUTES = 30        # これより短い空きは数えない

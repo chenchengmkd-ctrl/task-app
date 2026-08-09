@@ -680,26 +680,17 @@ def send_agent_checkin(push_text_fn, get_users_fn):
             push_text_fn(uid, '🧭 進捗チェックイン\n\n' + reply)
         push_text_fn(uid, reports_mod.build_daily_report(uid))
 
-    # 期限未設定タスクの棚卸し（すでに確認待ちがあれば重複して聞かない）
-    # ペンディング状態のタスクは、期限をあえて決めずに保留しているものなので対象から除く
+    # 期限未設定タスクの棚卸し。以前は全部並べていたが、毎晩同じ顔ぶれが長々と続いて読み飛ばされていたため、
+    # 件数だけ伝えてアプリでまとめて設定してもらう形に変えた。
+    # ペンディング状態のタスクは、期限をあえて決めずに保留しているものなので対象から除く。
     no_due = get_supabase(
         'tasks',
-        'done=eq.false&deleted=eq.false&due=is.null&status=neq.pending&select=id,title&limit=10',
+        'done=eq.false&deleted=eq.false&due=is.null&status=neq.pending&select=id',
     )
     if no_due:
-        from . import tasks as tasks_mod
+        msg = (f'📅 期限が未設定のタスクが{len(no_due)}件あります。\n'
+               'アプリを開いてまとめて決めてしまいましょう。\n' + config.APP_URL)
         for uid in get_users_fn():
-            if get_state(f'PENDING_DUE_{uid}'):
-                continue
-            set_state(f'PENDING_DUE_{uid}', {
-                'mode': 'batch',
-                'tasks': [{'id': t['id'], 'title': t['title']} for t in no_due],
-                'createdAt': config.now_ms(),
-            })
-            # 日次レポートの番号の続きとして採番し、「12明日」のように番号で期限を送れるようにする
-            numbered = tasks_mod.append_to_last_list(uid, no_due)
-            msg = ('📅 期限未設定のタスク\n' + '\n'.join(f"{it['num']}. {it['title']}" for it in numbered) +
-                   '\n\n番号と期限を送れば設定できます（例：1明日／2を6/30／3明日15時）。不要なら「なし」。')
             push_text_fn(uid, msg)
 
     # 優先順位の見直し提案（別メッセージ。すでに確認待ちがあれば重複して提案しない）

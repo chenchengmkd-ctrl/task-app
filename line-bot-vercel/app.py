@@ -11,9 +11,8 @@ import requests
 
 from linebot import config
 from linebot.router import handle_event
-from linebot.tasks import send_reminders, check_timed_reminders
+from linebot.tasks import check_timed_reminders
 from linebot.recurring import check_recurring_reminders
-from linebot.daily_log import send_daily_log_prompt, check_daily_log_followup
 from linebot.planning import check_daily_plan
 from linebot.agent import send_agent_checkin, send_weekly_report
 from linebot.heartbeat import push_heartbeat_commit
@@ -27,7 +26,7 @@ from linebot.finance import (
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 41
+APP_VERSION = 42
 
 
 def _respond(start_response, status, body, cors=False):
@@ -100,9 +99,10 @@ def _run_poll(environ, start_response):
     if not _has_poll_secret(environ):
         return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'})
     for fn, name in (
+        # 定期タスクの通知は停止中。呼び続けているのは、次回予定日だけ静かに進めるため
+        # （recurring.PUSH_REMINDERS を True に戻せば通知が復活する）。
         (check_recurring_reminders, 'check_recurring_reminders'),
         (check_timed_reminders, 'check_timed_reminders'),
-        (check_daily_log_followup, 'check_daily_log_followup'),
         (check_daily_plan, 'check_daily_plan'),
     ):
         try:
@@ -234,12 +234,10 @@ def app(environ, start_response):
         return _handle_preview(environ, start_response)
     if path == '/api/webhook' and method == 'POST':
         return _handle_webhook(environ, start_response)
-    if path == '/api/cron_morning_reminder' and method == 'GET':
-        return _run_cron(environ, start_response, send_reminders, 'send_reminders')
+    # 毎朝のタスクリマインド（/api/cron_morning_reminder）と振り返りの催促（/api/cron_daily_log_prompt）は廃止。
+    # 「明日やることを決める」「今日やることを渡す」だけに絞るため（planning.py を参照）。
     if path == '/api/cron_agent_checkin' and method == 'GET':
         return _run_cron(environ, start_response, send_agent_checkin, 'send_agent_checkin')
-    if path == '/api/cron_daily_log_prompt' and method == 'GET':
-        return _run_cron(environ, start_response, send_daily_log_prompt, 'send_daily_log_prompt')
     if path == '/api/cron_weekly_report' and method == 'GET':
         return _run_weekly_report(environ, start_response)
     if path == '/api/cron_finance_report' and method == 'GET':

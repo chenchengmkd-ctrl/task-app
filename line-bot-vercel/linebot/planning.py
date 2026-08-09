@@ -1,8 +1,11 @@
-"""明日やることを決める仕組み。
-・毎晩23:30 …… 翌日の候補タスクを番号つきで洗い出して「どれをやるか」聞く
-・決まらない場合 …… 0:30 / 6:30 / 8:00 に催促（8時が最終期限）
-・毎晩22:30 …… その日の予定の答え合わせ（完了したか報告し、未完了はそのままリマインド）
-いずれも5分おきのポーリング（GitHub Actions → /api/cron_poll）から呼ばれる。
+"""「明日何をやるか」「今日何をやるか」を決めるための仕組み。このボットの中心。
+
+1日の流れ（すべて5分おきのポーリング → /api/cron_poll から呼ばれる）
+・夕方17:00 …… 翌日の候補を出して「どれをやるか」聞く（前日のうちに決めきる）
+・朝 7:00 …… 決めたぶんを「今日やること」として送る。前日に決めていなければ、その場で今日ぶんを決めてもらう
+・夜21:00 …… その日の答え合わせ。明日ぶんが未定ならこのメッセージの末尾で促す（通知の数は増やさない）
+
+候補は長くなりすぎると読まれないので上限をかけ、あふれたぶんはアプリへ誘導する。
 """
 import re
 from datetime import timedelta
@@ -10,13 +13,12 @@ from datetime import timedelta
 from . import config
 from .supabase_client import get_supabase, get_state, set_state, delete_state
 
-PLAN_PROMPT_AT = (23, 30)                     # 翌日の予定を聞く時刻
-PLAN_NUDGE_AT = [(0, 30), (6, 30), (8, 0)]    # 決まっていないときの催促時刻（最後が期限）
-PLAN_DEADLINE = PLAN_NUDGE_AT[-1]
-PLAN_REVIEW_AT = (22, 30)                     # その日の答え合わせ（23時前）
-PLAN_ROLLOVER_HOUR = 20                       # この時刻以降は「翌日ぶんの予定」を扱う
-PLAN_MAX_CANDIDATES = 60      # LINEの1メッセージに収めるための上限（通常は全件出る）
-PENDING_VALID_HOURS = 12
+PLAN_PROMPT_AT = (17, 0)      # 前日の夕方：翌日やることを決める
+PLAN_MORNING_AT = (7, 0)      # 朝：今日やることを送る（未定ならその場で決める）
+PLAN_REVIEW_AT = (21, 0)      # 夜：その日の答え合わせ
+PLAN_ROLLOVER_HOUR = 17       # この時刻以降は「翌日ぶんの予定」を扱う（＝夕方の問いかけと合わせる）
+PLAN_MAX_CANDIDATES = 12      # LINEで一目で選べる件数。あふれたぶんはアプリで見てもらう
+PENDING_VALID_HOURS = 18      # 夕方に聞いて翌朝に返事が来ても受け取れる長さ
 
 
 def _plan_key(uid, date_iso):
@@ -41,7 +43,7 @@ def _due_now(now, hm, window_min=60):
 
 
 def plan_date_for(now):
-    """今この瞬間に扱っている「予定の日」。夜（20時以降）は翌日ぶん、それ以外はその日ぶんを指す。"""
+    """今この瞬間に扱っている「予定の日」。夕方（17時以降）は翌日ぶん、それ以外はその日ぶんを指す。"""
     d = now + timedelta(days=1) if now.hour >= PLAN_ROLLOVER_HOUR else now
     return config.iso_of_date(d)
 
@@ -81,7 +83,8 @@ def build_plan_prompt(user_id, plan_date_iso):
     from .tasks import set_last_list
 
     overdue, on_day, later, no_due = _candidates(plan_date_iso)
-    ordered = (overdue + on_day + later + no_due)[:PLAN_MAX_CANDIDATES]
+    all_candidates = overdue + on_day + later + no_due
+    ordered = all_candidates[:PLAN_MAX_CANDIDATES]
     if not ordered:
         return None, []
 
@@ -111,12 +114,16 @@ def build_plan_prompt(user_id, plan_date_iso):
     msg += block(f'📅 {label}が期限', on_day)
     msg += block('⏳ 期限はこの先', later)
     msg += block('⚪ 期限なし', no_due)
-    msg += ('\n（各グループは「重要度が高い順・すぐ終わる順」に並べてあります。'
-            '上から選ぶほど成果につながりやすいです）'
+
+    rest = len(all_candidates) - len(ordered)
+    if rest:
+        # 全部並べると読む気が失せるので、上位だけ出して残りは件数だけ伝える
+        msg += f'\n…ほか{rest}件。全部見て並べ替えるならアプリが早いです\n{config.APP_URL}\n'
+
+    msg += ('\n（重要度が高い順・すぐ終わる順に並べてあります。上から選ぶほど成果につながりやすいです）'
             '\n\nやる番号を送ってください（例：1,3,5）。'
             '\n全部なら「全部」、決めないなら「なし」。'
-            '\nここで新しいタスクを送れば、そのまま候補に足せます。'
-            f'\n⏰ 朝{PLAN_DEADLINE[0]}時までに決めてください。')
+            '\nここで新しいタスクを送れば、そのまま候補に足せます。')
     return msg, [{'num': num_by_id[t['id']], 'id': t['id'], 'title': t['title']} for t in ordered]
 
 
@@ -129,64 +136,115 @@ def send_plan_prompt(push_text_fn, get_users_fn, now):
         set_state(_sent_key(uid, plan_date, 'prompt'), True)
         if not msg:
             push_text_fn(uid, '🌙 明日やる候補のタスクはありません。ゆっくり休んでください。')
+            delete_state(_pending_key(uid))
             set_state(_plan_key(uid, plan_date), {'items': [], 'decidedAt': config.now_iso(), 'source': 'empty'})
             continue
         set_state(_pending_key(uid), {'date': plan_date, 'items': items, 'createdAt': config.now_ms()})
         push_text_fn(uid, msg)
 
 
-def plan_prompt_on_demand(user_id):
-    """「明日の予定」と送られたときに、その場で候補を出して選んでもらう（23:30を待たずに決められる）。"""
-    now = config.now_jst()
-    plan_date = plan_date_for(now)
+def _ask_now(user_id, plan_date, empty_message):
+    """自動の時刻を待たずに、その場で候補を出して選んでもらう。"""
     msg, items = build_plan_prompt(user_id, plan_date)
     if not msg:
-        return '🌙 やる候補のタスクはありません。'
+        return empty_message
     set_state(_sent_key(user_id, plan_date, 'prompt'), True)
     set_state(_pending_key(user_id), {'date': plan_date, 'items': items, 'createdAt': config.now_ms()})
     return msg
+
+
+def plan_prompt_on_demand(user_id):
+    """「予定を決める」。夕方以降なら明日ぶん、それより前ならその日ぶんを扱う。"""
+    return _ask_now(user_id, plan_date_for(config.now_jst()), '🌙 やる候補のタスクはありません。')
 
 
 def plan_today_on_demand(user_id):
-    """「今日の予定を決める」で、時間帯に関係なく必ず今日ぶんの候補を出して選んでもらう。"""
-    plan_date = config.today_iso()
-    msg, items = build_plan_prompt(user_id, plan_date)
-    if not msg:
-        return '🌙 今日やる候補のタスクはありません。'
-    set_state(_sent_key(user_id, plan_date, 'prompt'), True)
-    set_state(_pending_key(user_id), {'date': plan_date, 'items': items, 'createdAt': config.now_ms()})
+    """「今日決める」。時間帯に関係なく必ず今日ぶん。"""
+    return _ask_now(user_id, config.today_iso(), '🌙 今日やる候補のタスクはありません。')
+
+
+def plan_tomorrow_on_demand(user_id):
+    """「明日決める」。時間帯に関係なく必ず明日ぶん。"""
+    tomorrow = config.iso_of_date(config.now_jst() + timedelta(days=1))
+    return _ask_now(user_id, tomorrow, '🌙 明日やる候補のタスクはありません。')
+
+
+# ============ 朝：今日やることを渡す ============
+def build_today_list(user_id, items, date_iso):
+    """決めたぶんのうち、まだ終わっていないものを番号つきで並べる。全部終わっていればNone。"""
+    from .tasks import set_last_list
+
+    ids = ','.join(str(it['id']) for it in items)
+    rows = get_supabase('tasks', f'id=in.({ids})&select=id,title,done,deleted,estimate') if ids else []
+    by_id = {r['id']: r for r in rows}
+
+    live = []
+    for it in items:
+        r = by_id.get(it['id'])
+        if not r or r.get('deleted') or r.get('done'):
+            continue
+        live.append({'id': it['id'], 'title': str(r.get('title') or it['title']),
+                     'estimate': r.get('estimate') or ''})
+    if not live:
+        return None
+
+    numbered = set_last_list(user_id, live)
+    est_by_id = {t['id']: t['estimate'] for t in live}
+    lines = '\n'.join(
+        f"{it['num']}. {it['title']}" + (f"［{est_by_id[it['id']]}］" if est_by_id.get(it['id']) else '')
+        for it in numbered
+    )
+    d = config.parse_date(date_iso)
+    label = '今日' if date_iso == config.today_iso() else config.jp2(d)
+    msg = f'☀️ {label}やること（{len(live)}件）\n{lines}'
+    finished = len(items) - len(live)
+    if finished:
+        msg += f'\n\n（決めた{len(items)}件のうち{finished}件は完了済みです）'
+    msg += ('\n\n終わったら番号で送ってください（例：1完了）。'
+            f'\n夜{PLAN_REVIEW_AT[0]}時に答え合わせします。')
     return msg
 
 
-def show_plan(user_id):
-    """「今日の予定」で、決めたぶんの進み具合をその場で確認する。"""
-    msg = build_plan_review(user_id, config.today_iso())
-    if msg:
-        return msg
-    return '📋 今日は「予定なし」で決めています。決め直すなら「予定を決める」と送ってください。'
-
-
-def send_plan_nudge(push_text_fn, get_users_fn, now, hm):
-    """まだ決まっていなければ催促する。8時（最終期限）だけ文面を変える。"""
-    plan_date = plan_date_for(now)
-    tag = f'nudge{hm[0]:02d}{hm[1]:02d}'
-    is_last = hm == PLAN_DEADLINE
+def send_plan_morning(push_text_fn, get_users_fn, now):
+    """朝：前日に決めたぶんを「今日やること」として渡す。
+    決めていなければ、その場で今日ぶんを決めてもらう（＝朝が最後の決めどき）。
+    """
+    date_iso = config.iso_of_date(now)
     for uid in get_users_fn():
-        if not get_state(_sent_key(uid, plan_date, 'prompt')):
-            continue          # そもそも聞いていない日は催促しない
-        if get_state(_plan_key(uid, plan_date)):
-            continue          # もう決まっている
-        if get_state(_sent_key(uid, plan_date, tag)):
+        if get_state(_sent_key(uid, date_iso, 'morning')):
             continue
-        set_state(_sent_key(uid, plan_date, tag), True)
-        if is_last:
-            msg = (f'⚠️ 朝{PLAN_DEADLINE[0]}時になりました。今日やることがまだ決まっていません。\n'
-                   '番号だけでもいいので送ってください（例：1,3,5）。'
-                   '\n候補をもう一度見るなら「一覧」または「通知」。')
-        else:
-            msg = ('🌙 今日やることがまだ決まっていません。\n'
-                   f'番号を送ってください（例：1,3,5）。朝{PLAN_DEADLINE[0]}時までにお願いします。')
-        push_text_fn(uid, msg)
+        set_state(_sent_key(uid, date_iso, 'morning'), True)
+
+        plan = get_state(_plan_key(uid, date_iso))
+        if plan is None:
+            msg, items = build_plan_prompt(uid, date_iso)
+            if not msg:
+                continue
+            set_state(_sent_key(uid, date_iso, 'prompt'), True)
+            set_state(_pending_key(uid), {'date': date_iso, 'items': items, 'createdAt': config.now_ms()})
+            push_text_fn(uid, '☀️ 今日やることがまだ決まっていません。今のうちに決めましょう。')
+            push_text_fn(uid, msg)
+            continue
+
+        items = plan.get('items') or []
+        if not items:
+            continue          # 「なし」で決めた日は、朝も静かにしておく
+        msg = build_today_list(uid, items, date_iso)
+        if msg:
+            push_text_fn(uid, msg)
+
+
+def show_plan(user_id):
+    """「今日の予定」で、今日やると決めたぶんをその場で確認する。"""
+    date_iso = config.today_iso()
+    plan = get_state(_plan_key(user_id, date_iso))
+    if plan is None:
+        return ('📋 今日やることはまだ決まっていません。\n'
+                '→ 「今日決める」と送れば、今すぐ候補が出ます。\n'
+                f'→ 自動では前日の{PLAN_PROMPT_AT[0]}時に翌日ぶんをお聞きします。')
+    if not (plan.get('items') or []):
+        return '📋 今日は「予定なし」で決めています。決め直すなら「今日決める」と送ってください。'
+    return build_today_list(user_id, plan['items'], date_iso) or '🎉 今日やると決めたぶんは全部終わりました！'
 
 
 # ============ 予定への返信 ============
@@ -242,7 +300,8 @@ def handle_pending_plan_reply(user_id, text):
     if re.match(r'^(なし|未定|決めない|スキップ|やめて|あとで)[。.!！]?$', t):
         delete_state(key)
         set_state(_plan_key(user_id, plan_date), {'items': [], 'decidedAt': config.now_iso(), 'source': 'none'})
-        return '了解です。今日やることは決めずにおきます。'
+        when = '今日' if plan_date == config.today_iso() else config.jp2(config.parse_date(plan_date))
+        return f'了解です。{when}やることは決めずにおきます。'
 
     missing = []
     if re.match(r'^(全部|ぜんぶ|すべて|全て)[。.!！]?$', t):
@@ -267,8 +326,10 @@ def handle_pending_plan_reply(user_id, text):
     })
     d = config.parse_date(plan_date)
     body = '\n'.join(f"{c['num']}. {c['title']}" for c in chosen)
-    msg = (f'✅ {config.jp2(d)}にやること（{len(chosen)}件）\n{body}\n\n'
-           f'当日の{PLAN_REVIEW_AT[0]}:{PLAN_REVIEW_AT[1]:02d}に、できたかどうか確認します。')
+    msg = f'✅ {config.jp2(d)}にやること（{len(chosen)}件）\n{body}\n'
+    if plan_date != config.today_iso():
+        msg += f'\n当日の朝{PLAN_MORNING_AT[0]}時にこのリストを送ります。'
+    msg += f'\n当日の夜{PLAN_REVIEW_AT[0]}時に、できたかどうか確認します。'
     if missing:
         msg += f"\n\n⚠️ {'、'.join(str(n) for n in missing)} 番は候補になかったので入れていません。"
     return msg
@@ -282,9 +343,9 @@ def build_plan_review(user_id, date_iso):
     plan = get_state(_plan_key(user_id, date_iso))
     d = config.parse_date(date_iso)
     if not plan:
-        return (f'📋 {config.jp2(d)}にやることは決まっていません。\n\n'
-                '→ いま決めるなら「予定を決める」と送ってください（候補が番号つきで出ます）。\n'
-                f'→ 自動では毎晩{PLAN_PROMPT_AT[0]}:{PLAN_PROMPT_AT[1]:02d}に翌日ぶんを聞きます。')
+        return (f'📋 {config.jp2(d)}にやることは決まっていませんでした。\n\n'
+                '→ いま決めるなら「今日決める」と送ってください（候補が番号つきで出ます）。\n'
+                f'→ 自動では毎日{PLAN_PROMPT_AT[0]}時に翌日ぶんをお聞きします。')
     items = plan.get('items') or []
     if not items:
         return None
@@ -324,12 +385,18 @@ def build_plan_review(user_id, date_iso):
 
 
 def send_plan_review(push_text_fn, get_users_fn, now):
+    """夜の答え合わせ。明日ぶんが未定ならこのメッセージの末尾で促す（通知そのものは増やさない）。"""
     date_iso = config.iso_of_date(now)
+    tomorrow_iso = config.iso_of_date(now + timedelta(days=1))
     for uid in get_users_fn():
         if get_state(_sent_key(uid, date_iso, 'review')):
             continue
         set_state(_sent_key(uid, date_iso, 'review'), True)
         msg = build_plan_review(uid, date_iso)
+        if get_state(_plan_key(uid, tomorrow_iso)) is None:
+            msg = (msg or f'📋 {config.jp2(now)}の答え合わせ')
+            msg += ('\n\n──\n🌙 明日やることがまだ決まっていません。'
+                    '\n「明日決める」と送れば候補が出ます。')
         if msg:
             push_text_fn(uid, msg)
 
@@ -337,10 +404,9 @@ def send_plan_review(push_text_fn, get_users_fn, now):
 # ============ 5分おきのポーリングから呼ばれる入口 ============
 def check_daily_plan(push_text_fn, get_users_fn):
     now = config.now_jst()
-    if _due_now(now, PLAN_REVIEW_AT):
-        send_plan_review(push_text_fn, get_users_fn, now)
+    if _due_now(now, PLAN_MORNING_AT):
+        send_plan_morning(push_text_fn, get_users_fn, now)
     if _due_now(now, PLAN_PROMPT_AT):
         send_plan_prompt(push_text_fn, get_users_fn, now)
-    for hm in PLAN_NUDGE_AT:
-        if _due_now(now, hm):
-            send_plan_nudge(push_text_fn, get_users_fn, now, hm)
+    if _due_now(now, PLAN_REVIEW_AT):
+        send_plan_review(push_text_fn, get_users_fn, now)

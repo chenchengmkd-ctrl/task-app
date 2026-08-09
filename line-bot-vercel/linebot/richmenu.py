@@ -11,7 +11,7 @@ import requests
 
 from . import config
 
-APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/'
+APP_URL = config.APP_URL
 GUIDE_URL = 'https://chenchengmkd-ctrl.github.io/task-app/guide.html'
 
 # 1200x810の画像を 4列×2行（各 300x405）に分割したときの各ボタン。

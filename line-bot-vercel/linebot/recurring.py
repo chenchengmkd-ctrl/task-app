@@ -11,6 +11,12 @@ from .supabase_client import (get_supabase, post_supabase, patch_supabase, delet
 
 WEEKDAY_JP = ['日', '月', '火', '水', '木', '金', '土']
 
+# 「🔁 今日の定期タスク」の自動通知はいったん停止中（2026-08、本人の希望）。
+# ここを True に戻すだけで通知が復活する。停止中も次回予定日は静かに進めるので、
+# 再開したときに溜まったぶんが一度に届くことはない。
+# 定期タスクの登録・一覧・変更・削除は停止中もそのまま使える。
+PUSH_REMINDERS = False
+
 
 def get_recurring():
     """定期タスクを取得。"""
@@ -112,8 +118,25 @@ def _defer_past_events(date_iso, hhmm):
     return later if later and later > hhmm else None
 
 
+def advance_recurring_dates():
+    """通知はせずに、予定日が来た定期タスクの次回予定日だけを静かに先へ進める。
+    通知を止めている間に予定日が過去のまま溜まると、再開したときに一度にまとめて届いてしまうため。
+    """
+    today_str = config.today_iso()
+    for r in get_recurring():
+        if not r['next'] or config.iso_of_date(r['next']) > today_str:
+            continue
+        n = next_recur_date(config.iso_of_date(r['next']), r)
+        while n <= today_str:
+            n = next_recur_date(n, r)
+        patch_supabase('recurring', f"id=eq.{quote(r['id'])}", {'next_date': n})
+
+
 def check_recurring_reminders(push_text_fn, get_users_fn):
     """定期タスクのリマインド時刻（未設定なら毎朝の通知時刻）が到来したら、別メッセージで通知し次回予定日へ進める。"""
+    if not PUSH_REMINDERS:
+        advance_recurring_dates()
+        return
     today_str = config.today_iso()
     now = config.now_jst()
     items = [r for r in get_recurring() if r['next'] and config.iso_of_date(r['next']) <= today_str]

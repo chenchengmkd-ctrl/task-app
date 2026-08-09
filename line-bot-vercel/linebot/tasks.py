@@ -551,57 +551,9 @@ def build_reminder(user_id=None):
     return msg.strip()
 
 
-def get_no_time_soon_tasks():
-    """期限が3日以内（超過含む）なのに時刻が未設定のタスクを集める。"""
-    today = config.midnight(config.now_jst())
-    rows = get_supabase('tasks', 'done=eq.false&deleted=eq.false&due=not.is.null&due_time=is.null&select=id,title,due')
-    out = []
-    for r in rows:
-        d = config.parse_date(r.get('due'))
-        if d and config.day_diff(today, d) <= config.REC_NEAR_DAYS:
-            out.append({'id': r['id'], 'title': r['title'], 'due': r.get('due') or ''})
-    return out
-
-
-def build_no_time_message(user_id, no_time):
-    """期限が近いのに時刻未設定のタスクを、リマインド本文と同じ番号つきで並べる。
-    番号で「1 15時」と返すだけで時間を設定できるようにする。
-    """
-    numbered = append_to_last_list(user_id, no_time)
-    due_by_id = {t['id']: t.get('due') or '' for t in no_time}
-    lines = '\n'.join(
-        f"{it['num']}. {it['title']}" + (f"（{config.jp(due_by_id[it['id']])}）" if due_by_id.get(it['id']) else '')
-        for it in numbered
-    )
-    msg = ('⏰ 期限が近いのに時間未設定のタスク\n' + lines +
-           '\n\n番号と時間を送れば設定できます（例：1 15時／2は10時30分）。'
-           '\n日付もまとめて変えられます（例：3 明日10時）。不要なら「なし」。')
-    # カレンダーを連携していれば、今日の空き時間をヒントとして添える
-    from . import gcal
-    free = gcal.free_summary(config.today_iso(), from_now=True)
-    if free:
-        msg += '\n\n' + free
-    return msg
-
-
-def send_reminders(push_text_fn, get_users_fn):
-    """毎朝のトリガーから呼ばれる。番号はユーザーごとに記憶する。"""
-    from . import gcal
-    schedule = gcal.schedule_text(config.today_iso(), '🗓 今日の予定（カレンダー）')
-    for uid in get_users_fn():
-        msg = build_reminder(uid)
-        if msg:
-            push_text_fn(uid, msg)
-        if schedule:
-            push_text_fn(uid, schedule)
-
-    no_time = get_no_time_soon_tasks()
-    if not no_time:
-        return
-    for uid in get_users_fn():
-        if not get_state(f'PENDING_TIME_{uid}'):
-            set_state(f'PENDING_TIME_{uid}', {'mode': 'batch', 'tasks': no_time, 'createdAt': config.now_ms()})
-        push_text_fn(uid, build_no_time_message(uid, no_time))
+# 毎朝の一括リマインド（🔔 タスクのリマインド／⏰ 期限が近いのに時間未設定）はいったん廃止した。
+# 毎日ほぼ同じ顔ぶれが並ぶだけで読み飛ばすようになっていたため。
+# 上の build_reminder() は「通知」と送られたときの手動表示として今も使っている。
 
 
 # ============ 時刻指定タスクの直前リマインド ============

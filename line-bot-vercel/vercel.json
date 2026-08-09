@@ -5,9 +5,7 @@
     }
   },
   "crons": [
-    { "path": "/api/cron_morning_reminder", "schedule": "0 21 * * *" },
     { "path": "/api/cron_agent_checkin", "schedule": "0 11 * * *" },
-    { "path": "/api/cron_daily_log_prompt", "schedule": "0 15 * * *" },
     { "path": "/api/cron_weekly_report", "schedule": "0 12 * * 0" },
     { "path": "/api/cron_finance_reminder", "schedule": "0 7 * * *" },
     { "path": "/api/cron_finance_report", "schedule": "0 13 * * *" }
