@@ -26,7 +26,7 @@ from linebot.finance import (
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 42
+APP_VERSION = 43
 
 
 def _respond(start_response, status, body, cors=False):
@@ -184,7 +184,14 @@ def _handle_preview(environ, start_response):
     qs = parse_qs(environ.get('QUERY_STRING', ''))
     kind = (qs.get('kind') or ['daily'])[0]
     try:
-        if kind == 'weekly':
+        if kind in ('plan', 'plan_tomorrow'):
+            # user_id を渡さないので番号の記憶もされず、LINEにも何も送られない（純粋な下書き確認）
+            from linebot import config as cfg
+            from linebot.planning import build_plan_prompt
+            from datetime import timedelta as _td
+            date_iso = cfg.today_iso() if kind == 'plan' else cfg.iso_of_date(cfg.now_jst() + _td(days=1))
+            body = build_plan_prompt(None, date_iso)[0] or '（候補になるタスクがありません）'
+        elif kind == 'weekly':
             body = build_weekly_report(None)
         elif kind == 'finance':
             body = build_daily_finance_report()
