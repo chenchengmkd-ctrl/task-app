@@ -76,6 +76,28 @@ def _candidates(plan_date_iso):
     return overdue, on_day, later, no_due
 
 
+def _pick_balanced(groups, cap):
+    """各グループから順ぐりに1件ずつ取って上限まで埋める。→ 選ばれたタスクのidの集合
+    先頭から単純に切ると、期限切れが溜まっているときにそれだけで埋まってしまい、
+    「明日が期限」のタスクが1件も出てこなくなるため。
+    空いたグループのぶんは残りのグループに回る。
+    """
+    picked, idx = [], [0] * len(groups)
+    while len(picked) < cap:
+        moved = False
+        for gi, g in enumerate(groups):
+            if idx[gi] >= len(g):
+                continue
+            picked.append(g[idx[gi]]['id'])
+            idx[gi] += 1
+            moved = True
+            if len(picked) >= cap:
+                break
+        if not moved:
+            break
+    return set(picked)
+
+
 def build_plan_prompt(user_id, plan_date_iso):
     """候補を番号つきで並べたメッセージと、番号→タスクの対応を作る。→ (本文, items) 候補なしは (None, [])
     番号はこのメッセージで1から振り直す（他のメッセージの番号とはズレるが、その場で選びやすくするため）。
@@ -84,7 +106,9 @@ def build_plan_prompt(user_id, plan_date_iso):
 
     overdue, on_day, later, no_due = _candidates(plan_date_iso)
     all_candidates = overdue + on_day + later + no_due
-    ordered = all_candidates[:PLAN_MAX_CANDIDATES]
+    # 表示は上から順に読めるよう、選び直したあとで元の並び（グループ順）に戻す
+    picked_ids = _pick_balanced([overdue, on_day, later, no_due], PLAN_MAX_CANDIDATES)
+    ordered = [t for t in all_candidates if t['id'] in picked_ids]
     if not ordered:
         return None, []
 
