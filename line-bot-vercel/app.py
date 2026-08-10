@@ -24,6 +24,8 @@ from linebot.finance import (
     build_daily_finance_report, build_month_finance_report, build_finance_reminder,
 )
 from linebot.line_client import push_text, get_users
+# 起動時に読み込んでおく（構文エラーがあれば /api/health が落ちてデプロイ事故に気づける）
+from linebot import receipt as receipt_mod
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
 APP_VERSION = 45
@@ -252,7 +254,6 @@ def _handle_preview_receipt(environ, start_response):
         return _respond(start_response, '400 Bad Request', {'error': f'bad image: {e}'}, cors=True)
 
     try:
-        from linebot import receipt as receipt_mod
         parsed = receipt_mod.read_receipt(image_bytes, mime)
     except Exception as e:
         return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)

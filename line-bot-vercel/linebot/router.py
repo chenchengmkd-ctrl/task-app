@@ -157,7 +157,12 @@ def handle_event(ev):
     if msg_type == 'image':
         remember_user(user_id)
         from . import receipt as receipt_mod
-        reply = receipt_mod.handle_image(user_id, message.get('id'))
+        try:
+            reply = receipt_mod.handle_image(user_id, message.get('id'))
+        except Exception as e:
+            # 読み取りに失敗しても黙って終わらせない（返信が無いと送れたのかが分からないため）
+            print('receipt handle_image error:', e)
+            reply = 'レシートの読み取りでエラーが出ました。もう一度送ってみてください。'
         reply_text(ev.get('replyToken'), reply)
         return
 
