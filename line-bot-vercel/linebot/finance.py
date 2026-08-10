@@ -517,6 +517,62 @@ def _add_shift(user_id, date_iso, rest):
     ])
 
 
+def vendor_master_names():
+    """仕入れ先マスタに登録されている名前を、カテゴリをまたいで重複なく返す（レシートの店名合わせ用）。"""
+    vendors = _item_master()['vendors']
+    seen, out = set(), []
+    for cat in DEFAULT_TAX_RATE:
+        for v in vendors.get(cat) or []:
+            name = str(v).strip()
+            if name and name not in seen:
+                seen.add(name)
+                out.append(name)
+    return out
+
+
+def add_receipt_items(user_id, date_iso, vendor, items):
+    """レシートから読み取った複数明細をまとめて1日分に追加する（receipt.py から呼ばれる）。
+
+    items は [{label, amount, taxRate, category}]。amount は税込。
+    """
+    if not items:
+        return '登録する明細がありません。'
+
+    before = _report(date_iso)
+    report = _report(date_iso) or _default_report(date_iso)
+    corp = report.get('corp') or _empty_bucket()
+    withdraws = list(corp.get('withdraws') or [])
+
+    for it in items:
+        entry = {
+            'id': _new_item_id(),
+            'label': it['label'],
+            'amount': int(it['amount']),
+            'category': it['category'],
+            'taxRate': it['taxRate'],
+        }
+        if vendor:
+            entry['vendor'] = vendor
+        withdraws.append(entry)
+
+    corp['withdraws'] = withdraws
+    report['corp'] = corp
+
+    if not _save_with_undo(user_id, date_iso, before, report):
+        return '保存に失敗しました。時間をおいてもう一度お試しください。'
+
+    total = sum(int(i['amount']) for i in items)
+    where = f'{vendor} / ' if vendor else ''
+    return '\n'.join([
+        f'✅ {config.jp(date_iso)} に {len(items)}件 登録しました',
+        f'{where}合計 {total:,}円（税込）',
+        '',
+        _day_summary(report),
+        '（間違えたら「取り消し」）',
+        entry_url(date_iso),
+    ])
+
+
 def _undo(user_id):
     snap = get_state(f'{UNDO_KEY}:{user_id}')
     if not snap:
@@ -675,6 +731,11 @@ def build_input_template(date_iso=None):
 def finance_help():
     return '\n'.join([
         '💰 財務の入力',
+        '',
+        '▼ レシートを撮るだけ',
+        'レシートの写真をこのトークに送ると読み取ります。',
+        '内容を確認して「登録」と返すと保存します。',
+        '（違う行があれば「2削除」、やめるなら「取消」）',
         '',
         '▼ まとめて入力するとき',
         f'アプリが速いです：{entry_url(config.today_iso())}',

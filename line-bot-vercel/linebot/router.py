@@ -40,6 +40,11 @@ def route_command(user_id, text):
     pending_calendar = agent_mod.handle_pending_calendar_reply(user_id, text)
     if pending_calendar is not None:
         return pending_calendar
+    # レシート写真の読み取り結果への「登録／取消／2削除」
+    from . import receipt as receipt_mod
+    pending_receipt = receipt_mod.handle_pending_reply(user_id, text)
+    if pending_receipt is not None:
+        return pending_receipt
     # 「1,3,5」のような番号だけの返信は、その日にやることの選択として受け取る
     pending_plan = planning_mod.handle_pending_plan_reply(user_id, text)
     if pending_plan is not None:
@@ -142,11 +147,24 @@ def route_command(user_id, text):
 
 def handle_event(ev):
     """LINEのWebhookイベント1件を処理する。"""
-    if ev.get('type') != 'message' or (ev.get('message') or {}).get('type') != 'text':
+    if ev.get('type') != 'message':
         return
+    message = ev.get('message') or {}
+    msg_type = message.get('type')
     user_id = (ev.get('source') or {}).get('userId')
+
+    # 写真＝レシートとして読み取る（この時点では保存せず、確認してもらってから登録する）
+    if msg_type == 'image':
+        remember_user(user_id)
+        from . import receipt as receipt_mod
+        reply = receipt_mod.handle_image(user_id, message.get('id'))
+        reply_text(ev.get('replyToken'), reply)
+        return
+
+    if msg_type != 'text':
+        return
     remember_user(user_id)
-    reply = route_command(user_id, ev['message']['text'].strip())
+    reply = route_command(user_id, message['text'].strip())
     reply_text(ev.get('replyToken'), reply)
 
 

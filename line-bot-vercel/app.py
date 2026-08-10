@@ -26,7 +26,7 @@ from linebot.finance import (
 from linebot.line_client import push_text, get_users
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 44
+APP_VERSION = 45
 
 
 def _respond(start_response, status, body, cors=False):
@@ -226,9 +226,48 @@ def _handle_setup_richmenu(environ, start_response):
     return _respond(start_response, '200 OK', result, cors=True)
 
 
+def _handle_preview_receipt(environ, start_response):
+    """レシート画像（data URL または生base64）を渡すと、読み取り結果だけ返す。保存もLINE送信もしない。動作確認用。"""
+    if not _has_poll_secret(environ):
+        return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'}, cors=True)
+    try:
+        length = int(environ.get('CONTENT_LENGTH') or 0)
+    except ValueError:
+        length = 0
+    raw = environ['wsgi.input'].read(length) if length else b'{}'
+    try:
+        body = json.loads(raw.decode('utf-8'))
+    except Exception as e:
+        return _respond(start_response, '400 Bad Request', {'error': f'bad json: {e}'}, cors=True)
+
+    image = body.get('image') or ''
+    mime = 'image/jpeg'
+    if ',' in image and image.startswith('data:'):
+        header, image = image.split(',', 1)
+        mime = header[5:].split(';')[0] or mime
+    try:
+        import base64 as _b64
+        image_bytes = _b64.b64decode(image)
+    except Exception as e:
+        return _respond(start_response, '400 Bad Request', {'error': f'bad image: {e}'}, cors=True)
+
+    try:
+        from linebot import receipt as receipt_mod
+        parsed = receipt_mod.read_receipt(image_bytes, mime)
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    return _respond(start_response, '200 OK', {'bytes': len(image_bytes), 'mime': mime, 'parsed': parsed}, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
+
+    if path == '/api/preview_receipt':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_preview_receipt(environ, start_response)
 
     if path == '/api/setup_richmenu':
         if method == 'OPTIONS':
