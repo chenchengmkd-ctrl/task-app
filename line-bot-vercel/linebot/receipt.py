@@ -22,8 +22,10 @@ from .supabase_client import get_state, set_state, delete_state
 PENDING_KEY = 'FINANCE_RECEIPT'
 CONTENT_URL = 'https://api-data.line.me/v2/bot/message/{}/content'
 
-# 読み取り結果の保持時間。これを過ぎた分は古い写真の残骸とみなして無視する
-PENDING_TTL_MS = 60 * 60 * 1000
+# 読み取り結果の保持時間。これを過ぎた分は古い写真の残骸とみなして無視する。
+# 確認待ちの間は「1削除」がレシートの行削除として扱われ、タスクの「1削除」を隠してしまうので、
+# 放置された確認が長く居座らないよう短めにしてある
+PENDING_TTL_MS = 15 * 60 * 1000
 
 MAX_ITEMS = 25
 
