@@ -28,7 +28,7 @@ from linebot.line_client import push_text, get_users
 from linebot import receipt as receipt_mod
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 46
+APP_VERSION = 47
 
 
 def _respond(start_response, status, body, cors=False):
@@ -142,6 +142,8 @@ def _handle_health(environ, start_response):
             'GITHUB_PAT': bool(config.GITHUB_PAT),
             'GOOGLE_SERVICE_ACCOUNT_JSON': bool(config.GOOGLE_SERVICE_ACCOUNT_JSON),
             'GOOGLE_CALENDAR_ID': config.GOOGLE_CALENDAR_ID,
+            'SQUARE_ACCESS_TOKEN': describe(config.SQUARE_ACCESS_TOKEN),
+            'SQUARE_LOCATION_ID': bool(config.SQUARE_LOCATION_ID),
         },
     }
     # Googleカレンダーが読めるか（共有設定・カレンダーIDの確認用）
@@ -160,6 +162,12 @@ def _handle_health(environ, start_response):
             info['calendar_check'] = {'enabled': False, 'library': 'ok'}
     except Exception as e:
         info['calendar_check'] = {'enabled': True, 'error': repr(e)}
+    # Squareのトークンが有効か・店舗が見えるか（売上は取り込まず読むだけ）
+    try:
+        from linebot import square as square_mod
+        info['square_check'] = square_mod.diagnose()
+    except Exception as e:
+        info['square_check'] = {'enabled': True, 'ok': False, 'error': repr(e)}
     # Geminiに実際に短い問い合わせをして、キー・モデル名が有効か確かめる
     try:
         reply = call_gemini('返答は必ず日本語で。', 'テスト。「OK」とだけ返してください。', 20)
@@ -289,6 +297,9 @@ def app(environ, start_response):
         return _run_weekly_report(environ, start_response)
     if path == '/api/cron_finance_report' and method == 'GET':
         return _run_cron(environ, start_response, send_finance_report, 'send_finance_report')
+    if path == '/api/cron_square_sync' and method == 'GET':
+        from linebot.square import sync_daily
+        return _run_cron(environ, start_response, sync_daily, 'square_sync')
     if path == '/api/cron_finance_reminder' and method == 'GET':
         return _run_cron(environ, start_response, send_finance_reminder, 'send_finance_reminder')
     if path == '/api/cron_poll' and method == 'GET':

@@ -81,6 +81,15 @@ def route_command(user_id, text):
     if re.match(r'^(入力ヘルプ|財務ヘルプ|収支ヘルプ)$', text):
         from . import finance as finance_mod
         return finance_mod.finance_help()
+    # Square（レジ）。「スクエア」で確認、「スクエア取込」でアプリの売上に反映。日付を付ければその日
+    square_cmd = re.match(r'^(?:スクエア|Square|square|レジ)\s*(取込|取り込み|反映)?\s*((?:\d{1,2})[/月]\d{1,2}日?)?$', text)
+    if square_cmd:
+        from . import square as square_mod
+        from . import finance as finance_mod
+        date_iso = finance_mod.date_token_to_iso(square_cmd.group(2)) if square_cmd.group(2) else None
+        if square_cmd.group(1):
+            return square_mod.import_day(user_id, date_iso)
+        return square_mod.build_summary(date_iso)
     # 「売上 52000」「食材 お米 1000」「シフト 都丸 10:00 14:30」「取り消し」など。
     # 該当しなければNoneが返るので、そのまま下のタスク系ルーティングへ流れる
     from . import finance as finance_mod

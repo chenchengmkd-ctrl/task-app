@@ -391,21 +391,36 @@ def _day_summary(report):
     return f'売上 {revenue:,} / 費用 {expense:,} / 損益 {_signed(profit)}'
 
 
-def _resolve_date(text):
-    """先頭の「8/5」「8月5日」を日付として切り出す。無ければ今日。戻り値は (date_iso, 残りのテキスト)。"""
+def _iso_from_month_day(mo, da):
+    """月日から年を補ってISO日付にする。年をまたぐ書き方（12月に「1/5」等）を補正する。"""
     today = config.now_jst()
-    m = re.match(r'^(\d{1,2})[/月](\d{1,2})日?[\s]+([\s\S]+)$', text)
-    if not m:
-        return config.today_iso(), text
-    mo, da = int(m.group(1)), int(m.group(2))
     year = today.year
-    # 12月に「1/5」と書いたら翌年、1月に「12/28」と書いたら前年とみなす
     if today.month == 12 and mo == 1:
         year += 1
     elif today.month == 1 and mo == 12:
         year -= 1
+    return f'{year:04d}-{mo:02d}-{da:02d}'
+
+
+def date_token_to_iso(token):
+    """「8/5」「8月5日」だけの文字列をISO日付にする。読めなければ今日。square.py 等から使う。"""
+    m = re.match(r'^\s*(\d{1,2})[/月](\d{1,2})日?\s*$', token or '')
+    if not m:
+        return config.today_iso()
+    mo, da = int(m.group(1)), int(m.group(2))
+    if not (1 <= mo <= 12 and 1 <= da <= 31):
+        return config.today_iso()
+    return _iso_from_month_day(mo, da)
+
+
+def _resolve_date(text):
+    """先頭の「8/5」「8月5日」を日付として切り出す。無ければ今日。戻り値は (date_iso, 残りのテキスト)。"""
+    m = re.match(r'^(\d{1,2})[/月](\d{1,2})日?[\s]+([\s\S]+)$', text)
+    if not m:
+        return config.today_iso(), text
+    mo, da = int(m.group(1)), int(m.group(2))
     try:
-        return f'{year:04d}-{mo:02d}-{da:02d}', m.group(3).strip()
+        return _iso_from_month_day(mo, da), m.group(3).strip()
     except ValueError:
         return config.today_iso(), text
 
@@ -515,6 +530,34 @@ def _add_shift(user_id, date_iso, rest):
         _day_summary(report),
         '（間違えたら「取り消し」）',
     ])
+
+
+def sales_of(date_iso):
+    """その日にアプリへ入っている売上（税込）。未入力なら0。"""
+    report = _report(date_iso)
+    if not report:
+        return 0
+    return int((report.get('cash') or {}).get('sales') or 0)
+
+
+def set_sales_amount(user_id, date_iso, amount):
+    """売上を指定額（税込）にする。square.py から呼ぶ。失敗時はNone、成功時はその日の要約を返す。
+
+    user_id が None（cronからの自動取り込み）のときは取り消し用の控えを取らない。
+    """
+    before = _report(date_iso)
+    report = _report(date_iso) or _default_report(date_iso)
+    cash = report.get('cash') or {**_empty_bucket(), 'sales': 0, 'salesNote': '', 'toBank': 0}
+    cash['sales'] = int(amount)
+    report['cash'] = cash
+
+    if user_id:
+        ok = _save_with_undo(user_id, date_iso, before, report)
+    else:
+        ok = _kv_set(f'report:{date_iso}', report)
+    if not ok:
+        return None
+    return _day_summary(report)
 
 
 def vendor_master_names():
@@ -731,6 +774,12 @@ def build_input_template(date_iso=None):
 def finance_help():
     return '\n'.join([
         '💰 財務の入力',
+        '',
+        '▼ Square（レジ）から取り込む',
+        '・スクエア　　　→ その日のSquare売上を確認',
+        '・スクエア取込　→ アプリの売上に反映',
+        '・スクエア 8/5　→ 日付を指定',
+        '（毎晩23:30に自動で取り込みます。手入力済みの日は上書きしません）',
         '',
         '▼ レシートを撮るだけ',
         'レシートの写真をこのトークに送ると読み取ります。',

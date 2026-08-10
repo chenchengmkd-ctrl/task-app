@@ -32,6 +32,10 @@ GITHUB_REPO = _env('GITHUB_REPO')
 # Googleカレンダー連携（サービスアカウントのJSONキーと、読みに行くカレンダーID＝ふつうはGmailアドレス）
 GOOGLE_SERVICE_ACCOUNT_JSON = _raw_env('GOOGLE_SERVICE_ACCOUNT_JSON')
 GOOGLE_CALENDAR_ID = _env('GOOGLE_CALENDAR_ID')
+# Square（レジアプリ）連携。アクセストークンはSquare開発者ダッシュボードで発行する。
+# 店舗が1つだけならLOCATION_IDは省略可（起動時に自動で取得する）
+SQUARE_ACCESS_TOKEN = _env('SQUARE_ACCESS_TOKEN')
+SQUARE_LOCATION_ID = _env('SQUARE_LOCATION_ID')
 
 APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/'   # タスク管理アプリ（LINEで羅列せずアプリに誘導する時に使う）
 
