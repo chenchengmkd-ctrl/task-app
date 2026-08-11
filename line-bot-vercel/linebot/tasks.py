@@ -10,9 +10,49 @@ from .supabase_client import get_supabase, post_supabase, patch_supabase, get_st
 
 
 # ============ 日付・時刻の抽出 ============
+# 「1/2」のような日付は、前後に数字や「/」が続いていたら日付とみなさない（「2026/8/12」の一部や比率を拾わないため）
+_MD_RE = re.compile(r'(?<![\d/])(\d{1,2})/(\d{1,2})(?![\d/])(?:には|までに|まで|は|に|の)?')
+_YMD_RE = re.compile(r'(?<!\d)(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})(?![\d/\-])(?:には|までに|まで|は|に|の)?')
+# 「3時間」の「3時」を時刻と読み違えないよう、「時」の直後が「間」のときは対象外にする
+_HM_RE = re.compile(r'(\d{1,2})時(\d{1,2})分(?:に|の)?')
+_H_RE = re.compile(r'(\d{1,2})時(?!間)(?:に|の)?')
+_COLON_RE = re.compile(r'(?<!\d)(\d{1,2}):(\d{2})(?!\d)(?:に|の)?')
+
+# 「1/5」を12月に受け取ったときのように、明らかに過ぎた日付は翌年ぶんとみなす。
+# ただし「8/3」を8月に送るような“少し前”は、そのまま今年の期限として扱いたいのでこの日数で線を引く。
+_ROLLOVER_PAST_DAYS = 92
+
+
+def _ymd_to_iso(year, month, day):
+    """「2026/8/12」のように年つきで書かれた日付。存在しない日付はNone。"""
+    from datetime import datetime
+    try:
+        return config.iso_of_date(datetime(year, month, day, tzinfo=config.JST))
+    except ValueError:
+        return None
+
+
+def _md_to_iso(month, day):
+    """月日から YYYY-MM-DD を作る。存在しない日付（13月・50/50など）はNone。
+    年またぎ（12月に「1/5」と送るなど）は翌年として解釈する。
+    """
+    from datetime import datetime, timedelta
+    now = config.now_jst()
+    for year in (now.year, now.year + 1):
+        try:
+            d = datetime(year, month, day, tzinfo=config.JST)
+        except ValueError:
+            return None          # 2/30 のように、その年に存在しない日付
+        if year == now.year and (config.midnight(now) - d) > timedelta(days=_ROLLOVER_PAST_DAYS):
+            continue             # 大きく過ぎている＝来年ぶんの指定とみなして次の年で作り直す
+        return config.iso_of_date(d)
+    return None
+
+
 def extract_date_time(text):
     """テキストの中から日付・時刻の表現を検出して取り除く。
-    対応: 今日／明日／明後日、M/D、HH時MM分／HH時／HH:MM（文中どこにあってもよい）。
+    対応: 今日／明日／明後日、YYYY/M/D、M/D、HH時MM分／HH時／HH:MM（文中どこにあってもよい）。
+    日付として成立しないもの（「50/50」など）は日付とみなさず、本文のまま残す。
     """
     title = text
     due = ''
@@ -27,24 +67,28 @@ def extract_date_time(text):
         due = d.strftime('%Y-%m-%d')
         title = title.replace(m.group(0), '', 1)
     else:
-        m = re.search(r'(\d{1,2})/(\d{1,2})(?:には|までに|まで|は|に|の)?', title)
-        if m:
-            y = config.now_jst().year
-            due = f'{y}-{int(m.group(1)):02d}-{int(m.group(2)):02d}'
-            title = title.replace(m.group(0), '', 1)
+        for pattern, to_iso in ((_YMD_RE, _ymd_to_iso), (_MD_RE, _md_to_iso)):
+            m = pattern.search(title)
+            if not m:
+                continue
+            iso = to_iso(*(int(g) for g in m.groups()))
+            if iso:                       # 日付として成立しないものは本文のまま残す
+                due = iso
+                title = title.replace(m.group(0), '', 1)
+                break
 
-    m = re.search(r'(\d{1,2})時(\d{1,2})分(に|の)?', title)
-    if m:
+    m = _HM_RE.search(title)
+    if m and int(m.group(1)) < 24 and int(m.group(2)) < 60:
         due_time = f'{int(m.group(1)):02d}:{int(m.group(2)):02d}'
         title = title.replace(m.group(0), '', 1)
     else:
-        m = re.search(r'(\d{1,2})時(に|の)?', title)
-        if m:
+        m = _H_RE.search(title)
+        if m and int(m.group(1)) < 24:
             due_time = f'{int(m.group(1)):02d}:00'
             title = title.replace(m.group(0), '', 1)
         else:
-            m = re.search(r'(\d{1,2}):(\d{2})(に|の)?', title)
-            if m:
+            m = _COLON_RE.search(title)
+            if m and int(m.group(1)) < 24 and int(m.group(2)) < 60:
                 due_time = f'{int(m.group(1)):02d}:{int(m.group(2)):02d}'
                 title = title.replace(m.group(0), '', 1)
 

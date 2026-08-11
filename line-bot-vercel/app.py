@@ -194,7 +194,11 @@ def _handle_preview(environ, start_response):
     qs = parse_qs(environ.get('QUERY_STRING', ''))
     kind = (qs.get('kind') or ['daily'])[0]
     try:
-        if kind in ('plan', 'plan_tomorrow'):
+        if kind == 'parse':
+            # 日付・時刻の読み取り結果だけを確認する（保存はしない）。?text=... に文面を入れる
+            from linebot.tasks import extract_date_time
+            body = repr(extract_date_time((qs.get('text') or [''])[0]))
+        elif kind in ('plan', 'plan_tomorrow'):
             # user_id を渡さないので番号の記憶もされず、LINEにも何も送られない（純粋な下書き確認）
             from linebot import config as cfg
             from linebot.planning import build_plan_prompt
