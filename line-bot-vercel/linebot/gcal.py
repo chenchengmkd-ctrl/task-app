@@ -7,6 +7,7 @@
 未設定のときは常に「連携なし」として静かに無効化する（他の機能に影響を出さない）。
 """
 import json
+import time
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -24,20 +25,31 @@ def is_enabled():
     return bool(config.GOOGLE_SERVICE_ACCOUNT_JSON and config.GOOGLE_CALENDAR_ID)
 
 
+# 取得したアクセストークンの使い回し。1回の処理で何十件も読み書きすることがあり
+# （シフト表の一括登録など）、そのたびに認証し直すと時間切れになるため。
+_TOKEN_CACHE = {'token': None, 'expires_at': 0.0}
+_TOKEN_TTL_SEC = 1800          # 実際の有効期限は1時間。余裕をみて短めに切る
+
+
 def _access_token():
     """サービスアカウントのJSONキーからアクセストークンを得る。失敗時はNone。"""
     if not config.GOOGLE_SERVICE_ACCOUNT_JSON:
         return None
+    now = time.time()
+    if _TOKEN_CACHE['token'] and now < _TOKEN_CACHE['expires_at']:
+        return _TOKEN_CACHE['token']
     try:
         from google.oauth2 import service_account
         from google.auth.transport.requests import Request
         info = json.loads(config.GOOGLE_SERVICE_ACCOUNT_JSON)
         creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
         creds.refresh(Request())
-        return creds.token
     except Exception as e:
         print('gcal token error:', e)
         return None
+    _TOKEN_CACHE['token'] = creds.token
+    _TOKEN_CACHE['expires_at'] = now + _TOKEN_TTL_SEC
+    return creds.token
 
 
 def _hhmm_to_min(hhmm):
