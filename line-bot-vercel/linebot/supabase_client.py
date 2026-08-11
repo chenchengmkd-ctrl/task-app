@@ -43,6 +43,12 @@ def post_supabase(table, rows):
 
 
 def patch_supabase(table, filter_query, body):
+    """更新した行を返す。失敗した場合と「1行も一致しなかった」場合はNone。
+
+    1行も一致しないのは、対象が既に完全削除されているときなどに起きる。
+    以前はここで空リストを返しており、呼び出し側が成功と受け取って
+    「✅ 反映しました」と答えてしまっていた（実際には何も変わっていない）。
+    """
     url = f'{config.SUPABASE_URL}/rest/v1/{table}?{filter_query}'
     res = requests.patch(
         url,
@@ -54,9 +60,13 @@ def patch_supabase(table, filter_query, body):
         print('Supabase update error', res.status_code, res.text)
         return None
     try:
-        return res.json()
+        rows = res.json()
     except ValueError:
         return None
+    if not rows:
+        print('Supabase update matched no rows:', table, filter_query)
+        return None
+    return rows
 
 
 def delete_supabase(table, filter_query):

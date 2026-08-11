@@ -28,7 +28,7 @@ from linebot.line_client import push_text, get_users
 from linebot import receipt as receipt_mod
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 47
+APP_VERSION = 48
 
 
 def _respond(start_response, status, body, cors=False):

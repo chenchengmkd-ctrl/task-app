@@ -414,13 +414,20 @@ def _current_due(task_id):
     return (rows[0].get('due') or '') if rows else ''
 
 
+# 更新が1行も当たらなかったとき用。以前はこれを成功として扱い、
+# 何も変わっていないのに「✅ 反映しました」と答えてしまっていた。
+_FAILED_HEAD = ('⚠️ 反映できませんでした\n'
+                '（アプリの「🗑 ゴミ箱」で完全削除されているか、通信が不安定な可能性があります。'
+                '「一覧」で番号を取り直してからお試しください）')
+
+
 def handle_numbered_due_time(user_id, text):
     """番号＋日付/時刻の指定を、期限・時間の設定として処理する。該当なしはNone。"""
     specs = _accepted_num_specs(text)
     if not specs:
         return None
 
-    applied, missing, timed_ids = [], [], []
+    applied, missing, failed, timed_ids = [], [], [], []
     for _, num, when, time_s in specs:
         target = resolve_numbered_task(user_id, num)
         if not target:
@@ -439,6 +446,7 @@ def handle_numbered_due_time(user_id, text):
             continue
         ok = patch_supabase('tasks', f"id=eq.{quote(target['id'])}", body)
         if ok is None:
+            failed.append(f"{num}. {target['title']}")
             continue
         if time_val:
             timed_ids.append(target['id'])
@@ -465,6 +473,8 @@ def handle_numbered_due_time(user_id, text):
     if applied:
         head = '⏰ 期限・時間を設定しました' if timed_ids else '📅 期限を変更しました'
         lines.append(head + '\n' + '\n'.join(applied))
+    if failed:
+        lines.append(_FAILED_HEAD + '\n' + '\n'.join(failed))
     if missing:
         nums = '、'.join(str(n) for n in missing)
         lines.append(f'⚠️ {nums} 番に対応するタスクが見つかりませんでした。「一覧」で番号を確認してください。')
@@ -521,7 +531,7 @@ def handle_numbered_actions(user_id, text):
     if applied:
         lines.append('✅ 反映しました\n' + '\n'.join(applied))
     if failed:
-        lines.append('⚠️ 反映に失敗しました\n' + '\n'.join(failed))
+        lines.append(_FAILED_HEAD + '\n' + '\n'.join(failed))
     if missing:
         nums = '、'.join(str(n) for n in missing)
         lines.append(f'⚠️ {nums} 番に対応するタスクが見つかりませんでした。「一覧」で番号を確認してください。')
@@ -615,7 +625,14 @@ def get_timed_tasks_today():
 
 
 def check_timed_reminders(push_text_fn, get_users_fn):
-    """時刻の TIME_LEAD_MINUTES 分前になったタスクをLINEに通知（重複送信は防ぐ）。"""
+    """開始時刻が近づいたタスクをLINEに通知（同じタスクは1日1回だけ）。
+
+    以前は「開始5〜10分前」という5分幅に入ったときだけ鳴らしていたが、
+    5分おきのポーリング（GitHub Actions）は数分〜十数分ずれることが珍しくなく、
+    その幅を飛び越すとその日はもう鳴らなかった。
+    いまは「開始TIME_LEAD_MINUTES分前〜開始TIME_LATE_MINUTES分後」の広い幅で拾い、
+    遅れて気づいた場合はその旨を添えて必ず知らせる。
+    """
     today_str = config.today_iso()
     now = config.now_jst()
     items = get_timed_tasks_today()
@@ -625,21 +642,29 @@ def check_timed_reminders(push_text_fn, get_users_fn):
     prop_key = f'TIME_REMINDED_{today_str}'
     reminded = get_state(prop_key) or []
 
-    due = []
+    soon, late = [], []
     for it in items:
         if it['id'] in reminded:
             continue
         hh, mm = it['due_time'].split(':')
         target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
         diff_min = (target - now).total_seconds() / 60
-        if diff_min <= config.TIME_LEAD_MINUTES and diff_min > config.TIME_LEAD_MINUTES - config.TIME_CHECK_INTERVAL:
-            due.append(it)
-            reminded.append(it['id'])
+        if diff_min > config.TIME_LEAD_MINUTES:
+            continue                                   # まだ早い。次のポーリングに任せる
+        if diff_min < -config.TIME_LATE_MINUTES:
+            continue                                   # 過ぎすぎ。いまさら知らせても混乱するだけ
+        (soon if diff_min >= 0 else late).append(it)
+        reminded.append(it['id'])
 
-    if not due:
+    if not soon and not late:
         return
 
-    msg = f'⏰ もうすぐ開始（{config.TIME_LEAD_MINUTES}分後）\n' + '\n'.join(f"・{it['title']}（{it['due_time']}〜）" for it in due)
+    blocks = []
+    if soon:
+        blocks.append(f'⏰ もうすぐ開始\n' + '\n'.join(f"・{it['title']}（{it['due_time']}〜）" for it in soon))
+    if late:
+        blocks.append('⏰ 開始時刻を過ぎています\n' + '\n'.join(f"・{it['title']}（{it['due_time']}〜）" for it in late))
+    msg = '\n\n'.join(blocks)
     for uid in get_users_fn():
         push_text_fn(uid, msg)
     set_state(prop_key, reminded)
