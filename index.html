@@ -1672,7 +1672,25 @@ function scheduleSupabaseSync() {
 }
 async function syncAllToSupabase() {
   try {
-    if (tasks.length) await db.from('tasks').upsert(tasks.map(taskToRow));
+    // 手元が古い行でサーバーを塗りつぶさないよう、送る前に更新時刻を突き合わせる。
+    // ふだんはリアルタイム購読でLINE側の変更が入ってくるが、スリープ・通信断のあいだの
+    // 変更は取りこぼす（Supabaseは切断中の変更を後から配ってくれない）。その状態で
+    // 何か1つ触ると、確認せず全件を書き戻して当日の操作を丸ごと取り消してしまう。
+    let serverWasNewer = false;
+    if (tasks.length) {
+      const { data: remote, error } = await db.from('tasks').select('id,updated_at');
+      if (error) throw error;
+      const remoteUpdated = {};
+      (remote || []).forEach(r => { remoteUpdated[r.id] = new Date(r.updated_at).getTime(); });
+      const rows = tasks.map(taskToRow).filter(row => {
+        const rt = remoteUpdated[row.id];
+        if (rt === undefined) return true;                          // サーバーにまだ無い＝新規
+        if (new Date(row.updated_at).getTime() >= rt) return true;  // 手元のほうが新しい
+        serverWasNewer = true;
+        return false;
+      });
+      if (rows.length) await db.from('tasks').upsert(rows);
+    }
     if (recurring.length) {
       await db.from('recurring').upsert(recurring.map(r => ({
         id: r.id, title: r.title, recurrence: r.recurrence,
@@ -1682,6 +1700,8 @@ async function syncAllToSupabase() {
         priority: normPrio(r.priority), estimate: r.estimate || ''
       })));
     }
+    // 押し戻さなかった行＝サーバーのほうが新しい行を、こちらへ取り込んでおく
+    if (serverWasNewer) await pullFromSupabase();
   } catch (e) { console.error('Supabase sync error:', e); }
 }
 async function pullFromSupabase() {
@@ -1884,6 +1904,13 @@ db.channel('task-app-realtime')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, scheduleRealtimePull)
   .on('postgres_changes', { event: '*', schema: 'public', table: 'recurring' }, scheduleRealtimePull)
   .subscribe();
+
+// スリープ・通信断のあいだの変更はリアルタイム購読では届かない（切断中のぶんは後から配られない）。
+// 画面に戻ってきたとき・回線が復活したときに取り込み直して、古いまま操作するのを防ぐ。
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") scheduleRealtimePull();
+});
+window.addEventListener("online", scheduleRealtimePull);
 
 /* ---------- 起動 ---------- */
 initTheme();
