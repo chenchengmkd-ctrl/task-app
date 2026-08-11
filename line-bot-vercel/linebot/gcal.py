@@ -134,6 +134,8 @@ def get_events_with_id(date_iso):
             'start': start.get('dateTime') or start.get('date'),
             'end': end.get('dateTime') or end.get('date'),
             'all_day': bool(start.get('date')),
+            # ボットが自分で入れた予定を後から見分けるための覚え書き（shift.py が使う）
+            'description': ev.get('description') or '',
             # singleEvents=trueで展開した繰り返し予定の1回分には recurringEventId が付く。
             # 「この操作は1回分だけに適用される」ことを利用側で案内するために使う。
             'is_recurring': bool(ev.get('recurringEventId')),
@@ -223,8 +225,11 @@ def _reminders_body(reminder_minutes):
     return {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': int(reminder_minutes)}]}
 
 
-def create_event(title, date_iso, start_hhmm='', end_hhmm='', rrule=None, reminder_minutes=None):
-    """予定を追加する。時刻を省略すると終日予定になる。→ (成功したか, メッセージ)"""
+def create_event(title, date_iso, start_hhmm='', end_hhmm='', rrule=None, reminder_minutes=None,
+                 description=''):
+    """予定を追加する。時刻を省略すると終日予定になる。→ (成功したか, メッセージ)
+    description は、ボットが自動で入れた予定を後から見分けるための印にも使う。
+    """
     if start_hhmm:
         if not end_hhmm:
             end_min = min(_hhmm_to_min(start_hhmm) + 60, 24 * 60 - 1)
@@ -234,6 +239,8 @@ def create_event(title, date_iso, start_hhmm='', end_hhmm='', rrule=None, remind
         day = config.parse_date(date_iso)
         body = {'summary': title, 'start': {'date': date_iso},
                 'end': {'date': config.iso_of_date(day + timedelta(days=1))}}
+    if description:
+        body['description'] = description
     if rrule:
         body['recurrence'] = [rrule]
     if reminder_minutes is not None:

@@ -28,7 +28,7 @@ from linebot.line_client import push_text, get_users
 from linebot import receipt as receipt_mod
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 48
+APP_VERSION = 49
 
 
 def _respond(start_response, status, body, cors=False):
@@ -220,6 +220,43 @@ def _handle_preview(environ, start_response):
     return _respond(start_response, '200 OK', {'kind': kind, 'text': body})
 
 
+def _handle_preview_shift(environ, start_response):
+    """シフト表の画像を読み取った結果だけを返す（カレンダーには一切書き込まない）。動作確認用。
+    body: {"image": "data:image/png;base64,..."}
+    """
+    if not _has_poll_secret(environ):
+        return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'}, cors=True)
+    try:
+        length = int(environ.get('CONTENT_LENGTH') or 0)
+    except ValueError:
+        length = 0
+    raw = environ['wsgi.input'].read(length) if length else b'{}'
+    try:
+        data_url = (json.loads(raw.decode('utf-8')) or {}).get('image') or ''
+    except Exception as e:
+        return _respond(start_response, '400 Bad Request', {'error': f'bad json: {e}'}, cors=True)
+    if ',' not in data_url:
+        return _respond(start_response, '400 Bad Request', {'error': 'image missing'}, cors=True)
+
+    import base64
+    header, b64 = data_url.split(',', 1)
+    mime = 'image/png' if 'png' in header else 'image/jpeg'
+    try:
+        image_bytes = base64.b64decode(b64)
+    except Exception as e:
+        return _respond(start_response, '400 Bad Request', {'error': f'base64: {e}'}, cors=True)
+
+    from linebot import shift as shift_mod
+    try:
+        detected = shift_mod.looks_like_shift_table(image_bytes, mime)
+        days = shift_mod.read_shift(image_bytes, mime)
+        preview = shift_mod._format_pending(days) if days else ''
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    return _respond(start_response, '200 OK',
+                    {'detected_as_shift': detected, 'days': days, 'preview': preview}, cors=True)
+
+
 def _handle_setup_richmenu(environ, start_response):
     """ブラウザのCanvasで作った画像を受け取り、LINEのリッチメニューとして登録する（セットアップ時に1回だけ叩く）。"""
     if not _has_poll_secret(environ):
@@ -282,6 +319,11 @@ def app(environ, start_response):
         if method == 'POST':
             return _handle_preview_receipt(environ, start_response)
 
+    if path == '/api/preview_shift':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_preview_shift(environ, start_response)
     if path == '/api/setup_richmenu':
         if method == 'OPTIONS':
             return _respond(start_response, '204 No Content', {}, cors=True)

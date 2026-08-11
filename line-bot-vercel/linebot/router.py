@@ -24,6 +24,12 @@ def route_command(user_id, text):
     if explicit_task:
         return tasks_mod.add_line(user_id, explicit_task.group(1).strip())
 
+    # シフト表の読み取り結果への「はい／いいえ」。直前に写真を送って始まった確認なので、
+    # 他の保留中の確認より先に見る（16日ぶんのカレンダー登録がかかっているため）
+    from . import shift as shift_mod
+    pending_shift = shift_mod.handle_pending_reply(user_id, text)
+    if pending_shift is not None:
+        return pending_shift
     # 保留中の返信（サブタスク提案／期限確認／時刻確認／優先順位見直し案）への「はい/いいえ」等を最優先で処理
     pending_subtask = agent_mod.handle_pending_subtask_reply(user_id, text)
     if pending_subtask is not None:
@@ -154,6 +160,30 @@ def route_command(user_id, text):
     return agent_mod.ask_agent(user_id, text)
 
 
+def _handle_image_message(user_id, message_id):
+    """送られてきた写真を、シフト表なら勤務表として、それ以外はレシートとして読み取る。→ 返信文"""
+    from . import receipt as receipt_mod
+    from . import shift as shift_mod
+
+    # シフト表かどうかの判定だけ先に済ませる。レシート側の処理には手を触れず、
+    # シフト表と分かったときだけそちらへ回す。
+    try:
+        image_bytes, mime = receipt_mod.fetch_image(message_id)
+        if image_bytes and len(image_bytes) <= shift_mod.MAX_IMAGE_BYTES \
+                and shift_mod.looks_like_shift_table(image_bytes, mime):
+            return shift_mod.handle_image(user_id, image_bytes, mime)
+    except Exception as e:
+        # 判定に失敗しただけならレシートとして読み進める（従来どおりの動きに戻す）
+        print('shift detect error:', e)
+
+    try:
+        return receipt_mod.handle_image(user_id, message_id)
+    except Exception as e:
+        # 読み取りに失敗しても黙って終わらせない（返信が無いと送れたのかが分からないため）
+        print('receipt handle_image error:', e)
+        return 'レシートの読み取りでエラーが出ました。もう一度送ってみてください。'
+
+
 def handle_event(ev):
     """LINEのWebhookイベント1件を処理する。"""
     if ev.get('type') != 'message':
@@ -162,16 +192,11 @@ def handle_event(ev):
     msg_type = message.get('type')
     user_id = (ev.get('source') or {}).get('userId')
 
-    # 写真＝レシートとして読み取る（この時点では保存せず、確認してもらってから登録する）
+    # 写真はレシートかシフト表のどちらか。まず種類を見分けてから読み取る。
+    # どちらもこの時点では保存せず、内容を見せて確認してもらってから登録する。
     if msg_type == 'image':
         remember_user(user_id)
-        from . import receipt as receipt_mod
-        try:
-            reply = receipt_mod.handle_image(user_id, message.get('id'))
-        except Exception as e:
-            # 読み取りに失敗しても黙って終わらせない（返信が無いと送れたのかが分からないため）
-            print('receipt handle_image error:', e)
-            reply = 'レシートの読み取りでエラーが出ました。もう一度送ってみてください。'
+        reply = _handle_image_message(user_id, message.get('id'))
         reply_text(ev.get('replyToken'), reply)
         return
 
