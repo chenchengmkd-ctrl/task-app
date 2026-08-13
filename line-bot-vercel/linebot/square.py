@@ -102,9 +102,12 @@ def _amount(money):
         return 0
 
 
-def fetch_payments(date_iso):
-    """指定日の決済を全件取得する（ページングを最後までたどる）。失敗時はNone。"""
-    location_id = _location_id()
+def fetch_payments(date_iso, location_id=None):
+    """指定日の決済を全件取得する（ページングを最後までたどる）。失敗時はNone。
+
+    location_id を省略すると設定済み（またはACTIVEな最初の1件）を使う。
+    """
+    location_id = location_id or _location_id()
     if not location_id:
         return None
     begin, end = _day_range(date_iso)
@@ -129,9 +132,9 @@ def fetch_payments(date_iso):
     return payments
 
 
-def summarize(date_iso):
+def summarize(date_iso, location_id=None):
     """1日分の売上を集計する。戻り値 {total, count, by_source, refunded}。取得できなければNone。"""
-    payments = fetch_payments(date_iso)
+    payments = fetch_payments(date_iso, location_id)
     if payments is None:
         return None
 
@@ -254,10 +257,27 @@ def diagnose():
     if not locations:
         return {'enabled': True, 'ok': False, 'error': 'locations取得に失敗（トークンを確認）'}
     today = summarize(config.today_iso())
+    # 店舗が複数ある場合、SQUARE_LOCATION_ID未設定だとどれが選ばれるか分かりにくいので、
+    # 直近7日の売上件数を店舗ごとに出す（実際に売上が立っている店舗を見分けるため）
+    from datetime import timedelta
+    per_location = []
+    if len(locations) > 1:
+        for loc in locations:
+            if loc.get('status') != 'ACTIVE':
+                continue
+            week_count, week_total = 0, 0
+            for i in range(7):
+                d = config.iso_of_date(config.now_jst() - timedelta(days=i))
+                s = summarize(d, loc['id'])
+                if s:
+                    week_count += s['count']
+                    week_total += s['total']
+            per_location.append({'id': loc['id'], 'name': loc['name'], 'last7days_count': week_count, 'last7days_total': week_total})
     return {
         'enabled': True,
         'ok': True,
         'locations': locations,
         'location_used': _location_id(),
         'today': today,
+        'per_location_last7days': per_location,
     }
