@@ -96,6 +96,18 @@ def route_command(user_id, text):
         if square_cmd.group(1):
             return square_mod.import_day(user_id, date_iso)
         return square_mod.build_summary(date_iso)
+    # 出数（商品ごとの個数）。「出数」で当日、「出数 8/5」で日付指定、「出数取込 2026-07」で月まとめて取り込み
+    items_backfill = re.match(r'^(?:出数|明細)\s*(?:取込|取り込み)\s*(\d{4})[-/年](\d{1,2})月?$', text)
+    if items_backfill:
+        from . import square as square_mod
+        r = square_mod.backfill_sales_detail(f'{items_backfill.group(1)}-{int(items_backfill.group(2)):02d}')
+        return f'✅ {r["month"]} の出数を取り込みました\n営業{r["days"]}日 ／ 客数 {r["customers"]}組 ／ 売上 {r["total"]:,}円'
+    items_cmd = re.match(r'^(?:出数|売れ筋|明細)\s*((?:\d{1,2})[/月]\d{1,2}日?)?$', text)
+    if items_cmd:
+        from . import square as square_mod
+        from . import finance as finance_mod
+        date_iso = finance_mod.date_token_to_iso(items_cmd.group(1)) if items_cmd.group(1) else None
+        return square_mod.build_items_report(date_iso)
     # 「売上 52000」「食材 お米 1000」「シフト 都丸 10:00 14:30」「取り消し」など。
     # 該当しなければNoneが返るので、そのまま下のタスク系ルーティングへ流れる
     from . import finance as finance_mod

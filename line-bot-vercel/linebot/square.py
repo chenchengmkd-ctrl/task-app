@@ -228,6 +228,12 @@ def sync_daily(push, get_users_fn, notify=True):
     if s is None or s['total'] <= 0:
         return None
 
+    # 出数・客数もあわせて取り込む（アプリの分析タブが読む）
+    try:
+        store_sales_detail(date_iso)
+    except Exception as e:
+        print('square sales detail sync error:', e)
+
     entered = finance_mod.sales_of(date_iso)
     if entered == s['total']:
         return s  # 既に一致しているので書き込みも通知も不要
@@ -341,6 +347,64 @@ def sales_detail(date_iso, location_id=None):
         'items': ranked,
         'byHour': by_hour,
     }
+
+
+def store_sales_detail(date_iso):
+    """その日の出数・客数をSupabaseに保存する（キー: birdmen:sales:YYYY-MM-DD）。
+
+    アプリの「分析」タブがこれを読む。売上金額そのものは日次データ（report:）側が正なので、
+    ここは商品ごとの個数・客数・時間帯といった、Squareにしか無い情報を持つ。
+    """
+    detail = sales_detail(date_iso)
+    if detail is None:
+        return None
+    if detail['customers'] == 0:
+        return detail  # 営業していない日は保存しない（空データでグラフを汚さない）
+    finance_mod.kv_set(f'sales:{date_iso}', detail)
+    return detail
+
+
+def backfill_sales_detail(month):
+    """指定月（YYYY-MM）の出数・客数をまとめて取り込む。過去分を後から入れる用。"""
+    import calendar as _cal
+    y, m = int(month[:4]), int(month[5:7])
+    days = _cal.monthrange(y, m)[1]
+    today = config.today_iso()
+    saved, customers, total = 0, 0, 0
+    for d in range(1, days + 1):
+        date_iso = f'{y:04d}-{m:02d}-{d:02d}'
+        if date_iso > today:
+            break
+        detail = store_sales_detail(date_iso)
+        if detail and detail['customers'] > 0:
+            saved += 1
+            customers += detail['customers']
+            total += detail['total']
+    return {'month': month, 'days': saved, 'customers': customers, 'total': total}
+
+
+def build_items_report(date_iso=None):
+    """その日の出数をLINEで見る（「出数」コマンド）。取り込みも同時に行う。"""
+    if not is_enabled():
+        return 'Squareの連携がまだ設定されていません。'
+    date_iso = date_iso or config.today_iso()
+    detail = store_sales_detail(date_iso)
+    if detail is None:
+        return 'Squareから明細を取得できませんでした。'
+    if detail['customers'] == 0:
+        return f'Square {config.jp(date_iso)} の会計はまだありません。'
+
+    lines = [
+        f'🍱 {config.jp(date_iso)} の出数',
+        f'客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円',
+        '',
+    ]
+    for i in detail['items'][:15]:
+        lines.append(f'{i["name"]}　{i["qty"]}個　{i["amount"]:,}円')
+    if len(detail['items']) > 15:
+        lines.append(f'…ほか{len(detail["items"]) - 15}品')
+    lines += ['', f'合計 {detail["total"]:,}円（税込）']
+    return '\n'.join(lines)
 
 
 def diagnose():
