@@ -28,7 +28,7 @@ from linebot.line_client import push_text, get_users
 from linebot import receipt as receipt_mod
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 52
+APP_VERSION = 53
 
 
 def _respond(start_response, status, body, cors=False):
@@ -207,6 +207,12 @@ def _handle_preview(environ, start_response):
             body = build_plan_prompt(None, date_iso)[0] or '（候補になるタスクがありません）'
         elif kind == 'weekly':
             body = build_weekly_report(None)
+        elif kind == 'square_detail':
+            # Squareの出数・客数が取れているか確認する（保存もLINE送信もしない）。?date=YYYY-MM-DD
+            from linebot import square as square_mod
+            from linebot import config as cfg
+            date_iso = (qs.get('date') or [cfg.today_iso()])[0]
+            body = json.dumps(square_mod.sales_detail(date_iso), ensure_ascii=False)
         elif kind == 'finance':
             body = build_daily_finance_report()
         elif kind == 'finance_month':

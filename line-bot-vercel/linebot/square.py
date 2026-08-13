@@ -249,6 +249,100 @@ def sync_daily(push, get_users_fn, notify=True):
     return s
 
 
+def _post(path, body):
+    try:
+        res = requests.post(f'{API_BASE}{path}', headers=_headers(), data=json.dumps(body), timeout=25)
+    except requests.RequestException as e:
+        print('square post failed', e)
+        return None
+    if res.status_code != 200:
+        print('square api error', res.status_code, res.text[:300])
+        return None
+    try:
+        return res.json()
+    except ValueError:
+        return None
+
+
+def fetch_orders(date_iso, location_id=None):
+    """指定日の注文を明細つきで取得する。出数・客数を出すのに使う。失敗時はNone。"""
+    location_id = location_id or _location_id()
+    if not location_id:
+        return None
+    begin, end = _day_range(date_iso)
+    orders, cursor = [], None
+    for _ in range(20):
+        body = {
+            'location_ids': [location_id],
+            'limit': 500,
+            'query': {
+                'filter': {
+                    'date_time_filter': {'closed_at': {'start_at': begin, 'end_at': end}},
+                    'state_filter': {'states': ['COMPLETED']},
+                },
+                'sort': {'sort_field': 'CLOSED_AT', 'sort_order': 'ASC'},
+            },
+        }
+        if cursor:
+            body['cursor'] = cursor
+        data = _post('/v2/orders/search', body)
+        if data is None:
+            return None
+        orders.extend(data.get('orders') or [])
+        cursor = data.get('cursor')
+        if not cursor:
+            break
+    return orders
+
+
+def sales_detail(date_iso, location_id=None):
+    """1日の「出数（商品ごとの個数・金額）」と「客数（会計数）」を集計する。
+
+    客数は会計（注文）の件数。1グループ1会計なので厳密な来客人数ではなく組数に近いが、
+    屋台の持ち帰り中心なら実用上これで足りる。
+    金額は税込（Squareのtotal_money）。
+    """
+    orders = fetch_orders(date_iso, location_id)
+    if orders is None:
+        return None
+
+    items = {}
+    total = 0
+    by_hour = {}
+    for o in orders:
+        total += _amount(o.get('total_money'))
+        closed = o.get('closed_at') or o.get('created_at') or ''
+        # RFC3339のUTC表記なのでJSTへ直してから時間帯に振り分ける
+        if len(closed) >= 13:
+            try:
+                hour = (int(closed[11:13]) + 9) % 24
+                by_hour[hour] = by_hour.get(hour, 0) + 1
+            except ValueError:
+                pass
+        for li in (o.get('line_items') or []):
+            name = (li.get('name') or '（名称なし）').strip()
+            variation = (li.get('variation_name') or '').strip()
+            key = f'{name}（{variation}）' if variation and variation.lower() != 'regular' else name
+            try:
+                qty = int(float(li.get('quantity') or 0))
+            except (TypeError, ValueError):
+                qty = 0
+            cur = items.setdefault(key, {'name': key, 'qty': 0, 'amount': 0})
+            cur['qty'] += qty
+            cur['amount'] += _amount(li.get('total_money'))
+
+    ranked = sorted(items.values(), key=lambda i: -i['amount'])
+    customers = len(orders)
+    return {
+        'date': date_iso,
+        'customers': customers,
+        'total': total,
+        'perCustomer': round(total / customers) if customers else 0,
+        'items': ranked,
+        'byHour': by_hour,
+    }
+
+
 def diagnose():
     """設定確認用。トークンが有効か・店舗が見えるかだけ返す（/api/health から呼ぶ）。"""
     if not is_enabled():
