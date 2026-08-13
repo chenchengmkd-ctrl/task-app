@@ -231,7 +231,16 @@ def build_month_finance_report(month=None):
 
 
 def send_finance_report(push_text, get_users):
-    """cronから呼ぶ。当日の収支を全ユーザーにpushする。"""
+    """cronから呼ぶ。当日の収支を全ユーザーにpushする。
+
+    15時の自動取り込みのあとに売上が立つこともあるので、レポートを作る直前にもう一度
+    Squareと合わせておく（ここでは通知しない。重複して同じことを2回知らせないため）。
+    """
+    try:
+        from . import square as square_mod
+        square_mod.sync_daily(push_text, get_users, notify=False)
+    except Exception as e:
+        print('finance report square sync error:', e)
     body = build_daily_finance_report()
     for uid in get_users():
         push_text(uid, body)
@@ -779,7 +788,7 @@ def finance_help():
         '・スクエア　　　→ その日のSquare売上を確認',
         '・スクエア取込　→ アプリの売上に反映',
         '・スクエア 8/5　→ 日付を指定',
-        '（毎晩23:30に自動で取り込みます。手入力済みの日は上書きしません）',
+        '（毎日15時に自動で取り込みます。売上はSquareの数字が正）',
         '',
         '▼ レシートを撮るだけ',
         'レシートの写真をこのトークに送ると読み取ります。',

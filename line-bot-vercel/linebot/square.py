@@ -6,8 +6,10 @@ SquareのPayments APIから1日分の決済を集計し、財務アプリの「�
 - Squareで打った売上には現金もカードも含まれる。どちらがいくらかを必ず内訳で示してから取り込む
   （カードだけを見て「売上が足りない」と誤解しないため）。
 - 返金（refunded_money）は差し引く。
-- 自動取り込みは「まだ売上が入っていない日」だけ書き込む。手入力済みの日は上書きせず、
-  金額が食い違っていればその旨だけ知らせる（人が入れた数字を機械が黙って消さない）。
+- 売上は手入力せずSquareを正とする運用なので、自動取り込みは毎回上書きする。
+  ただし黙って書き換えないよう、既に入っていた金額と違うときはその旨も知らせる。
+- 取り込みは15時（cron）に行い、そのあとに立った売上を拾うため22時のレポート直前にも
+  通知なしでもう一度同期する。
 - 金額は税込。アプリ側の cash.sales も税込なのでそのまま入る。
 """
 import json
@@ -179,7 +181,7 @@ def build_summary(date_iso=None):
         lines.append(f'アプリの売上と一致しています（{entered:,}円）')
     elif entered:
         lines.append(f'⚠️ アプリには {entered:,}円 が入っています（差 {s["total"] - entered:+,}円）')
-        lines.append('「スクエア取込」でSquareの金額に上書きできます')
+        lines.append('「スクエア取込」で今すぐ合わせられます（15時に自動でも合います）')
     else:
         lines.append('アプリにはまだ売上が入っていません')
         lines.append('「スクエア取込」で取り込めます')
@@ -212,41 +214,39 @@ def import_day(user_id, date_iso=None, overwrite=True):
     return '\n'.join(lines)
 
 
-def sync_daily(push, get_users_fn):
-    """毎晩の自動取り込み（cronから呼ばれる）。
+def sync_daily(push, get_users_fn, notify=True):
+    """自動取り込み（cronから呼ばれる）。
 
-    まだ売上が入っていない日だけ書き込む。手で入れた数字は上書きせず、
-    食い違っているときだけ知らせる。
+    売上はSquareを正とし、手入力を待たずに毎回上書きする（売上は手で入れない運用のため）。
+    ただし黙って書き換えると気づけないので、既に入っていた数字と違うときはその旨も知らせる。
+    notify=False のときは書き込むだけで通知しない（22時レポートの直前同期など）。
     """
     if not is_enabled():
-        return
+        return None
     date_iso = config.today_iso()
     s = summarize(date_iso)
     if s is None or s['total'] <= 0:
-        return
+        return None
 
     entered = finance_mod.sales_of(date_iso)
-    users = get_users_fn()
+    if entered == s['total']:
+        return s  # 既に一致しているので書き込みも通知も不要
 
-    if not entered:
-        if finance_mod.set_sales_amount(None, date_iso, s['total']) is None:
-            return
-        text = '\n'.join(
-            [f'🧾 Square {config.jp(date_iso)} の売上を自動で取り込みました'] + _summary_lines(s)
-            + ['', finance_mod.entry_url(date_iso)]
-        )
-    elif entered != s['total']:
-        text = '\n'.join([
-            f'⚠️ Square {config.jp(date_iso)} の売上とアプリの数字が違います',
-            f'Square {s["total"]:,}円 ／ アプリ {entered:,}円（差 {s["total"] - entered:+,}円）',
-            '',
-            'Squareに合わせるなら「スクエア取込」',
-        ])
-    else:
-        return
+    if finance_mod.set_sales_amount(None, date_iso, s['total']) is None:
+        return None
+    if not notify:
+        return s
 
-    for uid in users:
+    head = f'🧾 Square {config.jp(date_iso)} の売上を取り込みました'
+    lines = [head] + _summary_lines(s)
+    if entered:
+        lines.append(f'（アプリに入っていた {entered:,}円 から更新）')
+    lines += ['', finance_mod.entry_url(date_iso)]
+    text = '\n'.join(lines)
+
+    for uid in get_users_fn():
         push(uid, text)
+    return s
 
 
 def diagnose():
