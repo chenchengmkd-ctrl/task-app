@@ -478,15 +478,15 @@ def _week_stats(start, end, records):
 
 def cashflow_forecast(date_iso=None):
     """次回金曜に振り込まれる「現金以外」の金額を、精算期間の実績＋残り日数の平均で見積もる。
-    期間がすでに終わっていれば実績確定額をそのまま返す。あわせて直近3週間（木〜水）の
-    現金／現金以外の実績と1日平均も返す。
+    期間がすでに終わっていれば実績確定額をそのまま返す。あわせて先週（木〜水・完了済み）の
+    現金／現金以外の実績と1日平均も返す（今週は進行中で数字が安定しないため対象外）。
     """
     date_iso = date_iso or config.today_iso()
     today = datetime.strptime(date_iso, '%Y-%m-%d').date()
     window_start, window_end, next_friday = _next_friday_window(today)
     ws_iso, we_iso = window_start.strftime('%Y-%m-%d'), window_end.strftime('%Y-%m-%d')
 
-    weeks_range = _settlement_weeks(today, count=3)
+    weeks_range = _settlement_weeks(today, count=2)  # [先週, 今週]
     earliest, latest = weeks_range[0][0], weeks_range[-1][1]
     months = set()
     m = earliest.replace(day=1)
@@ -522,7 +522,7 @@ def cashflow_forecast(date_iso=None):
         'actualNoncash': actual_noncash, 'projectedNoncash': projected,
         'finished': finished, 'daysWithData': days_with_data,
         'mtdCash': _mtd_cash(date_iso),
-        'weeks': [_week_stats(s, e, records) for s, e in weeks_range],
+        'lastWeek': _week_stats(*weeks_range[0], records),
     }
 
 
@@ -533,16 +533,13 @@ def _cashflow_lines(date_iso, cf):
         '💴 資金繰り',
         f'現金売上（{int(date_iso[5:7])}月累計）　{cf["mtdCash"]:,}円',
         f'{friday_label}・現金以外　約{cf["projectedNoncash"]:,}円（{amount_label}）',
-        '',
-        '週ごとの現金／現金以外（木〜水・1日平均）',
     ]
-    for w in cf['weeks']:
-        if w['days'] == 0:
-            lines.append(f'{w["label"]}　データなし')
-            continue
-        lines.append(f'{w["label"]}（{w["days"]}日）')
-        lines.append(f'　現金 {w["cash"]:,}円（平均{w["avgCash"]:,}円/日）')
-        lines.append(f'　現金以外 {w["noncash"]:,}円（平均{w["avgNoncash"]:,}円/日）')
+    w = cf['lastWeek']
+    if w['days'] > 0:
+        lines.append(
+            f'先週（{w["label"]}）　現金 {w["cash"]:,}円（平均{w["avgCash"]:,}/日）'
+            f'／現金以外 {w["noncash"]:,}円（平均{w["avgNoncash"]:,}/日）'
+        )
     return lines
 
 
