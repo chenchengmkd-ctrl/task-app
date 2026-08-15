@@ -450,19 +450,55 @@ def _next_friday_window(today):
     return window_start, window_end, next_friday
 
 
+def _settlement_weeks(today, count=3):
+    """今日を含む精算週（木〜水）から、直近count週分を古い順で返す（最後が進行中の今週）。"""
+    _, current_end, _ = _next_friday_window(today)
+    weeks = []
+    end = current_end
+    for _ in range(count):
+        start = end - timedelta(days=6)
+        weeks.append((start, end))
+        end = start - timedelta(days=1)
+    return list(reversed(weeks))
+
+
+def _week_stats(start, end, records):
+    ws_iso, we_iso = start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
+    rows = [r for d, r in records.items() if ws_iso <= d <= we_iso]
+    cash = sum(int(r.get('cash') or 0) for r in rows)
+    noncash = sum(int(r.get('noncash') or 0) for r in rows)
+    days = len(rows)
+    return {
+        'label': f'{config.jp(ws_iso)}〜{config.jp(we_iso)}',
+        'days': days, 'cash': cash, 'noncash': noncash,
+        'avgCash': round(cash / days) if days else None,
+        'avgNoncash': round(noncash / days) if days else None,
+    }
+
+
 def cashflow_forecast(date_iso=None):
     """次回金曜に振り込まれる「現金以外」の金額を、精算期間の実績＋残り日数の平均で見積もる。
-    期間がすでに終わっていれば実績確定額をそのまま返す。
+    期間がすでに終わっていれば実績確定額をそのまま返す。あわせて直近3週間（木〜水）の
+    現金／現金以外の実績と1日平均も返す。
     """
     date_iso = date_iso or config.today_iso()
     today = datetime.strptime(date_iso, '%Y-%m-%d').date()
     window_start, window_end, next_friday = _next_friday_window(today)
     ws_iso, we_iso = window_start.strftime('%Y-%m-%d'), window_end.strftime('%Y-%m-%d')
 
+    weeks_range = _settlement_weeks(today, count=3)
+    earliest, latest = weeks_range[0][0], weeks_range[-1][1]
+    months = set()
+    m = earliest.replace(day=1)
+    while m <= latest:
+        months.add(m.strftime('%Y-%m'))
+        m = m.replace(year=m.year + 1, month=1) if m.month == 12 else m.replace(month=m.month + 1)
+
     records = {}
-    for m in {window_start.strftime('%Y-%m'), window_end.strftime('%Y-%m')}:
-        for r in _cashflow_month(m):
+    for mo in months:
+        for r in _cashflow_month(mo):
             records[r['date']] = r
+
     in_window = [r for d, r in records.items() if ws_iso <= d <= we_iso]
     actual_noncash = sum(int(r.get('noncash') or 0) for r in in_window)
     days_with_data = len(in_window)
@@ -486,17 +522,28 @@ def cashflow_forecast(date_iso=None):
         'actualNoncash': actual_noncash, 'projectedNoncash': projected,
         'finished': finished, 'daysWithData': days_with_data,
         'mtdCash': _mtd_cash(date_iso),
+        'weeks': [_week_stats(s, e, records) for s, e in weeks_range],
     }
 
 
 def _cashflow_lines(date_iso, cf):
     friday_label = '本日振込予定' if cf['nextFriday'] == date_iso else f'次回振込予定（{config.jp(cf["nextFriday"])}）'
     amount_label = '確定' if cf['finished'] else '目安'
-    return [
+    lines = [
         '💴 資金繰り',
         f'現金売上（{int(date_iso[5:7])}月累計）　{cf["mtdCash"]:,}円',
         f'{friday_label}・現金以外　約{cf["projectedNoncash"]:,}円（{amount_label}）',
+        '',
+        '週ごとの現金／現金以外（木〜水・1日平均）',
     ]
+    for w in cf['weeks']:
+        if w['days'] == 0:
+            lines.append(f'{w["label"]}　データなし')
+            continue
+        lines.append(f'{w["label"]}（{w["days"]}日）')
+        lines.append(f'　現金 {w["cash"]:,}円（平均{w["avgCash"]:,}円/日）')
+        lines.append(f'　現金以外 {w["noncash"]:,}円（平均{w["avgNoncash"]:,}円/日）')
+    return lines
 
 
 def build_cashflow_report(date_iso=None):
@@ -510,8 +557,6 @@ def build_cashflow_report(date_iso=None):
     store_cash_split(date_iso, s)
     cf = cashflow_forecast(date_iso)
     lines = [f'💴 {config.jp(date_iso)} 時点の資金繰り', ''] + _cashflow_lines(date_iso, cf)[1:]
-    lines.append('')
-    lines.append(f'対象期間　{config.jp(cf["windowStart"])}〜{config.jp(cf["windowEnd"])}（{cf["daysWithData"]}日分のデータ）')
     return '\n'.join(lines)
 
 
