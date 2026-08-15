@@ -469,9 +469,16 @@ def cashflow_forecast(date_iso=None):
 
     finished = today > window_end
     projected = actual_noncash
-    if not finished and days_with_data > 0:
+    if not finished:
+        # 平均を出すのは「完全に終わった過去日」だけにする。今日はまだ営業中で数字が
+        # 少なく出るため、平均に混ぜると残り日数の見積もりを不当に下げてしまう
+        # （実例：8/13-15の3日平均8,800円のところ、今日の0円を混ぜて4日平均6,600円になり
+        # 　見積もりが46,200円と本来の52,800円より低く出た）
+        past_complete = [r for d, r in records.items() if ws_iso <= d < date_iso]
         remaining_days = (window_end - today).days
-        projected = round(actual_noncash + (actual_noncash / days_with_data) * remaining_days)
+        if past_complete:
+            avg = sum(int(r.get('noncash') or 0) for r in past_complete) / len(past_complete)
+            projected = round(actual_noncash + avg * remaining_days)
 
     return {
         'nextFriday': next_friday.strftime('%Y-%m-%d'),
