@@ -13,6 +13,7 @@ SquareのPayments APIから1日分の決済を集計し、財務アプリの「�
 - 金額は税込。アプリ側の cash.sales も税込なのでそのまま入る。
 """
 import json
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 import requests
@@ -228,12 +229,17 @@ def sync_daily(push, get_users_fn, notify=True):
     if s is None or s['total'] <= 0:
         return None
 
-    # 出数・客数もあわせて取り込む（アプリの分析タブ・LINE通知の両方で使う）
+    # 出数・客数・現金内訳もあわせて取り込む（アプリの分析タブ・LINE通知・資金繰り予想の全部で使う）。
+    # 通知するかどうかに関わらず、日々の記録は毎回残す（資金繰り予想の実績データが途切れないように）
     detail = None
     try:
         detail = store_sales_detail(date_iso)
     except Exception as e:
         print('square sales detail sync error:', e)
+    try:
+        store_cash_split(date_iso, s)
+    except Exception as e:
+        print('square cash split sync error:', e)
 
     entered = finance_mod.sales_of(date_iso)
     if entered == s['total']:
@@ -248,6 +254,13 @@ def sync_daily(push, get_users_fn, notify=True):
     lines = [head] + _summary_lines(s)
     if entered:
         lines.append(f'（アプリに入っていた {entered:,}円 から更新）')
+
+    try:
+        cf = cashflow_forecast(date_iso)
+        lines += [''] + _cashflow_lines(date_iso, cf)
+    except Exception as e:
+        print('square cashflow forecast error:', e)
+
     # 出数（売れた個数の上位）を通知にも載せる。全件だと長くなるので上位5件まで
     if detail and detail.get('items'):
         lines += ['', f'🍱 出数（客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円）']
@@ -255,6 +268,9 @@ def sync_daily(push, get_users_fn, notify=True):
             lines.append(f'　{i["name"]}　{i["qty"]}個')
         if len(detail['items']) > 5:
             lines.append(f'　…ほか{len(detail["items"]) - 5}品（「出数」で全件見れます）')
+        usage_lines = _usage_lines(detail['items'])
+        if usage_lines:
+            lines += [''] + usage_lines
     lines += ['', finance_mod.entry_url(date_iso)]
     text = '\n'.join(lines)
 
@@ -373,7 +389,7 @@ def store_sales_detail(date_iso):
 
 
 def backfill_sales_detail(month):
-    """指定月（YYYY-MM）の出数・客数をまとめて取り込む。過去分を後から入れる用。"""
+    """指定月（YYYY-MM）の出数・客数・現金内訳をまとめて取り込む。過去分を後から入れる用。"""
     import calendar as _cal
     y, m = int(month[:4]), int(month[5:7])
     days = _cal.monthrange(y, m)[1]
@@ -384,11 +400,149 @@ def backfill_sales_detail(month):
         if date_iso > today:
             break
         detail = store_sales_detail(date_iso)
+        try:
+            store_cash_split(date_iso)
+        except Exception as e:
+            print('square cash split backfill error:', date_iso, e)
         if detail and detail['customers'] > 0:
             saved += 1
             customers += detail['customers']
             total += detail['total']
     return {'month': month, 'days': saved, 'customers': customers, 'total': total}
+
+
+# ===== 資金繰り（現金・現金以外の内訳と、次回金曜振込の予想） =====
+# Squareの入金は「木曜0:00〜翌水曜23:59に発生した売上（現金以外）」が「次の金曜日」にまとめて
+# 銀行口座へ振り込まれる、というSquare公式の精算サイクルに基づく。現金は当日その場で受け取っている
+# ので振込対象に含めない。
+
+def store_cash_split(date_iso, s=None):
+    """その日の現金／現金以外の内訳を保存する（birdmen:cashflow:YYYY-MM-DD）。
+    sを渡せばPayments APIを呼び直さない（sync_daily側で既に取得済みのため）。
+    """
+    s = s or summarize(date_iso)
+    if s is None:
+        return None
+    cash = s['by_source'].get('CASH', 0)
+    record = {'date': date_iso, 'cash': cash, 'noncash': s['total'] - cash, 'total': s['total']}
+    finance_mod.kv_set(f'cashflow:{date_iso}', record)
+    return record
+
+
+def _cashflow_month(month):
+    """指定月（YYYY-MM）のcashflowレコードを日付順で返す。"""
+    records = [v for _, v in finance_mod.kv_list(f'cashflow:{month}')]
+    return sorted(records, key=lambda r: r.get('date', ''))
+
+
+def _mtd_cash(date_iso):
+    """その月の1日から指定日までの現金売上累計。"""
+    month = date_iso[:7]
+    return sum(int(r.get('cash') or 0) for r in _cashflow_month(month) if r.get('date') <= date_iso)
+
+
+def _next_friday_window(today):
+    """今日を含む「次の金曜振込」対象の精算期間（木曜0:00〜翌水曜23:59）を返す。"""
+    days_until_friday = (4 - today.weekday()) % 7  # 月曜=0 … 金曜=4
+    next_friday = today + timedelta(days=days_until_friday)
+    window_end = next_friday - timedelta(days=2)     # 水曜
+    window_start = window_end - timedelta(days=6)    # 木曜
+    return window_start, window_end, next_friday
+
+
+def cashflow_forecast(date_iso=None):
+    """次回金曜に振り込まれる「現金以外」の金額を、精算期間の実績＋残り日数の平均で見積もる。
+    期間がすでに終わっていれば実績確定額をそのまま返す。
+    """
+    date_iso = date_iso or config.today_iso()
+    today = datetime.strptime(date_iso, '%Y-%m-%d').date()
+    window_start, window_end, next_friday = _next_friday_window(today)
+    ws_iso, we_iso = window_start.strftime('%Y-%m-%d'), window_end.strftime('%Y-%m-%d')
+
+    records = {}
+    for m in {window_start.strftime('%Y-%m'), window_end.strftime('%Y-%m')}:
+        for r in _cashflow_month(m):
+            records[r['date']] = r
+    in_window = [r for d, r in records.items() if ws_iso <= d <= we_iso]
+    actual_noncash = sum(int(r.get('noncash') or 0) for r in in_window)
+    days_with_data = len(in_window)
+
+    finished = today > window_end
+    projected = actual_noncash
+    if not finished and days_with_data > 0:
+        remaining_days = (window_end - today).days
+        projected = round(actual_noncash + (actual_noncash / days_with_data) * remaining_days)
+
+    return {
+        'nextFriday': next_friday.strftime('%Y-%m-%d'),
+        'windowStart': ws_iso, 'windowEnd': we_iso,
+        'actualNoncash': actual_noncash, 'projectedNoncash': projected,
+        'finished': finished, 'daysWithData': days_with_data,
+        'mtdCash': _mtd_cash(date_iso),
+    }
+
+
+def _cashflow_lines(date_iso, cf):
+    friday_label = '本日振込予定' if cf['nextFriday'] == date_iso else f'次回振込予定（{config.jp(cf["nextFriday"])}）'
+    amount_label = '確定' if cf['finished'] else '目安'
+    return [
+        '💴 資金繰り',
+        f'現金売上（{int(date_iso[5:7])}月累計）　{cf["mtdCash"]:,}円',
+        f'{friday_label}・現金以外　約{cf["projectedNoncash"]:,}円（{amount_label}）',
+    ]
+
+
+def build_cashflow_report(date_iso=None):
+    """資金繰りだけを見る（「資金繰り予想」コマンド）。自動通知を待たずに確認する用。"""
+    if not is_enabled():
+        return 'Squareの連携がまだ設定されていません。'
+    date_iso = date_iso or config.today_iso()
+    s = summarize(date_iso)
+    if s is None:
+        return 'Squareからデータを取得できませんでした。'
+    store_cash_split(date_iso, s)
+    cf = cashflow_forecast(date_iso)
+    lines = [f'💴 {config.jp(date_iso)} 時点の資金繰り', ''] + _cashflow_lines(date_iso, cf)[1:]
+    lines.append('')
+    lines.append(f'対象期間　{config.jp(cf["windowStart"])}〜{config.jp(cf["windowEnd"])}（{cf["daysWithData"]}日分のデータ）')
+    return '\n'.join(lines)
+
+
+# ===== 鰻・ご飯の使用量（出数から逆算した目安） =====
+# ユーザー指定の換算：特上=1.5尾／上=1尾／並=0.5尾、ご飯は1食250g。
+# 対象は品名に「鰻重」を含むものだけ（鰻おにぎり等は換算比が不明なため含めない）。
+RICE_G_PER_SERVING = 250
+
+
+def _unagi_usage(items):
+    tails = 0.0
+    servings = 0
+    for i in items:
+        name = i.get('name') or ''
+        if '鰻重' not in name:
+            continue
+        qty = int(i.get('qty') or 0)
+        if '特' in name:
+            rate = 1.5
+        elif '並' in name:
+            rate = 0.5
+        else:
+            rate = 1.0  # 上
+        tails += qty * rate
+        servings += qty
+    return {'tails': round(tails, 1), 'servings': servings, 'riceKg': round(servings * RICE_G_PER_SERVING / 1000, 2)}
+
+
+def _usage_lines(items):
+    usage = _unagi_usage(items)
+    if usage['servings'] == 0:
+        return []
+    return [
+        '🐟 鰻・ご飯の使用量（本日分の目安）',
+        f'鰻　約{usage["tails"]:.1f}尾',
+        f'ご飯　約{usage["riceKg"]:.2f}kg',
+        '（鰻重系の出数から算出：特上1.5尾／上1尾／並0.5尾、ご飯は1食250g換算）',
+    ]
 
 
 def build_items_report(date_iso=None):

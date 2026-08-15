@@ -258,6 +258,12 @@ def kv_set(key, value):
     return _kv_set(key, value)
 
 
+def kv_list(prefix):
+    """指定プレフィックスに一致するkeyをすべて読む（'prefix:' → [(残りのkey, value), ...]）。"""
+    rows = get_supabase(TABLE, f'key=like.{quote(PREFIX + prefix)}*&select=key,value')
+    return [(r['key'][len(PREFIX):], r.get('value')) for r in rows if r.get('value')]
+
+
 def _kv_set(key, value):
     """birdmen_kv に upsert する。Webアプリの storage.set と同じ形式。"""
     import json
@@ -794,6 +800,9 @@ def finance_help():
         '・スクエア取込　→ アプリの売上に反映',
         '・スクエア 8/5　→ 日付を指定',
         '（毎日15時に自動で取り込みます。売上はSquareの数字が正）',
+        '・出数　　　→ 商品ごとの個数・客数・鰻/ご飯の使用量目安',
+        '・出数取込 2026-07　→ 過去分をまとめて取り込み',
+        '・資金繰り予想　→ 現金売上累計と次回金曜振込の見込み',
         '',
         '▼ レシートを撮るだけ',
         'レシートの写真をこのトークに送ると読み取ります。',

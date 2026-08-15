@@ -108,6 +108,13 @@ def route_command(user_id, text):
         from . import finance as finance_mod
         date_iso = finance_mod.date_token_to_iso(items_cmd.group(1)) if items_cmd.group(1) else None
         return square_mod.build_items_report(date_iso)
+    # 資金繰り予想（現金累計・次回金曜振込の見込み）を毎日の自動通知を待たずに確認する
+    cashflow_cmd = re.match(r'^(?:資金繰り予想|資金繰り|振込予定)\s*((?:\d{1,2})[/月]\d{1,2}日?)?$', text)
+    if cashflow_cmd:
+        from . import square as square_mod
+        from . import finance as finance_mod
+        date_iso = finance_mod.date_token_to_iso(cashflow_cmd.group(1)) if cashflow_cmd.group(1) else None
+        return square_mod.build_cashflow_report(date_iso)
     # 「売上 52000」「食材 お米 1000」「シフト 都丸 10:00 14:30」「取り消し」など。
     # 該当しなければNoneが返るので、そのまま下のタスク系ルーティングへ流れる
     from . import finance as finance_mod
