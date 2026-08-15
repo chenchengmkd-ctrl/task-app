@@ -228,9 +228,10 @@ def sync_daily(push, get_users_fn, notify=True):
     if s is None or s['total'] <= 0:
         return None
 
-    # 出数・客数もあわせて取り込む（アプリの分析タブが読む）
+    # 出数・客数もあわせて取り込む（アプリの分析タブ・LINE通知の両方で使う）
+    detail = None
     try:
-        store_sales_detail(date_iso)
+        detail = store_sales_detail(date_iso)
     except Exception as e:
         print('square sales detail sync error:', e)
 
@@ -247,6 +248,13 @@ def sync_daily(push, get_users_fn, notify=True):
     lines = [head] + _summary_lines(s)
     if entered:
         lines.append(f'（アプリに入っていた {entered:,}円 から更新）')
+    # 出数（売れた個数の上位）を通知にも載せる。全件だと長くなるので上位5件まで
+    if detail and detail.get('items'):
+        lines += ['', f'🍱 出数（客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円）']
+        for i in detail['items'][:5]:
+            lines.append(f'　{i["name"]}　{i["qty"]}個')
+        if len(detail['items']) > 5:
+            lines.append(f'　…ほか{len(detail["items"]) - 5}品（「出数」で全件見れます）')
     lines += ['', finance_mod.entry_url(date_iso)]
     text = '\n'.join(lines)
 
