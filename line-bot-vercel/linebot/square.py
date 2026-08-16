@@ -268,7 +268,7 @@ def sync_daily(push, get_users_fn, notify=True):
             lines.append(f'　{i["name"]}　{i["qty"]}個')
         if len(detail['items']) > 5:
             lines.append(f'　…ほか{len(detail["items"]) - 5}品（「出数」で全件見れます）')
-        usage_lines = _usage_lines(detail['items'])
+        usage_lines = _usage_lines(detail.get('usage'), date_iso)
         if usage_lines:
             lines += [''] + usage_lines
     lines += ['', finance_mod.entry_url(date_iso)]
@@ -370,14 +370,15 @@ def sales_detail(date_iso, location_id=None):
         'perCustomer': round(total / customers) if customers else 0,
         'items': ranked,
         'byHour': by_hour,
+        'usage': _unagi_usage(ranked),  # 鰻・ご飯の使用量目安（出数と一緒に保存し、後から振り返れるようにする）
     }
 
 
 def store_sales_detail(date_iso):
-    """その日の出数・客数をSupabaseに保存する（キー: birdmen:sales:YYYY-MM-DD）。
+    """その日の出数・客数・鰻/ご飯の使用量目安をSupabaseに保存する（キー: birdmen:sales:YYYY-MM-DD）。
 
     アプリの「分析」タブがこれを読む。売上金額そのものは日次データ（report:）側が正なので、
-    ここは商品ごとの個数・客数・時間帯といった、Squareにしか無い情報を持つ。
+    ここは商品ごとの個数・客数・時間帯・使用量目安といった、Squareの明細から逆算する情報を持つ。
     """
     detail = sales_detail(date_iso)
     if detail is None:
@@ -582,12 +583,13 @@ def _unagi_usage(items):
     return {'tails': round(tails, 1), 'servings': servings, 'riceKg': round(servings * RICE_G_PER_SERVING / 1000, 2)}
 
 
-def _usage_lines(items):
-    usage = _unagi_usage(items)
-    if usage['servings'] == 0:
+def _usage_lines(usage, date_iso=None):
+    """date_iso を渡すと「本日分」ではなく該当日の日付で表示する（「出数 8/13」等の過去日指定用）。"""
+    if not usage or usage['servings'] == 0:
         return []
+    label = f'{config.jp(date_iso)}分' if date_iso and date_iso != config.today_iso() else '本日分'
     return [
-        '🐟 鰻・ご飯の使用量（本日分の目安）',
+        f'🐟 鰻・ご飯の使用量（{label}の目安）',
         f'鰻　約{usage["tails"]:.1f}尾',
         f'ご飯　約{usage["riceKg"]:.2f}kg',
         '（鰻重系の出数から算出：特上1.5尾／上1尾／並0.5尾、ご飯は1食250g換算）',
@@ -615,6 +617,9 @@ def build_items_report(date_iso=None):
     if len(detail['items']) > 15:
         lines.append(f'…ほか{len(detail["items"]) - 15}品')
     lines += ['', f'合計 {detail["total"]:,}円（税込）']
+    usage_lines = _usage_lines(detail.get('usage'), date_iso)
+    if usage_lines:
+        lines += [''] + usage_lines
     return '\n'.join(lines)
 
 
