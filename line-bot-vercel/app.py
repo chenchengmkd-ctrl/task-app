@@ -26,9 +26,10 @@ from linebot.finance import (
 from linebot.line_client import push_text, get_users
 # 起動時に読み込んでおく（構文エラーがあれば /api/health が落ちてデプロイ事故に気づける）
 from linebot import receipt as receipt_mod
+from linebot import weekly_cf as weekly_cf_mod
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 60
+APP_VERSION = 61
 
 
 def _respond(start_response, status, body, cors=False):
@@ -352,6 +353,9 @@ def app(environ, start_response):
     if path == '/api/cron_square_sync' and method == 'GET':
         from linebot.square import sync_daily
         return _run_cron(environ, start_response, sync_daily, 'square_sync')
+    if path == '/api/cron_weekly_cf' and method == 'GET':
+        from linebot.weekly_cf import send_weekly_cf
+        return _run_cron(environ, start_response, send_weekly_cf, 'weekly_cf')
     if path == '/api/cron_finance_reminder' and method == 'GET':
         return _run_cron(environ, start_response, send_finance_reminder, 'send_finance_reminder')
     if path == '/api/cron_poll' and method == 'GET':

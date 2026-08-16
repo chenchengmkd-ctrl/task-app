@@ -9,6 +9,7 @@
     { "path": "/api/cron_weekly_report", "schedule": "0 12 * * 0" },
     { "path": "/api/cron_finance_reminder", "schedule": "0 7 * * *" },
     { "path": "/api/cron_finance_report", "schedule": "0 13 * * *" },
-    { "path": "/api/cron_square_sync", "schedule": "0 6 * * *" }
+    { "path": "/api/cron_square_sync", "schedule": "0 6 * * *" },
+    { "path": "/api/cron_weekly_cf", "schedule": "0 9 * * 0" }
   ]
 }

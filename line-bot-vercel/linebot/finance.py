@@ -253,6 +253,11 @@ def _kv_get(key):
     return rows[0].get('value') if rows else None
 
 
+def kv_get(key):
+    """birdmen_kv からの読み込み（square.py など他モジュールから使う公開版）。"""
+    return _kv_get(key)
+
+
 def kv_set(key, value):
     """birdmen_kv への書き込み（square.py など他モジュールから使う公開版）。"""
     return _kv_set(key, value)

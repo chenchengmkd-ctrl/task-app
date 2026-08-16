@@ -108,6 +108,14 @@ def route_command(user_id, text):
         from . import finance as finance_mod
         date_iso = finance_mod.date_token_to_iso(items_cmd.group(1)) if items_cmd.group(1) else None
         return square_mod.build_items_report(date_iso)
+    # 週次CF予想（翌週の入金・支出の見積もり）。日曜夜の自動送信を待たずに確認する
+    if re.match(r'^(?:週次CF|週次cf|来週のCF|来週の資金繰り|週次資金繰り)$', text):
+        from . import weekly_cf
+        return weekly_cf.build_weekly_cf()
+    from . import weekly_cf as weekly_cf_mod
+    plan_reply = weekly_cf_mod.handle_plan_command(text)
+    if plan_reply is not None:
+        return plan_reply
     # 資金繰り予想（現金累計・次回金曜振込の見込み）を毎日の自動通知を待たずに確認する
     cashflow_cmd = re.match(r'^(?:資金繰り予想|資金繰り|振込予定)\s*((?:\d{1,2})[/月]\d{1,2}日?)?$', text)
     if cashflow_cmd:
