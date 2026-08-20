@@ -294,19 +294,6 @@ def looks_like_plan_reply(user_id, text):
     return bool(_ONLY_NUMBERS.match(text.strip().translate(_ZEN2HAN)))
 
 
-def add_plan_candidate(user_id, task_id, title):
-    """予定を決めている最中に追加されたタスクを、候補の続き番号として足す。→ 番号（足せなければNone）"""
-    pending = get_pending_plan(user_id)
-    if not pending:
-        return None
-    items = pending.get('items') or []
-    num = max((it['num'] for it in items), default=0) + 1
-    items.append({'num': num, 'id': task_id, 'title': title})
-    pending['items'] = items
-    set_state(_pending_key(user_id), pending)
-    return num
-
-
 def handle_pending_plan_reply(user_id, text):
     """「1,3,5」のような番号だけの返信を、その日の予定として確定する。該当なしはNone。"""
     key = _pending_key(user_id)

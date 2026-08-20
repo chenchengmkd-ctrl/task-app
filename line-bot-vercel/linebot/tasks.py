@@ -150,20 +150,20 @@ def ai_parse_date(text):
 # ============ タスク追加・一覧 ============
 def add_line(user_id, text, estimate=''):
     """タスクをその場でSupabaseに追加する。
-    予定を決めている最中（PENDING_PLAN）なら、期限をその日にして候補にも足す。
     estimate は「30分」のような見積り時間（AIが推定して渡す）。優先順位の判断に使う。
-    """
-    from . import planning as planning_mod
 
+    以前は「今日/明日やることを決める」プロンプトへの応答待ち（PENDING_PLAN）の間、
+    無関係な新規メモにも自動でその日の期限を付けて候補リストに混ぜていたが、
+    この待機状態は最大18時間（朝の問いかけ〜翌1時）続くため、その日のうちに送った
+    ほぼ全てのメモが無関係に巻き込まれ、「期限が勝手に決まる」「候補に追加しました、が
+    何のことか分からない」という混乱を招いていた（2026-08-20、ユーザー報告により削除）。
+    「今日/明日決める」への回答は番号だけの返信（1,3,5等）として別途処理されるので、
+    この自動巻き込みが無くてもその機能自体には影響しない。
+    """
     parsed = extract_date_time(text)
     title = parsed['title']
     due = parsed['due']
     due_time = parsed['due_time']
-
-    plan_pending = planning_mod.get_pending_plan(user_id)
-    plan_date = plan_pending.get('date') if plan_pending else ''
-    if plan_pending and not due:
-        due = plan_date
 
     if not due and re.search(r'(来週|再来週|今週中|今月中|来月|月末|週末|月曜|火曜|水曜|木曜|金曜|土曜|日曜)', title):
         ai_due = ai_parse_date(title)
@@ -191,15 +191,6 @@ def add_line(user_id, text, estimate=''):
     msg = f'✅ 追加しました\n「{title}」'
     if estimate:
         msg += f'（目安 {estimate}）'
-
-    # 予定を決めている最中なら、期限の質問はせずに候補へ追加して番号を返す
-    if plan_pending:
-        num = planning_mod.add_plan_candidate(user_id, row_id, title)
-        msg += f'\n📅 {config.jp(due)}' + (f' {due_time}' if due_time else '')
-        if num:
-            msg += (f'\n\n🌙 候補に追加しました（{num}番）'
-                    f'\n予定に入れるなら、{num} も一緒に番号で送ってください。')
-        return msg + f'\n\n未完了: {cnt}件'
 
     # すぐ終わるものは「今すぐ／今日中」と促す（ダブルマトリックスの2段階目。詳細は priority.py）
     from . import priority as priority_mod
