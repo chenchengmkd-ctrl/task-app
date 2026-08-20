@@ -261,13 +261,11 @@ def sync_daily(push, get_users_fn, notify=True):
     except Exception as e:
         print('square cashflow forecast error:', e)
 
-    # 出数（売れた個数の上位）を通知にも載せる。全件だと長くなるので上位5件まで
+    # 出数（売れた個数）は全品を通知に載せる
     if detail and detail.get('items'):
         lines += ['', f'🍱 出数（客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円）']
-        for i in detail['items'][:5]:
+        for i in detail['items']:
             lines.append(f'　{i["name"]}　{i["qty"]}個')
-        if len(detail['items']) > 5:
-            lines.append(f'　…ほか{len(detail["items"]) - 5}品（「出数」で全件見れます）')
         usage_lines = _usage_lines(detail.get('usage'), date_iso)
         if usage_lines:
             lines += [''] + usage_lines
@@ -528,19 +526,16 @@ def cashflow_forecast(date_iso=None):
 
 
 def _cashflow_lines(date_iso, cf):
-    friday_label = '本日振込予定' if cf['nextFriday'] == date_iso else f'次回振込予定（{config.jp(cf["nextFriday"])}）'
-    amount_label = '確定' if cf['finished'] else '目安'
-    lines = [
-        '💴 資金繰り',
-        f'現金売上（{int(date_iso[5:7])}月累計）　{cf["mtdCash"]:,}円',
-        f'{friday_label}・現金以外　約{cf["projectedNoncash"]:,}円（{amount_label}）',
-    ]
+    when = '本日' if cf['nextFriday'] == date_iso else f'次回（{config.jp(cf["nextFriday"])}）'
+    if cf['finished']:
+        # 精算期間が終わって金額が固まったら「約」「目安」を外す
+        deposit_line = f'{when}振込　{cf["projectedNoncash"]:,}円（確定）'
+    else:
+        deposit_line = f'{when}振込予定　約{cf["projectedNoncash"]:,}円（目安）'
+    lines = ['💴 資金繰り', deposit_line]
     w = cf['lastWeek']
     if w['days'] > 0:
-        lines.append(
-            f'先週（{w["label"]}）　現金 {w["cash"]:,}円（平均{w["avgCash"]:,}/日）'
-            f'／現金以外 {w["noncash"]:,}円（平均{w["avgNoncash"]:,}/日）'
-        )
+        lines.append(f'先週（{w["label"]}）　現金 {w["cash"]:,}円（平均{w["avgCash"]:,}/日）')
     return lines
 
 
@@ -592,7 +587,6 @@ def _usage_lines(usage, date_iso=None):
         f'🐟 鰻・ご飯の使用量（{label}の目安）',
         f'鰻　約{usage["tails"]:.1f}尾',
         f'ご飯　約{usage["riceKg"]:.2f}kg',
-        '（鰻重系の出数から算出：特上1.5尾／上1尾／並0.5尾、ご飯は1食250g換算）',
     ]
 
 
@@ -612,10 +606,8 @@ def build_items_report(date_iso=None):
         f'客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円',
         '',
     ]
-    for i in detail['items'][:15]:
+    for i in detail['items']:
         lines.append(f'{i["name"]}　{i["qty"]}個　{i["amount"]:,}円')
-    if len(detail['items']) > 15:
-        lines.append(f'…ほか{len(detail["items"]) - 15}品')
     lines += ['', f'合計 {detail["total"]:,}円（税込）']
     usage_lines = _usage_lines(detail.get('usage'), date_iso)
     if usage_lines:
