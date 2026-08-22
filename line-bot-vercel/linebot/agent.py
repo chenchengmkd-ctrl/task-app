@@ -1,4 +1,4 @@
-"""AIコーチ本体：対話・タスク文脈の構築・各ツールのhandle_*・保留状態（サブタスク提案／優先順位見直し）の管理。
+"""AIコーチ本体：対話・タスク文脈の構築・各ツールのhandle_*・保留状態（サブタスク提案）の管理。
 Code.gs の askAgent/buildAgentContext/各handle*関数に相当。
 """
 import re
@@ -10,7 +10,7 @@ from . import tasks as tasks_mod
 from . import recurring as recurring_mod
 from . import materials as materials_mod
 from . import daily_log as daily_log_mod
-from .gemini_client import call_gemini, call_gemini_with_tools, extract_function_call, AGENT_TOOLS, TOOLS_REPRIORITIZE, FORCE_ANY_TOOL
+from .gemini_client import call_gemini_with_tools, extract_function_call, AGENT_TOOLS, FORCE_ANY_TOOL
 from .supabase_client import get_supabase, post_supabase, patch_supabase, get_state, set_state, delete_state
 
 
@@ -436,73 +436,6 @@ def handle_record_reflection(input_args, intro):
     return daily_log_mod.add_daily_log(content)
 
 
-# ============ 優先順位の見直し ============
-def propose_reprioritization(user_id):
-    """未完了タスク全体の優先順位見直し案を作り、確認を求める（実際の適用は「はい」の返信を待つ）。"""
-    tasks = get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title,priority')
-    if not tasks:
-        return '未完了タスクがありません。'
-    priority_map = {t['title']: t['priority'] for t in tasks}
-
-    context = build_agent_context()
-    res = call_gemini_with_tools(
-        config.AGENT_PERSONA,
-        '以下は現在のタスク状況です。優先度を変えたほうがよいタスクだけをreprioritize_tasksツールで提案してください。'
-        '判断は必ず冒頭の「優先順位の判断基準：ダブルマトリックス」に従ってください。'
-        'とくに、期限が近いだけで重要度の低いタスク（結果への影響が小さいもの）に高い優先度をつけないこと。'
-        '逆に、期限が先でも結果への影響が大きいタスクは優先度を上げること。'
-        '変更不要なタスクは含めないでください。\n\n' + context,
-        TOOLS_REPRIORITIZE, 500,
-    )
-    name, args, _ = extract_function_call(res)
-    assignments = (args or {}).get('assignments') if name == 'reprioritize_tasks' else []
-    assignments = assignments or []
-    valid = [
-        a for a in assignments
-        if a.get('task_title') in priority_map and priority_map[a['task_title']] != a.get('priority')
-    ]
-    if not valid:
-        return '🔀 今のままで問題なさそうです。優先順位の変更提案はありません。'
-
-    set_state(f'PENDING_REPRIORITIZE_{user_id}', {'assignments': valid, 'createdAt': config.now_ms()})
-
-    label = {'high': '高', 'low': '低'}
-    lines = [f"・{a['task_title']}：{label[priority_map[a['task_title']]]}→{label[a['priority']]}" for a in valid]
-    return '🔀 優先順位の見直し案\n' + '\n'.join(lines) + '\n\n適用してよければ「はい」と送ってください。'
-
-
-def handle_pending_reprioritize_reply(user_id, text):
-    """pending中の優先順位見直し案への返信（「はい」「いいえ」）を処理。該当なしはNoneを返す。"""
-    key = f'PENDING_REPRIORITIZE_{user_id}'
-    pending = get_state(key)
-    if not pending:
-        return None
-    if (config.now_ms() - pending.get('createdAt', 0)) / 60000 > 360:
-        delete_state(key)
-        return None
-
-    t = text.strip()
-    if re.match(r'^(はい|適用|うん|お願い(します)?|ok|yes)[。.!！]*$', t, re.IGNORECASE):
-        delete_state(key)
-        tasks = get_supabase('tasks', 'done=eq.false&deleted=eq.false&select=id,title')
-        id_by_title = {tk['title']: tk['id'] for tk in tasks}
-        applied = []
-        for a in pending['assignments']:
-            tid = id_by_title.get(a['task_title'])
-            if not tid:
-                continue
-            ok = patch_supabase('tasks', f'id=eq.{quote(tid)}', {'priority': a['priority'], 'updated_at': config.now_iso()})
-            if ok is not None:
-                applied.append(f"・{a['task_title']}")
-        if not applied:
-            return '⚠️ 適用できませんでした。タスクの状態が変わっている可能性があります。'
-        return '✅ 優先順位を更新しました\n' + '\n'.join(applied)
-    if re.match(r'^(いいえ|キャンセル|やめて|no)[。.!！]*$', t, re.IGNORECASE):
-        delete_state(key)
-        return '🙅 優先順位の変更をキャンセルしました。'
-    return None
-
-
 # ============ 対話本体 ============
 def ask_agent(user_id, user_text):
     """ユーザーからの自由な相談にタスク状況を踏まえて回答（タスク分解・状態変更等も可能）。"""
@@ -665,23 +598,13 @@ def handle_pending_ai_clarify(user_id, text):
     return ask_agent(user_id, text)
 
 
-# ============ 毎晩の進捗チェックイン・週次レポート（Cronから呼ばれる） ============
+# ============ 毎晩の日報プッシュ（Cronから呼ばれる） ============
 def send_agent_checkin(push_text_fn, get_users_fn):
-    """プッシュ型：毎晩の進捗チェックイン。日次レポートは番号つきなので別メッセージで送る。"""
+    """プッシュ型：毎晩の日報＋期限未設定タスクの棚卸し。AIコーチによる進捗チェックインは廃止済み。"""
     from . import reports as reports_mod
-
-    context = build_agent_context()
-    reply = call_gemini(
-        config.AGENT_PERSONA,
-        '以下は現在のタスク状況です。今日の進捗チェックインとして、①最優先で手をつけるべきタスク　②停滞・放置が気になる要注意タスク　③一言アドバイス、をまとめてください。'
-        '③のアドバイスは、単なる励ましではなく、そのタスクの分野に詳しいスペシャリストとしての具体的な進め方を含めてください。\n\n' + context,
-        600,
-    )
 
     # 日次レポートは番号を振るため、ユーザーごとに組み立てて送る
     for uid in get_users_fn():
-        if reply:
-            push_text_fn(uid, '🧭 進捗チェックイン\n\n' + reply)
         push_text_fn(uid, reports_mod.build_daily_report(uid))
 
     # 期限未設定タスクの棚卸し。以前は全部並べていたが、毎晩同じ顔ぶれが長々と続いて読み飛ばされていたため、
@@ -696,14 +619,6 @@ def send_agent_checkin(push_text_fn, get_users_fn):
                'アプリを開いてまとめて決めてしまいましょう。\n' + config.APP_URL)
         for uid in get_users_fn():
             push_text_fn(uid, msg)
-
-    # 優先順位の見直し提案（別メッセージ。すでに確認待ちがあれば重複して提案しない）
-    for uid in get_users_fn():
-        if get_state(f'PENDING_REPRIORITIZE_{uid}'):
-            continue
-        proposal = propose_reprioritization(uid)
-        if proposal and '変更提案はありません' not in proposal:
-            push_text_fn(uid, proposal)
 
 
 def send_weekly_report(push_text_fn, get_users_fn):

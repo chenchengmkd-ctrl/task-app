@@ -380,28 +380,3 @@ TOOLS_SET_TIME_BATCH = [{
         },
     }],
 }]
-
-# 未完了タスク全体の優先順位見直し案を作るためのツール（毎晩のチェックイン／「優先順位を整理して」で使用）
-TOOLS_REPRIORITIZE = [{
-    'functionDeclarations': [{
-        'name': 'reprioritize_tasks',
-        'description': '未完了タスク一覧を、期限・停滞日数・状態を踏まえて見直し、優先度を変えるべきタスクだけを返す。今のままでよいタスクは含めない。',
-        'parameters': {
-            'type': 'OBJECT',
-            'properties': {
-                'assignments': {
-                    'type': 'ARRAY',
-                    'items': {
-                        'type': 'OBJECT',
-                        'properties': {
-                            'task_title': {'type': 'STRING', 'description': 'タスク一覧の名称と完全一致'},
-                            'priority': {'type': 'STRING', 'enum': ['high', 'low'], 'description': '新しい重要度'},
-                        },
-                        'required': ['task_title', 'priority'],
-                    },
-                },
-            },
-            'required': ['assignments'],
-        },
-    }],
-}]

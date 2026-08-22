@@ -29,7 +29,7 @@ from linebot import receipt as receipt_mod
 from linebot import weekly_cf as weekly_cf_mod
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 64
+APP_VERSION = 65
 
 
 def _respond(start_response, status, body, cors=False):

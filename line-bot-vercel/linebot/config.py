@@ -46,7 +46,7 @@ TASK_SLOT_MINUTES = 60       # 空き時間から「何件くらい入るか」�
 
 REMIND_HOUR = 6            # 毎朝の通知時刻（時・24時間制、JST）
 REMIND_MINUTE = 0
-AGENT_HOUR = 20             # 毎晩のAI進捗チェックイン時刻（JST）
+AGENT_HOUR = 20             # 毎晩の日報プッシュ時刻（JST）
 TIME_LEAD_MINUTES = 10       # 時刻指定タスクの何分前にリマインドするか
 # ポーリングが遅れて上の時刻を過ぎてしまった場合に、何分後まで遅れて知らせるか。
 # GitHub Actionsの定期実行は数分〜十数分ずれることがあるため、これが無いと取りこぼす。

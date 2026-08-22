@@ -30,7 +30,7 @@ def route_command(user_id, text):
     pending_shift = shift_mod.handle_pending_reply(user_id, text)
     if pending_shift is not None:
         return pending_shift
-    # 保留中の返信（サブタスク提案／期限確認／時刻確認／優先順位見直し案）への「はい/いいえ」等を最優先で処理
+    # 保留中の返信（サブタスク提案／期限確認／時刻確認）への「はい/いいえ」等を最優先で処理
     pending_subtask = agent_mod.handle_pending_subtask_reply(user_id, text)
     if pending_subtask is not None:
         return pending_subtask
@@ -40,9 +40,6 @@ def route_command(user_id, text):
     pending_time = tasks_mod.handle_pending_time_reply(user_id, text)
     if pending_time is not None:
         return pending_time
-    pending_reprioritize = agent_mod.handle_pending_reprioritize_reply(user_id, text)
-    if pending_reprioritize is not None:
-        return pending_reprioritize
     pending_calendar = agent_mod.handle_pending_calendar_reply(user_id, text)
     if pending_calendar is not None:
         return pending_calendar
@@ -127,8 +124,6 @@ def route_command(user_id, text):
         return finance_input
     if re.match(r'^(相談|アドバイス)$', text):
         return agent_mod.ask_agent(user_id, '最近のタスク状況について、率直な進捗評価とアドバイスをください。')
-    if re.match(r'^(優先順位を整理して|優先順位を並べ替えて|並べ替えて)$', text):
-        return agent_mod.propose_reprioritization(user_id)
 
     # 「1削除」「5ペンディング」「1削除 5ペンディング」のように、番号＋操作だけの指定はその場で確定させる
     numbered = tasks_mod.handle_numbered_actions(user_id, text)
@@ -280,11 +275,10 @@ def help_text():
         '　（対象タスクはタイトルを全部書かなくてもOK。「うなぎの方完了にして」のようにキーワードだけでも、候補が1つに絞れればAIが判断します）',
         '　例）このタスクやる意味ある？　→ 率直な意見を返します',
         '　例）要約して／言い換えて　→ タスク状況を簡潔にまとめて返します',
-        '・優先順位を整理して　→ AIが全体を見直して並べ替え案を提示（「はい」で適用）',
         '・長い文章や箇条書きを送ると、AIが要点だけのタスク名に整理して追加します',
         '・期限を指定せずに追加すると、その場で期限を聞かれます（不要なら「なし」）',
         '・今日／明日／明後日の期限で時刻を指定しなかった場合、その場で時刻も聞かれます（不要なら「なし」）',
-        '・期限が未設定のタスクは、毎晩の進捗チェックインで「何件あるか」だけお知らせします'
+        '・期限が未設定のタスクは、毎晩の日報のあとに「何件あるか」だけお知らせします'
         '（まとめて決めるのはアプリのほうが速いためです）',
         '・YouTubeのURLを送る、または「資料：本文」の形式でテキストを送ると、AIコーチが要点を要約して覚え、以降の相談で参考にします',
         '・資料一覧 → 登録済みの資料を確認',
@@ -323,7 +317,7 @@ def help_text():
         f'・朝{planning_mod.PLAN_MORNING_AT[0]}時：決めたぶんを「今日やること」として送る',
         '　（前日に決めていなければ、この時間に今日ぶんの候補が出ます）',
         f'・夜{planning_mod.PLAN_REVIEW_AT[0]}時：その日の答え合わせ（明日ぶんが未定ならここで一緒に促します）',
-        f'・毎晩{config.AGENT_HOUR}時：AIコーチの進捗チェックイン＋日報',
+        f'・毎晩{config.AGENT_HOUR}時：日報',
         '・毎週日曜21時：週報',
         '・毎日16時：その日の入力リマインド（未入力の項目＋その日を開くリンク）',
         '・毎晩22時：その日の収支（売上・費用・損益と当月累計）',
