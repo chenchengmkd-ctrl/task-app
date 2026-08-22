@@ -103,6 +103,16 @@ def _totals(report):
     return revenue, expense, revenue - expense, by_cat
 
 
+def daily_totals(date_iso):
+    """指定日の (売上, 費用, 損益, カテゴリ別費用) をまとめて返す。他モジュールが複数日を集計する時に使う公開版。
+    その日の入力が無ければ全部0を返す。
+    """
+    report = _report(date_iso)
+    if not report:
+        return 0, 0, 0, {k: 0 for k in CATEGORY_LABEL}
+    return _totals(report)
+
+
 def _yen(n):
     return f'{n:,}円'
 

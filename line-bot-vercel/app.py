@@ -27,9 +27,10 @@ from linebot.line_client import push_text, get_users
 # 起動時に読み込んでおく（構文エラーがあれば /api/health が落ちてデプロイ事故に気づける）
 from linebot import receipt as receipt_mod
 from linebot import weekly_cf as weekly_cf_mod
+from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_report
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 65
+APP_VERSION = 66
 
 
 def _respond(start_response, status, body, cors=False):
@@ -107,6 +108,7 @@ def _run_poll(environ, start_response):
         (check_recurring_reminders, 'check_recurring_reminders'),
         (check_timed_reminders, 'check_timed_reminders'),
         (check_daily_plan, 'check_daily_plan'),
+        (check_weekly_actual, 'check_weekly_actual'),
     ):
         try:
             fn(push_text, get_users)
@@ -220,6 +222,8 @@ def _handle_preview(environ, start_response):
             body = build_month_finance_report()
         elif kind == 'finance_reminder':
             body = build_finance_reminder()
+        elif kind == 'weekly_actual':
+            body = build_weekly_actual_report()
         else:
             body = build_daily_report(None)
     except Exception as e:
