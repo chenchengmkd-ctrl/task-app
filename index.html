@@ -149,11 +149,7 @@
   .export-menu label.col-toggle-item:hover { background: var(--due-bg); }
   .export-menu label.col-toggle-item input { width: 15px; height: 15px; cursor: pointer; }
 
-  /* カンバンボード（状態ごとの列）
-     ふだんは全列を並べて概観できるコンパクト表示。列見出しの⤢を押すとその列だけ
-     画面いっぱいに広げ、中のカードを複数列のグリッドで並べる（他の列は見出しだけに畳む）。
-     日本語タイトルは幅が狭いと1文字ずつ縦に折り返されて読めなくなるため、
-     常に横幅を分け合う設計は避け、「広げたい時だけ広げる」方式にしている。 */
+  /* カンバンボード（状態ごとの列） */
   #board {
     display: flex; flex-wrap: wrap;
     gap: 8px; align-items: start;
@@ -166,12 +162,8 @@
     flex: 1 1 240px; min-width: 220px;
   }
   .col.over { outline: 2px dashed var(--accent); outline-offset: -2px; }
-  .col.focused { flex-basis: 100%; max-width: none; }
-  .col.collapsed { flex: 0 0 auto; min-width: 0; max-height: none; }
-  .col.collapsed .col-list { display: none; }
-  .col.collapsed .col-head { cursor: pointer; padding: 6px 8px; }
   .col-head {
-    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    display: flex; align-items: center; justify-content: space-between;
     padding: 2px 4px 6px; flex: none;
   }
   .col-title { font-weight: 700; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
@@ -179,18 +171,9 @@
     font-size: 11px; color: var(--muted); background: var(--card);
     border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; min-width: 20px; text-align: center;
   }
-  .col-expand {
-    background: none; border: none; cursor: pointer; font-size: 14px; color: var(--muted);
-    padding: 2px 4px; border-radius: 5px; line-height: 1;
-  }
-  .col-expand:hover { color: var(--text); background: var(--due-bg); }
   .col-list {
     list-style: none; display: flex; flex-direction: column; gap: 5px; min-height: 36px;
     overflow-y: auto; flex: 1 1 auto; padding-right: 3px;
-  }
-  .col.focused .col-list {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    align-content: start;
   }
   .col-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 8px 4px; opacity: .7; }
 
@@ -608,11 +591,9 @@
 const STORE_KEY = "task-app.tasks.v1";
 const REC_KEY = "task-app.recurring.v1";
 const HIDDEN_COLS_KEY = "task-app.hiddenCols.v1";
-const BOARD_FOCUS_KEY = "task-app.boardFocus.v1";
 let tasks = [];
 let recurring = [];
 let hiddenCols = [];
-let boardFocus = localStorage.getItem(BOARD_FOCUS_KEY) || null;   // 「この列だけ広げる」の選択中キー
 let supabaseSyncTimer = null;
 
 /* ---------- Supabase ---------- */
@@ -1378,52 +1359,27 @@ function render() {
   const items = visibleTasks();
   board.innerHTML = "";
 
-  // 広げていた列を「列」メニューで非表示にした場合など、boardFocusが実在しない/見えない
-  // キーを指すと、他の全列が「畳まれた列」判定になりタスクが1件も出せなくなる。
-  // それを防ぐため、無効なfocusはここで必ずリセットする。
-  if (boardFocus && (hiddenCols.includes(boardFocus) || !COLUMNS.some(c => c.key === boardFocus))) {
-    boardFocus = null;
-    saveBoardFocus();
-  }
-
   for (const col of COLUMNS) {
     if (hiddenCols.includes(col.key)) continue;   // 非表示の列はスキップ
-
-    const isFocused = boardFocus === col.key;
-    const isCollapsed = !!boardFocus && !isFocused;
-    const expandTitle = isFocused ? "すべての列を表示" : "この列だけ画面いっぱいに広げる";
-    const expandIcon = isFocused ? "⤡" : "⤢";
 
     // 定期タスク列：通常タスクではなく定期テンプレートを表示
     if (col.recurring) {
       const colEl = document.createElement("div");
-      colEl.className = "col" + (isFocused ? " focused" : "") + (isCollapsed ? " collapsed" : "");
+      colEl.className = "col";
       colEl.innerHTML = `
         <div class="col-head">
           <span class="col-title"><i class="dot dot-recurring"></i>${col.label}</span>
           <span class="col-count">${recurring.length}</span>
-          <button type="button" class="col-expand" title="${expandTitle}">${expandIcon}</button>
         </div>
-        ${isCollapsed ? "" : '<ul class="col-list"></ul>'}`;
-      colEl.querySelector(".col-expand").addEventListener("click", e => {
-        e.stopPropagation();
-        boardFocus = isFocused ? null : col.key;
-        saveBoardFocus(); render();
-      });
-      if (isCollapsed) {
-        colEl.querySelector(".col-head").addEventListener("click", () => {
-          boardFocus = col.key; saveBoardFocus(); render();
-        });
-      } else {
-        const recList = colEl.querySelector(".col-list");
-        if (recurring.length === 0) {
-          recList.innerHTML = `<li class="col-empty">「🔁 定期タスク」タブで登録</li>`;
-        }
-        for (const r of recurring) {
-          const li = document.createElement("li");
-          li.className = "task rec-card";
-          recList.appendChild(buildRecCard(li, r));
-        }
+        <ul class="col-list"></ul>`;
+      const recList = colEl.querySelector(".col-list");
+      if (recurring.length === 0) {
+        recList.innerHTML = `<li class="col-empty">「🔁 定期タスク」タブで登録</li>`;
+      }
+      for (const r of recurring) {
+        const li = document.createElement("li");
+        li.className = "task rec-card";
+        recList.appendChild(buildRecCard(li, r));
       }
       board.appendChild(colEl);
       continue;   // 定期列はドロップ対象外
@@ -1432,31 +1388,15 @@ function render() {
     const colTasks = items.filter(t => col.done ? t.done : (!t.done && (t.status || "todo") === col.key));
 
     const colEl = document.createElement("div");
-    colEl.className = "col" + (isFocused ? " focused" : "") + (isCollapsed ? " collapsed" : "");
+    colEl.className = "col";
     colEl.dataset.status = col.key;
     colEl.innerHTML = `
       <div class="col-head">
         <span class="col-title"><i class="dot dot-${col.done ? "done" : col.key}"></i>${col.label}</span>
         <span class="col-count">${colTasks.length}</span>
-        <button type="button" class="col-expand" title="${expandTitle}">${expandIcon}</button>
       </div>
-      ${isCollapsed ? "" : '<ul class="col-list"></ul>'}
+      <ul class="col-list"></ul>
     `;
-    colEl.querySelector(".col-expand").addEventListener("click", e => {
-      e.stopPropagation();
-      boardFocus = isFocused ? null : col.key;
-      saveBoardFocus(); render();
-    });
-
-    if (isCollapsed) {
-      colEl.querySelector(".col-head").addEventListener("click", () => {
-        boardFocus = col.key; saveBoardFocus(); render();
-      });
-      attachColumnDrop(colEl, col);
-      board.appendChild(colEl);
-      continue;
-    }
-
     const listEl = colEl.querySelector(".col-list");
 
     if (colTasks.length === 0) {
@@ -1839,10 +1779,6 @@ function loadHiddenCols() {
 function saveHiddenCols() {
   localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify(hiddenCols));
 }
-function saveBoardFocus() {
-  if (boardFocus) localStorage.setItem(BOARD_FOCUS_KEY, boardFocus);
-  else localStorage.removeItem(BOARD_FOCUS_KEY);
-}
 function buildColToggleMenu() {
   const menu = document.getElementById("colToggleMenu");
   menu.innerHTML = `<div class="menu-title">表示する列</div>` +
@@ -1996,6 +1932,7 @@ window.addEventListener("online", scheduleRealtimePull);
 setInterval(scheduleRealtimePull, 5 * 60 * 1000);
 
 /* ---------- 起動 ---------- */
+localStorage.removeItem("task-app.boardFocus.v1");   // 廃止した「列を広げる」機能の残骸を掃除
 initTheme();
 load();
 loadRecurring();
