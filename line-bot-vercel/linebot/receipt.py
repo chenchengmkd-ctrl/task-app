@@ -1,11 +1,12 @@
 """LINEに送られた領収書・レシートの写真を読み取り、財務アプリの仕入れ明細として登録する。
 
 流れ：
-  写真を送る → LINEのコンテンツAPIで画像を取得 → Geminiに読み取らせる
-  → 読み取り結果を一覧で返信（この時点ではまだ保存しない）
-  → ユーザーが「登録」と返せば birdmen_kv に書き込む
+  写真を送る → LINEのコンテンツAPIで画像を取得 → Geminiに読み取らせる → その場で登録
+  → 読み取った内訳と登録結果を返信する
 
-読み取りは必ず間違えるものとして扱い、勝手に保存しない。確認してから登録する。
+以前は「登録しますか？」と確認を挟み、返信を待ってから保存していたが、
+毎回「登録」と返すのが手間という要望（2026-08-23）で確認を無くし即登録にした。
+読み取りが間違っていた場合は「取消」で直前の1件を丸ごと戻せる（他のLINE入力と同じ仕組み）。
 金額は日本のレシートの総額表示に合わせて税込で受け取る（アプリの LineItem.amount も税込）。
 """
 import base64
@@ -17,15 +18,8 @@ import requests
 from . import config
 from . import finance as finance_mod
 from .gemini_client import call_gemini
-from .supabase_client import get_state, set_state, delete_state
 
-PENDING_KEY = 'FINANCE_RECEIPT'
 CONTENT_URL = 'https://api-data.line.me/v2/bot/message/{}/content'
-
-# 読み取り結果の保持時間。これを過ぎた分は古い写真の残骸とみなして無視する。
-# 確認待ちの間は「1削除」がレシートの行削除として扱われ、タスクの「1削除」を隠してしまうので、
-# 放置された確認が長く居座らないよう短めにしてある
-PENDING_TTL_MS = 15 * 60 * 1000
 
 MAX_ITEMS = 25
 
@@ -170,31 +164,19 @@ def _match_vendor(name):
     return name
 
 
-def _format_pending(pending):
-    """確認用の一覧テキストを作る。"""
-    items = pending['items']
+def _format_items(vendor, items):
+    """読み取った内訳の一覧テキストを作る（登録結果の上に添える）。"""
     total = sum(i['amount'] for i in items)
-    lines = [
-        f'🧾 レシートを読み取りました（{config.jp(pending["date"])}）',
-        f'仕入れ先：{pending["vendor"] or "（読み取れず）"}',
-        '',
-    ]
+    lines = [f'仕入れ先：{vendor or "（読み取れず）"}', '']
     for i, it in enumerate(items, 1):
         cat = finance_mod.CATEGORY_LABEL[it['category']]
         lines.append(f'{i}. {it["label"]}　{it["amount"]:,}円（{it["taxRate"]}% / {cat}）')
-    lines += [
-        '',
-        f'合計 {total:,}円（税込）',
-        '',
-        'この内容で登録しますか？',
-        '「登録」→ 保存　「取消」→ 破棄',
-        '「2削除」→ 2番を除いてから登録できます',
-    ]
+    lines += ['', f'合計 {total:,}円（税込）']
     return '\n'.join(lines)
 
 
 def handle_image(user_id, message_id):
-    """画像メッセージを受け取ったときの入り口。読み取って確認メッセージを返す。"""
+    """画像メッセージを受け取ったときの入り口。読み取ってそのまま登録し、内訳と結果を返す。"""
     image_bytes, mime = fetch_image(message_id)
     if not image_bytes:
         return '画像を取得できませんでした。もう一度送ってみてください。'
@@ -210,53 +192,6 @@ def handle_image(user_id, message_id):
             f'手で入れる場合はこちら → {finance_mod.entry_url(config.today_iso())}',
         ])
 
-    pending = {
-        'date': parsed['date'],
-        'vendor': _match_vendor(parsed['vendor']),
-        'items': parsed['items'],
-        'ts': config.now_ms(),
-    }
-    set_state(f'{PENDING_KEY}:{user_id}', pending)
-    return _format_pending(pending)
-
-
-def _load_pending(user_id):
-    pending = get_state(f'{PENDING_KEY}:{user_id}')
-    if not pending or not pending.get('items'):
-        return None
-    if config.now_ms() - int(pending.get('ts') or 0) > PENDING_TTL_MS:
-        delete_state(f'{PENDING_KEY}:{user_id}')
-        return None
-    return pending
-
-
-def handle_pending_reply(user_id, text):
-    """レシート確認待ちの返信を処理する。対象外ならNoneを返し、通常のルーティングへ流す。"""
-    pending = _load_pending(user_id)
-    if not pending:
-        return None
-
-    body = text.strip()
-
-    if re.match(r'^(取消|取り消し|キャンセル|やめる|破棄)$', body):
-        delete_state(f'{PENDING_KEY}:{user_id}')
-        return '🗑 レシートの読み取り結果を破棄しました。'
-
-    # 「2削除」「2,3削除」→ その行を除いてもう一度確認
-    drop = re.match(r'^([\d\s,、]+)\s*(?:番)?\s*(?:削除|除外|いらない)$', body)
-    if drop:
-        nums = {int(n) for n in re.findall(r'\d+', drop.group(1))}
-        items = [it for i, it in enumerate(pending['items'], 1) if i not in nums]
-        if not items:
-            delete_state(f'{PENDING_KEY}:{user_id}')
-            return '全部消えたので破棄しました。'
-        pending['items'] = items
-        set_state(f'{PENDING_KEY}:{user_id}', pending)
-        return _format_pending(pending)
-
-    if re.match(r'^(登録|保存|ok|OK|はい|これで)$', body):
-        delete_state(f'{PENDING_KEY}:{user_id}')
-        return finance_mod.add_receipt_items(user_id, pending['date'], pending['vendor'], pending['items'])
-
-    # 確認待ち中でも、関係ない文章はそのまま通常処理に流す（タスク追加などを邪魔しない）
-    return None
+    vendor = _match_vendor(parsed['vendor'])
+    result = finance_mod.add_receipt_items(user_id, parsed['date'], vendor, parsed['items'])
+    return '🧾 ' + _format_items(vendor, parsed['items']) + '\n\n' + result

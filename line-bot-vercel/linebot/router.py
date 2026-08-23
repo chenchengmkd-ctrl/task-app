@@ -43,11 +43,6 @@ def route_command(user_id, text):
     pending_calendar = agent_mod.handle_pending_calendar_reply(user_id, text)
     if pending_calendar is not None:
         return pending_calendar
-    # レシート写真の読み取り結果への「登録／取消／2削除」
-    from . import receipt as receipt_mod
-    pending_receipt = receipt_mod.handle_pending_reply(user_id, text)
-    if pending_receipt is not None:
-        return pending_receipt
     # 「1,3,5」のような番号だけの返信は、その日にやることの選択として受け取る
     pending_plan = planning_mod.handle_pending_plan_reply(user_id, text)
     if pending_plan is not None:

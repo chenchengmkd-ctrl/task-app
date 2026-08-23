@@ -821,9 +821,8 @@ def finance_help():
         '・週次CF　　　→ 翌週の入金・支出の見積もり（日曜夜に自動送信）',
         '',
         '▼ レシートを撮るだけ',
-        'レシートの写真をこのトークに送ると読み取ります。',
-        '内容を確認して「登録」と返すと保存します。',
-        '（違う行があれば「2削除」、やめるなら「取消」）',
+        'レシートの写真をこのトークに送ると読み取ってそのまま登録します（確認の返信は不要）。',
+        '間違えていたら「取り消し」で直前の1件を戻せます。',
         '',
         '▼ まとめて入力するとき',
         f'アプリが速いです：{entry_url(config.today_iso())}',
@@ -846,12 +845,29 @@ def finance_help():
     ])
 
 
+def _scheduled_shift_names(date_iso):
+    """カレンダー登録されたシフト予定（shift.pyがOCRから自動登録した分）があれば、書かれている担当名をそのまま返す。
+    連携なし・登録なしなら空文字。
+    """
+    try:
+        from . import gcal
+        from .shift import MARKER
+    except Exception:
+        return ''
+    for ev in gcal.get_events_with_id(date_iso):
+        if MARKER in (ev.get('description') or ''):
+            return ev.get('summary') or ''
+    return ''
+
+
 def build_finance_reminder(date_iso=None):
     """毎日16時のリマインド。未入力なら催促、入力済みなら現状を返す。"""
     date_iso = date_iso or config.today_iso()
     report = _report(date_iso)
     revenue, expense, profit, by_cat = _totals(report) if report else (0, 0, 0, {})
     has_shift = bool((report or {}).get('shifts'))
+    # シフトが未入力でも、写真から自動登録したカレンダー予定があれば「誰が入る予定か」だけは分かる
+    scheduled = '' if has_shift else _scheduled_shift_names(date_iso)
 
     lines = [f'📝 {config.jp(date_iso)} の入力確認']
     lines.append('')
@@ -859,7 +875,10 @@ def build_finance_reminder(date_iso=None):
         lines.append('まだ何も入力されていません。')
     else:
         lines.append(f'売上　{_yen(revenue)}' + ('' if revenue else '　← 未入力'))
-        lines.append(f'人件費　{by_cat.get("labor", 0):,}円' + ('' if has_shift else '　← シフト未入力'))
+        labor_line = f'人件費　{by_cat.get("labor", 0):,}円'
+        if not has_shift:
+            labor_line += f'　← シフト未入力（予定：{scheduled}）' if scheduled else '　← シフト未入力'
+        lines.append(labor_line)
         lines.append(f'仕入・経費　{expense - by_cat.get("labor", 0):,}円')
         lines.append(f'当日損益　{_signed(profit)}')
 
@@ -867,7 +886,7 @@ def build_finance_reminder(date_iso=None):
     if not revenue:
         missing.append('売上')
     if not has_shift:
-        missing.append('シフト')
+        missing.append(f'シフト（予定：{scheduled}）' if scheduled else 'シフト')
     if missing:
         lines.append('')
         lines.append(f'未入力：{"・".join(missing)}')
