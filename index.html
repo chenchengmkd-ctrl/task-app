@@ -503,6 +503,10 @@
     <button class="chip active" data-filter="all">すべて</button>
     <button class="chip" data-filter="active">未完了</button>
     <button class="chip" data-filter="done">完了</button>
+    <button class="chip" data-filter="todo">未着手</button>
+    <button class="chip" data-filter="doing">着手中</button>
+    <button class="chip" data-filter="waiting">対応待ち</button>
+    <button class="chip" data-filter="pending">ペンディング</button>
     <input type="search" id="search" class="search" placeholder="🔍 検索…">
     <span class="spacer"></span>
     <select id="sort" title="並べ替え">
@@ -1008,6 +1012,9 @@ function visibleTasks() {
   let list = tasks.filter(t => !t.deleted);
   if (filter === "active") list = list.filter(t => !t.done);
   if (filter === "done")   list = list.filter(t => t.done);
+  if (["todo", "doing", "waiting", "pending"].includes(filter)) {
+    list = list.filter(t => !t.done && (t.status || "todo") === filter);
+  }
   if (searchText) {
     const q = searchText.toLowerCase();
     list = list.filter(t => t.title.toLowerCase().includes(q));
