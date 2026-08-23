@@ -28,9 +28,10 @@ from linebot.line_client import push_text, get_users
 from linebot import receipt as receipt_mod
 from linebot import weekly_cf as weekly_cf_mod
 from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_report
+from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 66
+APP_VERSION = 67
 
 
 def _respond(start_response, status, body, cors=False):
@@ -109,6 +110,7 @@ def _run_poll(environ, start_response):
         (check_timed_reminders, 'check_timed_reminders'),
         (check_daily_plan, 'check_daily_plan'),
         (check_weekly_actual, 'check_weekly_actual'),
+        (check_midday_sales, 'check_midday_sales'),
     ):
         try:
             fn(push_text, get_users)

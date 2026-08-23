@@ -20,6 +20,7 @@ import requests
 
 from . import config
 from . import finance as finance_mod
+from .supabase_client import get_state, set_state
 
 API_BASE = 'https://connect.squareup.com'
 # 固定しておく（新しい版が出ても勝手に挙動が変わらないように）
@@ -647,3 +648,37 @@ def diagnose():
         'today': today,
         'per_location_last7days': per_location,
     }
+
+
+# ===== 昼どきの売上速報（月〜土 11:30/12:00/12:30/13:00、その時点の売上だけを知らせる） =====
+MIDDAY_CHECK_TIMES = [(11, 30), (12, 0), (12, 30), (13, 0)]
+
+
+def _due_now(now, hm, window_min=15):
+    """指定時刻を過ぎてから window_min 分以内かどうか。30分おきの時刻同士がぶつからないよう短めにしてある。"""
+    target = now.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+    elapsed = (now - target).total_seconds() / 60
+    return 0 <= elapsed < window_min
+
+
+def check_midday_sales(push_text_fn, get_users_fn):
+    """5分おきのポーリングから呼ばれる。月〜土（日曜は対象外）の指定時刻ごとに、その時点の売上だけを送る。"""
+    if not is_enabled():
+        return
+    now = config.now_jst()
+    if now.weekday() == 6:  # 日曜（月=0…土=5、日=6）
+        return
+    date_iso = config.today_iso()
+    for hm in MIDDAY_CHECK_TIMES:
+        if not _due_now(now, hm):
+            continue
+        key = f'MIDDAY_SALES_SENT_{date_iso}_{hm[0]:02d}{hm[1]:02d}'
+        if get_state(key):
+            continue
+        set_state(key, True)
+        s = summarize(date_iso)
+        if s is None:
+            continue
+        text = f'🕐 {hm[0]}:{hm[1]:02d}時点の売上　{s["total"]:,}円（{s["count"]}件）'
+        for uid in get_users_fn():
+            push_text_fn(uid, text)
