@@ -251,30 +251,44 @@ def sync_daily(push, get_users_fn, notify=True):
     if not notify:
         return s
 
-    head = f'🧾 Square {config.jp(date_iso)} の売上を取り込みました'
-    lines = [head] + _summary_lines(s)
-    if entered:
-        lines.append(f'（アプリに入っていた {entered:,}円 から更新）')
-
+    # 通知の組み立て・送信で何かあっても、書き込み自体は上で終わっているので黙って失敗させない。
+    # 「取り込みはできているのに通知だけ来ない」を後から追えるよう、結果をstateに記録しておく
+    # （/api/health のsquare_checkから見える）。
     try:
-        cf = cashflow_forecast(date_iso)
-        lines += [''] + _cashflow_lines(date_iso, cf)
+        head = f'🧾 Square {config.jp(date_iso)} の売上を取り込みました'
+        lines = [head] + _summary_lines(s)
+        if entered:
+            lines.append(f'（アプリに入っていた {entered:,}円 から更新）')
+
+        try:
+            cf = cashflow_forecast(date_iso)
+            lines += [''] + _cashflow_lines(date_iso, cf)
+        except Exception as e:
+            print('square cashflow forecast error:', e)
+
+        # 出数（売れた個数）は全品を通知に載せる
+        if detail and detail.get('items'):
+            lines += ['', f'🍱 出数（客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円）']
+            for i in detail['items']:
+                lines.append(f'　{i["name"]}　{i["qty"]}個')
+            usage_lines = _usage_lines(detail.get('usage'), date_iso)
+            if usage_lines:
+                lines += [''] + usage_lines
+        lines += ['', finance_mod.entry_url(date_iso)]
+        text = '\n'.join(lines)
+
+        users = get_users_fn()
+        results = [push(uid, text) for uid in users]
+        ok = bool(users) and all(results)
+        set_state('SQUARE_SYNC_NOTIFY', {
+            'ok': ok, 'date': date_iso, 'at': config.now_iso(),
+            'userCount': len(users), 'sentCount': sum(1 for r in results if r),
+        })
     except Exception as e:
-        print('square cashflow forecast error:', e)
-
-    # 出数（売れた個数）は全品を通知に載せる
-    if detail and detail.get('items'):
-        lines += ['', f'🍱 出数（客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円）']
-        for i in detail['items']:
-            lines.append(f'　{i["name"]}　{i["qty"]}個')
-        usage_lines = _usage_lines(detail.get('usage'), date_iso)
-        if usage_lines:
-            lines += [''] + usage_lines
-    lines += ['', finance_mod.entry_url(date_iso)]
-    text = '\n'.join(lines)
-
-    for uid in get_users_fn():
-        push(uid, text)
+        print('square sync notify error:', e)
+        set_state('SQUARE_SYNC_NOTIFY', {
+            'ok': False, 'date': date_iso, 'at': config.now_iso(), 'error': repr(e)[:300],
+        })
     return s
 
 
@@ -647,6 +661,8 @@ def diagnose():
         'location_used': _location_id(),
         'today': today,
         'per_location_last7days': per_location,
+        # 直近の自動取り込み通知が送れたか（sync_dailyが記録。「取り込みはできているのに通知が来ない」の切り分け用）
+        'last_sync_notify': get_state('SQUARE_SYNC_NOTIFY'),
     }
 
 

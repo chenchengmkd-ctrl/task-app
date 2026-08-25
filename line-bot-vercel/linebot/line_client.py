@@ -42,6 +42,7 @@ def reply_text(token, text):
 
 
 def push_text(to, text):
+    """LINEへのプッシュ送信。戻り値は成功したかどうか（呼び出し元が失敗を検知して記録できるように）。"""
     res = requests.post(
         config.PUSH_URL,
         headers={
@@ -53,3 +54,5 @@ def push_text(to, text):
     )
     if res.status_code >= 300:
         print('LINE push error', res.status_code, res.text)
+        return False
+    return True
