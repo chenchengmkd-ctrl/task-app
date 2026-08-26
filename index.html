@@ -127,28 +127,6 @@
   }
   .toolbar .search:focus { border-color: var(--accent); outline: none; }
 
-  /* 書き出しメニュー */
-  .export-wrap { position: relative; }
-  .export-menu {
-    position: absolute; right: 0; top: calc(100% + 6px); z-index: 20;
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    box-shadow: 0 4px 14px rgba(0,0,0,.12); padding: 6px; min-width: 230px;
-    display: flex; flex-direction: column; gap: 2px;
-  }
-  .export-menu[hidden] { display: none; }
-  .export-menu button {
-    font: inherit; text-align: left; background: none; border: none; color: var(--text);
-    padding: 9px 12px; border-radius: 7px; cursor: pointer;
-  }
-  .export-menu button:hover { background: var(--due-bg); }
-  .export-menu .menu-title { font-size: 11px; color: var(--muted); padding: 4px 12px 2px; }
-  .export-menu label.col-toggle-item {
-    display: flex; align-items: center; gap: 9px; padding: 7px 12px;
-    border-radius: 7px; cursor: pointer; color: var(--text); font-size: 13px;
-  }
-  .export-menu label.col-toggle-item:hover { background: var(--due-bg); }
-  .export-menu label.col-toggle-item input { width: 15px; height: 15px; cursor: pointer; }
-
   /* カンバンボード（状態ごとの列） */
   #board {
     display: flex; flex-wrap: wrap;
@@ -499,10 +477,6 @@
       <option value="priority">↕ 優先度が高い順</option>
       <option value="recent">↕ 最近さわった順</option>
     </select>
-    <div class="export-wrap">
-      <button type="button" class="chip" id="colToggleBtn" title="列の表示/非表示">🗂 列</button>
-      <div class="export-menu" id="colToggleMenu" hidden></div>
-    </div>
     <button type="button" class="chip" id="syncBtn">☁️ 今すぐ同期</button>
   </div>
 
@@ -590,10 +564,8 @@
 <script>
 const STORE_KEY = "task-app.tasks.v1";
 const REC_KEY = "task-app.recurring.v1";
-const HIDDEN_COLS_KEY = "task-app.hiddenCols.v1";
 let tasks = [];
 let recurring = [];
-let hiddenCols = [];
 let supabaseSyncTimer = null;
 
 /* ---------- Supabase ---------- */
@@ -1360,8 +1332,6 @@ function render() {
   board.innerHTML = "";
 
   for (const col of COLUMNS) {
-    if (hiddenCols.includes(col.key)) continue;   // 非表示の列はスキップ
-
     // 定期タスク列：通常タスクではなく定期テンプレートを表示
     if (col.recurring) {
       const colEl = document.createElement("div");
@@ -1771,36 +1741,7 @@ function toast(msg) {
   setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 300); }, 2500);
 }
 
-/* ---------- 列の表示/非表示 ---------- */
-function loadHiddenCols() {
-  try { hiddenCols = JSON.parse(localStorage.getItem(HIDDEN_COLS_KEY)) || []; }
-  catch { hiddenCols = []; }
-}
-function saveHiddenCols() {
-  localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify(hiddenCols));
-}
-function buildColToggleMenu() {
-  const menu = document.getElementById("colToggleMenu");
-  menu.innerHTML = `<div class="menu-title">表示する列</div>` +
-    COLUMNS.map(c => `<label class="col-toggle-item"><input type="checkbox" data-col="${c.key}" ${hiddenCols.includes(c.key) ? "" : "checked"}>${c.label}</label>`).join("");
-  menu.querySelectorAll("input[data-col]").forEach(inp => {
-    inp.addEventListener("change", () => {
-      const k = inp.dataset.col;
-      if (inp.checked) hiddenCols = hiddenCols.filter(x => x !== k);
-      else if (!hiddenCols.includes(k)) hiddenCols.push(k);
-      saveHiddenCols(); render();
-    });
-  });
-}
-
 /* ---------- イベント ---------- */
-const colToggleBtn = document.getElementById("colToggleBtn");
-const colToggleMenu = document.getElementById("colToggleMenu");
-colToggleBtn.addEventListener("click", e => { e.stopPropagation(); colToggleMenu.hidden = !colToggleMenu.hidden; });
-document.addEventListener("click", e => {
-  if (!colToggleMenu.hidden && !colToggleMenu.contains(e.target) && e.target !== colToggleBtn) colToggleMenu.hidden = true;
-});
-
 document.getElementById("addForm").addEventListener("submit", e => {
   e.preventDefault();
   const title = document.getElementById("title").value.trim();
@@ -1932,12 +1873,12 @@ window.addEventListener("online", scheduleRealtimePull);
 setInterval(scheduleRealtimePull, 5 * 60 * 1000);
 
 /* ---------- 起動 ---------- */
-localStorage.removeItem("task-app.boardFocus.v1");   // 廃止した「列を広げる」機能の残骸を掃除
+// 廃止した「列を広げる」「列の表示/非表示」機能の残骸を掃除
+localStorage.removeItem("task-app.boardFocus.v1");
+localStorage.removeItem("task-app.hiddenCols.v1");
 initTheme();
 load();
 loadRecurring();
-loadHiddenCols();
-buildColToggleMenu();
 initRecForm();
 attachTrayDrop();
 render();
