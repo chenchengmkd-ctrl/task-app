@@ -463,7 +463,6 @@
   <!-- フィルタ・並べ替え -->
   <div class="toolbar">
     <button class="chip active" data-filter="all">すべて</button>
-    <button class="chip" data-filter="active">未完了</button>
     <button class="chip" data-filter="done">完了</button>
     <button class="chip" data-filter="todo">未着手</button>
     <button class="chip" data-filter="doing">着手中</button>
@@ -964,8 +963,7 @@ function dropOnColumn(draggedId, col) {
 /* ---------- 表示 ---------- */
 function visibleTasks() {
   let list = tasks.filter(t => !t.deleted);
-  if (filter === "active") list = list.filter(t => !t.done);
-  if (filter === "done")   list = list.filter(t => t.done);
+  if (filter === "done") list = list.filter(t => t.done);
   if (["todo", "doing", "waiting", "pending"].includes(filter)) {
     list = list.filter(t => !t.done && (t.status || "todo") === filter);
   }
@@ -1327,11 +1325,10 @@ const COLUMNS = [
 ];
 
 // 上部のフィルタチップに合わせて、関係ない列はボードから隠す
-// （「未完了」なら完了列を隠す、状態を1つ選んだらその列だけにする、など）
+// （状態を1つ選んだらその列だけにする、完了なら完了列だけにする、など）
 function columnVisible(col) {
-  if (filter === "all")    return true;
-  if (filter === "done")   return col.done === true;
-  if (filter === "active") return !col.done;
+  if (filter === "all")  return true;
+  if (filter === "done") return col.done === true;
   return col.key === filter;   // todo/doing/waiting/pending の個別フィルタ
 }
 
