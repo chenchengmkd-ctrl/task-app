@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 71
+APP_VERSION = 72
 
 
 def _respond(start_response, status, body, cors=False):
@@ -189,9 +189,11 @@ def _handle_health(environ, start_response):
         info['line_token_check'] = {'status': res.status_code, 'body': res.text[:300]}
     except Exception as e:
         info['line_token_check'] = {'error': str(e)}
-    # 直近のプッシュ送信失敗があれば（原因調査用。LINE側の無料枠上限切れ等もこれで分かる）
+    # 直近のプッシュ送信結果（原因調査用。成功もあわせて見えるようにして
+    # 「直っている」と「そもそも何も送っていないだけ」を区別できるようにする）
     from linebot.supabase_client import get_state
     info['line_push_last_error'] = get_state('LINE_PUSH_LAST_ERROR')
+    info['line_push_last_ok'] = get_state('LINE_PUSH_LAST_OK')
     return _respond(start_response, '200 OK', info)
 
 

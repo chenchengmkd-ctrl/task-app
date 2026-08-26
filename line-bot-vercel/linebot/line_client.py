@@ -67,4 +67,7 @@ def push_text(to, text):
             'status': res.status_code, 'body': res.text[:500], 'at': config.now_iso(),
         })
         return False
+    # 直近の成功も記録する。エラーが出ていない＝直っている、を「そもそも何も送っていないだけ」と
+    # 区別できるようにするため（/api/health から見える）
+    set_state('LINE_PUSH_LAST_OK', {'at': config.now_iso()})
     return True
