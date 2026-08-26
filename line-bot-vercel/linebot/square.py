@@ -190,8 +190,45 @@ def build_summary(date_iso=None):
     return '\n'.join(lines)
 
 
+def _fetch_detail_and_cashsplit(date_iso, s):
+    """出数・現金内訳をあわせて取り込む（自動同期・手動取り込みの両方から呼ぶ共通処理）。"""
+    detail = None
+    try:
+        detail = store_sales_detail(date_iso)
+    except Exception as e:
+        print('square sales detail sync error:', e)
+    try:
+        store_cash_split(date_iso, s)
+    except Exception as e:
+        print('square cash split sync error:', e)
+    return detail
+
+
+def _extra_lines(date_iso, detail):
+    """資金繰り予想・出数・使用量の内訳（通知本文の共通部分。自動通知・手動取り込みの両方で使う）。"""
+    lines = []
+    try:
+        cf = cashflow_forecast(date_iso)
+        lines += [''] + _cashflow_lines(date_iso, cf)
+    except Exception as e:
+        print('square cashflow forecast error:', e)
+
+    if detail and detail.get('items'):
+        lines += ['', f'🍱 出数（客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円）']
+        for i in detail['items']:
+            lines.append(f'　{i["name"]}　{i["qty"]}個')
+        usage_lines = _usage_lines(detail.get('usage'), date_iso)
+        if usage_lines:
+            lines += [''] + usage_lines
+    return lines
+
+
 def import_day(user_id, date_iso=None, overwrite=True):
-    """Squareの売上を財務アプリに書き込む。LINEの「スクエア取込」コマンド用。"""
+    """Squareの売上を財務アプリに書き込む。LINEの「スクエア取込」コマンド用。
+
+    自動通知（sync_daily）と同じ内容（資金繰り予想・出数・使用量）を返信するので、
+    自動通知が来なかった日でもこれを送れば同じ内容をその場で確認できる。
+    """
     if not is_enabled():
         return 'Squareの連携がまだ設定されていません（SQUARE_ACCESS_TOKEN 未設定）。'
     date_iso = date_iso or config.today_iso()
@@ -205,6 +242,7 @@ def import_day(user_id, date_iso=None, overwrite=True):
     if entered and not overwrite:
         return f'{config.jp(date_iso)} には既に {entered:,}円 が入っています。上書きするなら「スクエア取込」。'
 
+    detail = _fetch_detail_and_cashsplit(date_iso, s)
     result = finance_mod.set_sales_amount(user_id, date_iso, s['total'])
     if result is None:
         return '保存に失敗しました。時間をおいてもう一度お試しください。'
@@ -212,6 +250,7 @@ def import_day(user_id, date_iso=None, overwrite=True):
     lines = [f'✅ Square {config.jp(date_iso)} の売上を取り込みました'] + _summary_lines(s)
     if entered and entered != s['total']:
         lines.append(f'（{entered:,}円 から上書きしました）')
+    lines += _extra_lines(date_iso, detail)
     lines += ['', result, '（間違えたら「取り消し」）']
     return '\n'.join(lines)
 
@@ -232,15 +271,7 @@ def sync_daily(push, get_users_fn, notify=True):
 
     # 出数・客数・現金内訳もあわせて取り込む（アプリの分析タブ・LINE通知・資金繰り予想の全部で使う）。
     # 通知するかどうかに関わらず、日々の記録は毎回残す（資金繰り予想の実績データが途切れないように）
-    detail = None
-    try:
-        detail = store_sales_detail(date_iso)
-    except Exception as e:
-        print('square sales detail sync error:', e)
-    try:
-        store_cash_split(date_iso, s)
-    except Exception as e:
-        print('square cash split sync error:', e)
+    detail = _fetch_detail_and_cashsplit(date_iso, s)
 
     entered = finance_mod.sales_of(date_iso)
     if entered == s['total']:
@@ -259,21 +290,7 @@ def sync_daily(push, get_users_fn, notify=True):
         lines = [head] + _summary_lines(s)
         if entered:
             lines.append(f'（アプリに入っていた {entered:,}円 から更新）')
-
-        try:
-            cf = cashflow_forecast(date_iso)
-            lines += [''] + _cashflow_lines(date_iso, cf)
-        except Exception as e:
-            print('square cashflow forecast error:', e)
-
-        # 出数（売れた個数）は全品を通知に載せる
-        if detail and detail.get('items'):
-            lines += ['', f'🍱 出数（客数 {detail["customers"]}組 ／ 客単価 {detail["perCustomer"]:,}円）']
-            for i in detail['items']:
-                lines.append(f'　{i["name"]}　{i["qty"]}個')
-            usage_lines = _usage_lines(detail.get('usage'), date_iso)
-            if usage_lines:
-                lines += [''] + usage_lines
+        lines += _extra_lines(date_iso, detail)
         lines += ['', finance_mod.entry_url(date_iso)]
         text = '\n'.join(lines)
 
