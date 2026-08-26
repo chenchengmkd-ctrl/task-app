@@ -1326,12 +1326,23 @@ const COLUMNS = [
   { key: "recurring", label: "定期タスク",  recurring: true }
 ];
 
+// 上部のフィルタチップに合わせて、関係ない列はボードから隠す
+// （「未完了」なら完了列を隠す、状態を1つ選んだらその列だけにする、など）
+function columnVisible(col) {
+  if (filter === "all")    return true;
+  if (filter === "done")   return col.done === true;
+  if (filter === "active") return !col.done;
+  return col.key === filter;   // todo/doing/waiting/pending の個別フィルタ
+}
+
 function render() {
   const board = document.getElementById("board");
   const items = visibleTasks();
   board.innerHTML = "";
 
   for (const col of COLUMNS) {
+    if (!columnVisible(col)) continue;
+
     // 定期タスク列：通常タスクではなく定期テンプレートを表示
     if (col.recurring) {
       const colEl = document.createElement("div");
