@@ -182,6 +182,7 @@ def _format_pending(days):
     return (head + '\n' + '\n'.join(lines) +
             f'\n\nこの内容で、毎日 {START_HHMM}〜{END_HHMM} の枠にカレンダー登録しますか？'
             '\n→ 「はい」で登録、「いいえ」で取り消し'
+            '\n→ 読み間違いがあれば「14日 都丸、上原」のように送るとその日だけ直せます（休みなら「14日 休み」）'
             '\n（同じ期間にこの機能で入れた予定があれば、消してから入れ直します）')
 
 
@@ -258,9 +259,32 @@ def register(user_id):
     return msg
 
 
+_CORRECT_RE = re.compile(r'^(\d{1,2})日[\s、,:：]+(.+)$')
+
+
+def _apply_correction(user_id, pending, text):
+    """確認待ち中に「14日 都丸、上原」のように送ると、その日だけ内容を上書きしてもう一度確認を出す。
+    範囲外の日付・パターンに合わないものはNone（通常のルーティングに任せる）。
+    """
+    m = _CORRECT_RE.match(text.strip())
+    if not m:
+        return None
+    day_num = int(m.group(1))
+    body = m.group(2).strip()
+    days = pending['days']
+    target = next((d for d in days if config.parse_date(d['date']).day == day_num), None)
+    if not target:
+        return None
+    target['labels'] = [] if re.match(r'^(休み|なし|やすみ)$', body) else \
+        [x.strip() for x in re.split('[、,]', body) if x.strip()]
+    set_state(_key(user_id), pending)
+    return _format_pending(days)
+
+
 def handle_pending_reply(user_id, text):
-    """確認待ちへの「はい」「いいえ」を処理する。該当なしはNone。"""
-    if not _load_pending(user_id):
+    """確認待ちへの「はい」「いいえ」／個別日の訂正を処理する。該当なしはNone。"""
+    pending = _load_pending(user_id)
+    if not pending:
         return None
     t = text.strip()
     if re.match(r'^(はい|うん|ok|OK|登録|お願いします|よろしく|そう)[。.!！]*$', t, re.IGNORECASE):
@@ -268,4 +292,4 @@ def handle_pending_reply(user_id, text):
     if re.match(r'^(いいえ|やめて|キャンセル|違う|ちがう|no)[。.!！]*$', t, re.IGNORECASE):
         delete_state(_key(user_id))
         return '🙅 シフトの登録をやめました。'
-    return None
+    return _apply_correction(user_id, pending, t)
