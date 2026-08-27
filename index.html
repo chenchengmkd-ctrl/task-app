@@ -152,6 +152,7 @@
   .col-list {
     list-style: none; display: flex; flex-direction: column; gap: 5px; min-height: 36px;
     overflow-y: auto; flex: 1 1 auto; padding-right: 3px;
+    overflow-anchor: none;   /* 再描画のたびにブラウザの自動スクロール調整で位置がズレるのを防ぐ */
   }
   .col-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 8px 4px; opacity: .7; }
 
@@ -272,9 +273,7 @@
     margin-top: 4px; font: inherit; font-size: 12px; color: var(--muted);
     background: none; border: 1px dashed var(--border); border-radius: 6px;
     padding: 2px 9px; cursor: pointer; transition: all .15s;
-    display: none;   /* 普段は隠す */
   }
-  .task:hover .add-note { display: inline-block; }
   .add-note:hover { color: var(--accent); border-color: var(--accent); }
 
   .actions { display: flex; gap: 1px; }
@@ -1335,6 +1334,15 @@ function columnVisible(col) {
 function render() {
   const board = document.getElementById("board");
   const items = visibleTasks();
+
+  // 列を作り直すとスクロール位置が失われ、一番下でチェックを入れたときに
+  // 列がガクッと上に戻って見えてしまう。作り直す前に位置を覚えておいて後で戻す。
+  const scrollPositions = {};
+  board.querySelectorAll(".col[data-status]").forEach(colEl => {
+    const list = colEl.querySelector(".col-list");
+    if (list) scrollPositions[colEl.dataset.status] = list.scrollTop;
+  });
+
   board.innerHTML = "";
 
   for (const col of COLUMNS) {
@@ -1344,6 +1352,7 @@ function render() {
     if (col.recurring) {
       const colEl = document.createElement("div");
       colEl.className = "col";
+      colEl.dataset.status = col.key;
       colEl.innerHTML = `
         <div class="col-head">
           <span class="col-title"><i class="dot dot-recurring"></i>${col.label}</span>
@@ -1360,6 +1369,7 @@ function render() {
         recList.appendChild(buildRecCard(li, r));
       }
       board.appendChild(colEl);
+      if (scrollPositions[col.key] != null) recList.scrollTop = scrollPositions[col.key];
       continue;   // 定期列はドロップ対象外
     }
 
@@ -1395,6 +1405,7 @@ function render() {
 
     attachColumnDrop(colEl, col);
     board.appendChild(colEl);
+    if (scrollPositions[col.key] != null) listEl.scrollTop = scrollPositions[col.key];
   }
 
   // 件数・フッター
