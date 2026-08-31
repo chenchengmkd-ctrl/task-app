@@ -213,6 +213,16 @@ function viewSources() {
     </div>
   </div>
   <div class="card">
+    <h3>まとめて取り込み（記事URLを一気に）</h3>
+    <textarea id="bulkUrls" placeholder="記事のURLを1行に1つずつ貼り付け（何百本でもOK）" style="min-height:120px"></textarea>
+    <button class="btn" id="bulkBtn" onclick="bulkAdd()" style="margin-top:8px">まとめて取り込む</button>
+    <pre class="transcript" id="bulkProgress" style="margin-top:10px;max-height:240px">ここに進み具合が出ます</pre>
+    <div class="small muted" style="margin-top:6px">
+      記事・ブログのURLだけ対応（YouTubeは1本ずつ上のフォームで）。<br>
+      時間がかかります。途中でこの画面を閉じても、もう一度同じURLを貼って押せば「残りだけ」処理します（済んだものは飛ばします）。
+    </div>
+  </div>
+  <div class="card">
     <h3>取り込み済み（${sources.length}）</h3>
     ${rows}
   </div>`;
@@ -279,36 +289,81 @@ async function resumeIngest(id) {
   }
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// 取り込みAPIをphaseが done/error になるまで回す共通処理。
+// onStatus(文字列) で進み具合を通知。戻り値 {ok:true,title} または {ok:false,message}
+async function ingestLoop(id, phase, index, onStatus, text) {
+  let retries = 0;
+  while (true) {
+    let r;
+    try { r = await api('/api/mentor_ingest', { source_id: id, phase, index, text }); }
+    catch (e) { return { ok: false, message: e.message }; }
+    text = undefined;
+    if (r.phase === 'error') return { ok: false, message: r.message };
+    if (r.phase === 'retry') {
+      retries++;
+      if (retries > 8) return { ok: false, message: `混雑が続き中断（${r.seg_done}/${r.seg_total}区間まで完了）` };
+      phase = 'transcript'; index = r.index;
+      for (let s = 25; s > 0; s--) { onStatus(`混雑のため待機中… あと${s}秒（${retries}回目）`); await sleep(1000); }
+      continue;
+    }
+    if (r.phase === 'transcript') { retries = 0; phase = 'transcript'; index = r.index; onStatus(`文字起こし中… ${r.seg_done}/${r.seg_total}`); continue; }
+    if (r.phase === 'distill') { phase = 'distill'; index = 0; onStatus('要点と逐語引用を抽出中…'); continue; }
+    if (r.phase === 'done') return { ok: true, title: r.title };
+    return { ok: false, message: '予期しない応答' };
+  }
+}
+
 async function runIngest(id, phase, index, text) {
   const set = msg => { ingestStatus[id] = msg; const el = document.querySelector(`#src-${id} .status-line`); if (el) el.textContent = msg; else render(); };
   set('開始しています…');
-  let retries = 0;
-  try {
-    while (true) {
-      const r = await api('/api/mentor_ingest', { source_id: id, phase, index, text });
-      text = undefined;
-      if (r.phase === 'error') { set('⚠️ ' + r.message); await afterIngest(); return; }
-      if (r.phase === 'retry') {
-        retries++;
-        if (retries > 8) {
-          set(`⚠️ Geminiの混雑が続いています。${r.seg_done}/${r.seg_total}区間まで完了。時間をおいて「続きから取り込む」で再開してください。`);
-          await afterIngest(); return;
-        }
-        phase = 'transcript'; index = r.index;
-        for (let s = 25; s > 0; s--) { set(`混雑のため待機中… あと${s}秒（${retries}回目 / ${r.seg_done}・${r.seg_total}区間 完了）`); await sleep(1000); }
-        continue;
-      }
-      if (r.phase === 'transcript') { retries = 0; phase = 'transcript'; index = r.index; set(`文字起こし中… ${r.seg_done}/${r.seg_total}`); continue; }
-      if (r.phase === 'distill') { phase = 'distill'; index = 0; set('要点と逐語引用を抽出中…'); continue; }
-      if (r.phase === 'done') { delete ingestStatus[id]; toast('取り込み完了：' + (r.title || '')); await afterIngest(); return; }
-      set('⚠️ 予期しない応答'); return;
-    }
-  } catch (e) {
-    set('⚠️ ' + e.message + '（「続きから取り込む」で再開できます）');
-    await afterIngest();
-  }
+  const r = await ingestLoop(id, phase, index, set, text);
+  if (r.ok) { delete ingestStatus[id]; toast('取り込み完了：' + (r.title || '')); }
+  else set('⚠️ ' + r.message + '（「続きから取り込む」で再開できます）');
+  await afterIngest();
 }
 async function afterIngest() { if (activeTab === 'sources') await render(); }
+
+async function bulkAdd() {
+  if (!currentId) return toast('先に人物を選んでください');
+  const raw = ($('#bulkUrls') || {}).value || '';
+  const urls = [...new Set(raw.split(/[\s,]+/).map(s => s.trim()).filter(u => /^https?:\/\//i.test(u)))];
+  if (!urls.length) return toast('URLを貼り付けてください（1行に1つ）');
+  const mins = Math.ceil(urls.length * 18 / 60);
+  if (!confirm(`${urls.length}件を順番に取り込みます。目安で${mins}分ほどかかります。\nこの画面は開いたままにしてください。始めますか？`)) return;
+
+  const box = $('#bulkProgress'); const btn = $('#bulkBtn');
+  btn.disabled = true; btn.textContent = '取り込み中…';
+  const { data: existing } = await db.from('mentor_sources').select('id,url,status').eq('mentor_id', currentId);
+  const byUrl = {}; (existing || []).forEach(s => { byUrl[s.url] = s; });
+
+  let done = 0, skip = 0, fail = 0; const failed = [];
+  const head = i => `【${i}/${urls.length}】 済:${done}  スキップ:${skip}  失敗:${fail}`;
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    const prog = m => { box.textContent = `${head(i + 1)}\n${url}\n${m}`; };
+    prog('確認中…');
+    const ex = byUrl[url];
+    if (ex && ex.status === 'done') { skip++; continue; }
+    const id = ex ? ex.id : newId();
+    if (!ex) {
+      const { error } = await db.from('mentor_sources').insert({ id, mentor_id: currentId, kind: 'article', url, title: url, status: 'processing' });
+      if (error) { fail++; failed.push(url + '  → 保存に失敗'); continue; }
+    }
+    const r = await ingestLoop(id, 'start', 0, prog);
+    if (r.ok) done++; else { fail++; failed.push(url + '  → ' + r.message); }
+    if (i < urls.length - 1) await sleep(4000);
+  }
+
+  btn.disabled = false; btn.textContent = 'まとめて取り込む';
+  box.textContent = `完了：済 ${done} / スキップ ${skip} / 失敗 ${fail}`;
+  if (failed.length) {
+    box.textContent += '\n\n▼ 取り込めなかったURL（ログイン必須・JavaScript表示のページが多いです。'
+      + 'その記事は本文をコピーして「X・その他テキスト」で個別に貼り付けてください）:\n' + failed.join('\n');
+  }
+  await render();
+  toast(`まとめて取り込み終了：済 ${done} / 失敗 ${fail}`);
+}
 
 async function editTranscript(id) {
   const s = sources.find(x => x.id === id);
