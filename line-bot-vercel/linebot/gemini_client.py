@@ -5,6 +5,10 @@ import requests
 
 from . import config
 
+# 直近のGemini呼び出しが失敗した理由（HTTPステータスとレスポンス本文の先頭）。
+# 呼び出し側が原因をユーザーに見せたいときに参照する（成功時はNoneに戻る）。
+LAST_ERROR = None
+
 
 def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800, tool_config=None, model=None):
     """user_text は文字列、または動画等を渡す場合はparts配列（例：[{'file_data':{'file_uri':url}},{'text':'...'}]）。
@@ -26,13 +30,17 @@ def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800, tool_c
         f'https://generativelanguage.googleapis.com/v1beta/models/{model or config.GEMINI_MODEL}'
         f':generateContent?key={config.GEMINI_API_KEY}'
     )
+    global LAST_ERROR
+    LAST_ERROR = None
     try:
         res = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload), timeout=55)
     except requests.RequestException as e:
         print('Gemini API request failed', e)
+        LAST_ERROR = f'通信エラー: {e}'
         return None
     if res.status_code != 200:
         print('Gemini API error', res.status_code, res.text)
+        LAST_ERROR = f'HTTP {res.status_code}: {res.text[:600]}'
         return None
     return res.json()
 

@@ -17,6 +17,7 @@ from urllib.parse import quote
 import requests
 
 from . import config
+from . import gemini_client as gc
 from .gemini_client import call_gemini
 from .supabase_client import get_supabase, patch_supabase, post_supabase
 
@@ -139,7 +140,7 @@ def ingest_step(source_id, phase, index=0, text=None):
             return _fail(
                 source_id,
                 '動画を読み込めませんでした。非公開・限定公開・年齢制限・地域制限・ライブ配信の可能性があります。'
-                'URLを確認するか、字幕付きの通常動画でお試しください。',
+                f'URLを確認するか、字幕付きの通常動画でお試しください。\n（詳細: {gc.LAST_ERROR or "不明"}）',
             )
         m = re.search(r'\d+', dur_reply.replace(',', ''))
         duration = int(m.group(0)) if m else 3600
@@ -157,23 +158,46 @@ def ingest_step(source_id, phase, index=0, text=None):
         i = int(index or 0)
         start_s = i * SEGMENT_SECONDS
         end_s = (i + 1) * SEGMENT_SECONDS
+        instruction = (
+            '話されている内容を省略・要約・言い換えを一切せず、できる限り一言一句そのまま日本語で書き起こしてください。\n'
+            '・話者が複数いる場合は「A：」「B：」のように行頭で区別する\n'
+            '・聞き取れない箇所は（不明瞭）と書く\n'
+            '・「えー」「あの」などの言いよどみは省いてよい\n'
+            '・前置きや説明、区間の要約は書かず、書き起こし本文だけを返す'
+        )
         seg = call_gemini(
             'あなたは、話し言葉をそのまま文字にする書き起こし担当です。',
             [{'file_data': {'file_uri': url},
               'video_metadata': {'start_offset': f'{start_s}s', 'end_offset': f'{end_s}s'}},
-             {'text': (
-                 f'この動画の {start_s} 秒〜{end_s} 秒の区間について、話されている内容を'
-                 '省略・要約・言い換えを一切せず、できる限り一言一句そのまま日本語で書き起こしてください。\n'
-                 '・話者が複数いる場合は「A：」「B：」のように行頭で区別する\n'
-                 '・聞き取れない箇所は（不明瞭）と書く\n'
-                 '・「えー」「あの」などの言いよどみは省いてよい\n'
-                 '・前置きや説明、区間の要約は書かず、書き起こし本文だけを返す\n'
-                 'この区間に発話が無ければ空で返してください。'
-             )}],
+             {'text': f'この動画の {start_s} 秒〜{end_s} 秒の区間について、' + instruction +
+              '\nこの区間に発話が無ければ空で返してください。'}],
             8192, model=MODEL,
         )
+        err = gc.LAST_ERROR
+
+        # 区間指定（video_metadata）が使えないモデル・APIの場合の保険：
+        # 最初の区間なら、区間指定なしで動画まるごとの書き起こしを1回だけ試す。
+        if seg is None and i == 0:
+            seg = call_gemini(
+                'あなたは、話し言葉をそのまま文字にする書き起こし担当です。',
+                [{'file_data': {'file_uri': url}},
+                 {'text': 'この動画で' + instruction}],
+                8192, model=MODEL,
+            )
+            if seg is not None:
+                _patch_source(source_id, {
+                    'transcript': seg.strip(),
+                    'meta': {**meta, 'seg_done': seg_total, 'whole_video': True},
+                })
+                return {'phase': 'distill'}
+            err = gc.LAST_ERROR or err
+
         if seg is None:
-            return _fail(source_id, f'{i + 1}区間目の文字起こしに失敗しました。少し時間をおいて「続きから取り込む」で再開できます。')
+            return _fail(
+                source_id,
+                f'{i + 1}区間目の文字起こしに失敗しました。少し時間をおいて「続きから取り込む」で再開できます。'
+                f'\n（詳細: {err or "不明"}）',
+            )
 
         seg = seg.strip()
         prev = src.get('transcript') or ''
@@ -214,7 +238,8 @@ def ingest_step(source_id, phase, index=0, text=None):
         )
         data = _extract_json(reply)
         if not data:
-            return _fail(source_id, '要約の生成に失敗しました。時間をおいて「続きから取り込む」で再実行してください。')
+            detail = gc.LAST_ERROR or ('応答を解析できませんでした: ' + (reply or '')[:200])
+            return _fail(source_id, f'要約の生成に失敗しました。時間をおいて「続きから取り込む」で再実行してください。\n（詳細: {detail}）')
 
         quotes = data.get('quotes') or []
         clean_quotes = []
@@ -277,7 +302,7 @@ def rebuild_profile(mentor_id):
         4096, model=MODEL,
     )
     if not profile:
-        return {'error': 'プロファイルの生成に失敗しました。時間をおいて再度お試しください。'}
+        return {'error': f'プロファイルの生成に失敗しました。時間をおいて再度お試しください。（詳細: {gc.LAST_ERROR or "不明"}）'}
 
     updated = patch_supabase(
         'mentors', f'id=eq.{quote(str(mentor_id))}',
@@ -370,7 +395,7 @@ def chat(mentor_id, mode, message):
     )
     reply = call_gemini(system, prompt, 1600, model=MODEL)
     if not reply:
-        return {'error': 'AIが応答できませんでした。時間をおいて再度お試しください。'}
+        return {'error': f'AIが応答できませんでした。時間をおいて再度お試しください。（詳細: {gc.LAST_ERROR or "不明"}）'}
 
     post_supabase('mentor_chats', [
         {'id': config.new_id(), 'mentor_id': mentor_id, 'mode': mode, 'role': 'user',
