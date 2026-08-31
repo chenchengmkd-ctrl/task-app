@@ -1,9 +1,18 @@
 """Gemini API呼び出しとFunction Callingツール定義。Code.gs の callGemini*/AGENT_TOOLS等に相当。"""
 import json
+import time
 
 import requests
 
 from . import config
+
+
+def _is_transient(err):
+    """一時的なエラー（混雑・レート制限・瞬断）かどうか。リトライすれば直る類。"""
+    if not err:
+        return False
+    return any(s in err for s in ('HTTP 429', 'HTTP 500', 'HTTP 503', 'UNAVAILABLE',
+                                  'RESOURCE_EXHAUSTED', 'high demand', 'overloaded', '通信エラー'))
 
 # 直近のGemini呼び出しが失敗した理由（HTTPステータスとレスポンス本文の先頭）。
 # 呼び出し側が原因をユーザーに見せたいときに参照する（成功時はNoneに戻る）。
@@ -45,15 +54,22 @@ def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800, tool_c
     return res.json()
 
 
-def call_gemini(system_prompt, user_text, max_tokens=800, tools=None, model=None):
-    """応答テキストを返す（失敗時はNone）。"""
-    data = call_gemini_raw(system_prompt, user_text, tools, max_tokens, model=model)
-    if not data:
+def call_gemini(system_prompt, user_text, max_tokens=800, tools=None, model=None, retries=0):
+    """応答テキストを返す（失敗時はNone）。
+    retries: 一時的なエラー（429/503など）のときに、数秒おいて再試行する回数。
+    """
+    for attempt in range(retries + 1):
+        data = call_gemini_raw(system_prompt, user_text, tools, max_tokens, model=model)
+        if data:
+            parts = (((data.get('candidates') or [{}])[0]).get('content') or {}).get('parts') or []
+            for p in parts:
+                if p.get('text'):
+                    return p['text']
+            return None
+        if attempt < retries and _is_transient(LAST_ERROR):
+            time.sleep(4 + attempt * 3)
+            continue
         return None
-    parts = (((data.get('candidates') or [{}])[0]).get('content') or {}).get('parts') or []
-    for p in parts:
-        if p.get('text'):
-            return p['text']
     return None
 
 

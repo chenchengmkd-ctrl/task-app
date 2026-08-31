@@ -22,7 +22,7 @@ from .gemini_client import call_gemini
 from .supabase_client import get_supabase, patch_supabase, post_supabase
 
 MODEL = config.MENTOR_GEMINI_MODEL
-SEGMENT_SECONDS = 600       # 動画をこの秒数ずつ区切って文字起こしする（1区間＝1リクエスト）
+SEGMENT_SECONDS = 420       # 動画をこの秒数ずつ区切って文字起こしする（1区間＝1リクエスト。60秒制限内にリトライ1回ぶんの余裕を残す）
 MAX_SEGMENTS = 36          # 安全弁（6時間ぶん）
 TRANSCRIPT_BUDGET = 180_000  # 対話1回で全文をそのまま渡す合計文字数の上限
 _UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
@@ -52,6 +52,13 @@ def _patch_source(source_id, body):
 def _fail(source_id, message):
     _patch_source(source_id, {'status': 'error', 'error': message})
     return {'phase': 'error', 'message': message}
+
+
+def _err_note(err):
+    """Geminiのエラー文字列を、ユーザー向けの一言に言い換える。"""
+    if err and gc._is_transient(err):
+        return 'Geminiが今混雑しています（動画の処理は特に混みやすい）。数分おいて「続きから取り込む」で再開してください。'
+    return f'詳細: {err or "不明"}'
 
 
 # ============ JSON抽出 ============
@@ -134,14 +141,14 @@ def ingest_step(source_id, phase, index=0, text=None):
             'あなたは動画の長さを答えるだけのアシスタントです。',
             [{'file_data': {'file_uri': url}},
              {'text': 'この動画の長さは何秒ですか。半角数字の秒数だけを返してください（例: 3720）。'}],
-            30, model=MODEL,
+            30, model=MODEL, retries=2,
         )
         if dur_reply is None:
-            return _fail(
-                source_id,
-                '動画を読み込めませんでした。非公開・限定公開・年齢制限・地域制限・ライブ配信の可能性があります。'
-                f'URLを確認するか、字幕付きの通常動画でお試しください。\n（詳細: {gc.LAST_ERROR or "不明"}）',
-            )
+            note = _err_note(gc.LAST_ERROR)
+            if 'Gemini' not in note:
+                note = ('動画を読み込めませんでした。非公開・限定公開・年齢制限・地域制限・ライブ配信の可能性があります。'
+                        'URLを確認するか、字幕付きの通常動画でお試しください。' + note)
+            return _fail(source_id, note)
         m = re.search(r'\d+', dur_reply.replace(',', ''))
         duration = int(m.group(0)) if m else 3600
         seg_total = max(1, min(MAX_SEGMENTS, (duration + SEGMENT_SECONDS - 1) // SEGMENT_SECONDS))
@@ -171,7 +178,7 @@ def ingest_step(source_id, phase, index=0, text=None):
               'video_metadata': {'start_offset': f'{start_s}s', 'end_offset': f'{end_s}s'}},
              {'text': f'この動画の {start_s} 秒〜{end_s} 秒の区間について、' + instruction +
               '\nこの区間に発話が無ければ空で返してください。'}],
-            8192, model=MODEL,
+            8192, model=MODEL, retries=1,
         )
         err = gc.LAST_ERROR
 
@@ -182,7 +189,7 @@ def ingest_step(source_id, phase, index=0, text=None):
                 'あなたは、話し言葉をそのまま文字にする書き起こし担当です。',
                 [{'file_data': {'file_uri': url}},
                  {'text': 'この動画で' + instruction}],
-                8192, model=MODEL,
+                8192, model=MODEL, retries=1,
             )
             if seg is not None:
                 _patch_source(source_id, {
@@ -193,11 +200,7 @@ def ingest_step(source_id, phase, index=0, text=None):
             err = gc.LAST_ERROR or err
 
         if seg is None:
-            return _fail(
-                source_id,
-                f'{i + 1}区間目の文字起こしに失敗しました。少し時間をおいて「続きから取り込む」で再開できます。'
-                f'\n（詳細: {err or "不明"}）',
-            )
+            return _fail(source_id, f'{i + 1}区間目の文字起こしに失敗しました。\n（{_err_note(err)}）')
 
         seg = seg.strip()
         prev = src.get('transcript') or ''
@@ -234,7 +237,7 @@ def ingest_step(source_id, phase, index=0, text=None):
                 'quotes は8〜15個。必ず本文中の表現をそのまま抜き出す（作文しない）。\n\n'
                 '=== 本文ここから ===\n' + transcript[:200_000]
             ),
-            4096, model=MODEL,
+            4096, model=MODEL, retries=2,
         )
         data = _extract_json(reply)
         if not data:
@@ -299,7 +302,7 @@ def rebuild_profile(mentor_id):
             '5. この人らしく判断するためのチェックリスト（10項目の箇条書き）\n\n'
             '=== 資料ここから ===\n' + material
         ),
-        4096, model=MODEL,
+        4096, model=MODEL, retries=2,
     )
     if not profile:
         return {'error': f'プロファイルの生成に失敗しました。時間をおいて再度お試しください。（詳細: {gc.LAST_ERROR or "不明"}）'}
@@ -393,7 +396,7 @@ def chat(mentor_id, mode, message):
         f'【これまでのやり取り】\n{hist_text or "（なし）"}\n\n'
         f'【ユーザーの新しい発言】\n{message.strip()}'
     )
-    reply = call_gemini(system, prompt, 1600, model=MODEL)
+    reply = call_gemini(system, prompt, 1600, model=MODEL, retries=2)
     if not reply:
         return {'error': f'AIが応答できませんでした。時間をおいて再度お試しください。（詳細: {gc.LAST_ERROR or "不明"}）'}
 
