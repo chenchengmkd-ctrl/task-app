@@ -37,6 +37,14 @@ GOOGLE_CALENDAR_ID = _env('GOOGLE_CALENDAR_ID')
 SQUARE_ACCESS_TOKEN = _env('SQUARE_ACCESS_TOKEN')
 SQUARE_LOCATION_ID = _env('SQUARE_LOCATION_ID')
 
+# 「思考トレース」Webアプリ（study.html）用。
+# MENTOR_APP_TOKEN … 設定するとAPIの呼び出しにこのトークン（HTTPヘッダ X-App-Token）が必須になる。
+#   未設定なら誰でも叩ける（今のタスクアプリと同じ運用。無料枠のGeminiを消費するだけなので実害は小さい）。
+# MENTOR_GEMINI_MODEL … 文字起こし・壁打ちに使うモデル。未設定なら通常のGEMINI_MODELを使う。
+#   動画の文字起こし精度を上げたい場合に、動画対応のより強いモデル名を入れて上書きする。
+MENTOR_APP_TOKEN = _env('MENTOR_APP_TOKEN')
+MENTOR_GEMINI_MODEL = _env('MENTOR_GEMINI_MODEL') or GEMINI_MODEL
+
 APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/'   # タスク管理アプリ（LINEで羅列せずアプリに誘導する時に使う）
 
 DAY_START = '07:00'          # 「空き時間」を数えはじめる時刻

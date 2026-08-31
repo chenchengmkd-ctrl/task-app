@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>思考トレース</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%A0%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg:#f4f5f7; --card:#fff; --text:#1f2933; --muted:#7b8794; --border:#e4e7eb;
+    --accent:#3b82f6; --accent-hover:#2563eb; --field-bg:#fff; --shadow:0 1px 2px rgba(0,0,0,.06);
+    --good-bg:#d1fae5; --good-fg:#047857; --warn-bg:#fee2e2; --warn-fg:#b91c1c;
+    --work-bg:#fef3c7; --work-fg:#b45309; --quote-bg:#eef2f7; --bubble-me:#3b82f6; --bubble-ai:#eef1f5;
+  }
+  [data-theme="dark"] {
+    --bg:#0f1419; --card:#1a2029; --text:#e2e8f0; --muted:#8a97a8; --border:#2d3643;
+    --accent:#3b82f6; --accent-hover:#60a5fa; --field-bg:#222b38; --shadow:0 1px 2px rgba(0,0,0,.3);
+    --good-bg:#10301f; --good-fg:#34d399; --warn-bg:#3b1f22; --warn-fg:#f87171;
+    --work-bg:#3a2f1a; --work-fg:#fbbf24; --quote-bg:#222b38; --bubble-me:#2563eb; --bubble-ai:#232c39;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    font-family:"Segoe UI","Hiragino Sans","Meiryo",sans-serif; background:var(--bg); color:var(--text);
+    line-height:1.55; font-size:14px; padding:14px 14px 40px;
+  }
+  .container { max-width:960px; margin:0 auto; }
+  header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  h1 { font-size:19px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  h1 a.home { font-size:12px; font-weight:600; color:var(--muted); text-decoration:none; border:1px solid var(--border); border-radius:999px; padding:2px 9px; }
+  .grow { flex:1; }
+  select, input[type=text], textarea {
+    font:inherit; padding:8px 10px; border:1px solid var(--border); border-radius:8px;
+    background:var(--field-bg); color:var(--text); outline:none;
+  }
+  select:focus, input:focus, textarea:focus { border-color:var(--accent); }
+  textarea { width:100%; resize:vertical; min-height:70px; }
+  .btn { font:inherit; font-weight:600; cursor:pointer; border:none; border-radius:8px; padding:8px 15px; background:var(--accent); color:#fff; }
+  .btn:hover { background:var(--accent-hover); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .btn.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+  .btn.ghost:hover { border-color:var(--accent); color:var(--text); }
+  .btn.sm { padding:5px 10px; font-size:12px; }
+  .btn.danger { background:transparent; color:var(--warn-fg); border:1px solid var(--border); }
+
+  .tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .tab { font:inherit; font-weight:600; cursor:pointer; padding:7px 15px; border:1px solid var(--border);
+    background:var(--card); color:var(--muted); border-radius:9px; }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  .card { background:var(--card); border:1px solid var(--border); border-radius:11px; padding:13px; box-shadow:var(--shadow); margin-bottom:12px; }
+  .card h3 { font-size:14px; margin-bottom:9px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .row.mb { margin-bottom:9px; }
+  .muted { color:var(--muted); }
+  .small { font-size:12px; }
+  label.fld { display:block; font-size:12px; color:var(--muted); margin-bottom:3px; }
+  .field { margin-bottom:10px; }
+
+  .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .badge.done { background:var(--good-bg); color:var(--good-fg); }
+  .badge.error { background:var(--warn-bg); color:var(--warn-fg); }
+  .badge.work { background:var(--work-bg); color:var(--work-fg); }
+
+  .src { border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:9px; }
+  .src .head { display:flex; gap:8px; align-items:center; cursor:pointer; }
+  .src .title { font-weight:600; flex:1; }
+  .src .body { margin-top:10px; display:none; }
+  .src.open .body { display:block; }
+  .src .status-line { font-size:12px; color:var(--muted); margin-top:6px; white-space:pre-wrap; }
+  .quote { background:var(--quote-bg); border-radius:8px; padding:7px 10px; margin:6px 0; font-size:13px; }
+  .quote .ctx { color:var(--muted); font-size:11px; margin-top:2px; }
+  pre.transcript { background:var(--quote-bg); border-radius:8px; padding:10px; white-space:pre-wrap;
+    word-break:break-word; max-height:340px; overflow:auto; font:inherit; font-size:12.5px; }
+  .profile-box { white-space:pre-wrap; word-break:break-word; font-size:13.5px; }
+
+  .chatlog { display:flex; flex-direction:column; gap:9px; margin-bottom:12px; min-height:120px; }
+  .bubble { max-width:82%; padding:9px 12px; border-radius:13px; white-space:pre-wrap; word-break:break-word; font-size:13.5px; }
+  .bubble.me { align-self:flex-end; background:var(--bubble-me); color:#fff; border-bottom-right-radius:4px; }
+  .bubble.ai { align-self:flex-start; background:var(--bubble-ai); border-bottom-left-radius:4px; }
+  .modebar { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .modebar .tab { font-size:13px; padding:6px 12px; }
+  .composer { display:flex; gap:8px; align-items:flex-end; }
+  .composer textarea { flex:1; min-height:52px; }
+  .empty { text-align:center; color:var(--muted); padding:26px 10px; }
+  .toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:var(--card);
+    border:1px solid var(--border); border-radius:9px; padding:9px 15px; box-shadow:var(--shadow); font-size:13px; display:none; z-index:50; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🧠 思考トレース <a class="home" href="./index.html">タスク管理へ</a></h1>
+    <span class="grow"></span>
+    <select id="mentorSel" title="人物を切り替え"></select>
+  </header>
+
+  <div class="tabs">
+    <button class="tab" data-tab="sources">ソース</button>
+    <button class="tab" data-tab="profile">思考プロファイル</button>
+    <button class="tab" data-tab="chat">壁打ち</button>
+    <button class="tab" data-tab="people">人物設定</button>
+  </div>
+
+  <div id="view"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+/* ===== 設定（タスク管理アプリと同じSupabase。APIはVercel上のLINEボットと同居） ===== */
+const SUPABASE_URL = 'https://xldkfkhgazpugfuscpqt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZGtma2hnYXpwdWdmdXNjcHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NDg3MzgsImV4cCI6MjA5OTQyNDczOH0.C3_TYQI8R3HeXYWTzca9erUMjpTWm2sneB7hk5Bre8Y';
+const API_BASE = 'https://task-app-nine-liard.vercel.app';
+const APP_TOKEN = '';   // Vercelで MENTOR_APP_TOKEN を設定した場合のみ、同じ値をここに入れる
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const KIND_ICON = { youtube:'🎥', article:'📄', x:'𝕏', text:'📝' };
+const MODE_LABEL = { spar:'壁打ち', train:'訓練', dig:'深掘り' };
+
+let mentors = [];
+let currentId = localStorage.getItem('study.mentor') || null;
+let activeTab = 'sources';
+let activeMode = 'spar';
+let sources = [];
+const ingestStatus = {};   // source_id -> 表示文字列
+
+/* ===== 共通 ===== */
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => t.style.display = 'none', 2600); }
+function currentMentor() { return mentors.find(m => m.id === currentId) || null; }
+
+async function api(path, body) {
+  const res = await fetch(API_BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {}) },
+    body: JSON.stringify(body),
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+/* ===== 読み込み ===== */
+async function loadMentors() {
+  const { data, error } = await db.from('mentors').select('*').order('created_at');
+  if (error) { toast('人物の読み込みに失敗: ' + error.message); return; }
+  mentors = data || [];
+  if (!mentors.find(m => m.id === currentId)) currentId = mentors[0]?.id || null;
+  if (currentId) localStorage.setItem('study.mentor', currentId);
+  renderMentorSelect();
+}
+async function loadSources() {
+  if (!currentId) { sources = []; return; }
+  const { data, error } = await db.from('mentor_sources').select('*').eq('mentor_id', currentId).order('created_at');
+  if (error) { toast('ソースの読み込みに失敗: ' + error.message); return; }
+  sources = data || [];
+}
+
+function renderMentorSelect() {
+  const sel = $('#mentorSel');
+  if (!mentors.length) { sel.innerHTML = '<option>（人物なし）</option>'; sel.disabled = true; return; }
+  sel.disabled = false;
+  sel.innerHTML = mentors.map(m => `<option value="${m.id}"${m.id === currentId ? ' selected' : ''}>${esc(m.name)}</option>`).join('');
+}
+
+/* ===== 画面切り替え ===== */
+function setTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  render();
+}
+async function render() {
+  if (activeTab === 'sources') await loadSources();
+  const v = $('#view');
+  if (!currentId && activeTab !== 'people') {
+    v.innerHTML = `<div class="card empty">まず「人物設定」タブで、思考をトレースしたい人を登録してください。</div>`;
+    return;
+  }
+  if (activeTab === 'sources') v.innerHTML = viewSources();
+  else if (activeTab === 'profile') v.innerHTML = viewProfile();
+  else if (activeTab === 'chat') { v.innerHTML = viewChat(); await refreshChat(); }
+  else if (activeTab === 'people') v.innerHTML = viewPeople();
+}
+
+/* ===== ソース ===== */
+function viewSources() {
+  const rows = sources.map(srcRow).join('') || `<div class="empty">まだソースがありません。上のフォームから取り込んでください。</div>`;
+  return `
+  <div class="card">
+    <h3>ソースを取り込む</h3>
+    <div class="field">
+      <label class="fld">種類</label>
+      <select id="sKind" onchange="onKindChange()">
+        <option value="youtube">YouTube動画（URL）</option>
+        <option value="article">記事・ブログ（URL）</option>
+        <option value="text">X・その他テキスト（貼り付け）</option>
+      </select>
+    </div>
+    <div class="field" id="sUrlField">
+      <label class="fld">URL</label>
+      <input type="text" id="sUrl" placeholder="https://..." style="width:100%">
+    </div>
+    <div class="field" id="sTextField" style="display:none">
+      <label class="fld">本文（Xのポストや記事の本文をそのまま貼り付け）</label>
+      <textarea id="sText" placeholder="ここに貼り付け"></textarea>
+    </div>
+    <button class="btn" id="sGo" onclick="startIngest()">取り込む</button>
+    <div class="small muted" style="margin-top:8px">
+      YouTubeは字幕が無くても音声から文字起こしします。1時間の動画で数分かかることがあります（この画面を開いたままにしてください）。
+    </div>
+  </div>
+  <div class="card">
+    <h3>取り込み済み（${sources.length}）</h3>
+    ${rows}
+  </div>`;
+}
+function srcRow(s) {
+  const st = s.status === 'done' ? `<span class="badge done">完了</span>`
+    : s.status === 'error' ? `<span class="badge error">エラー</span>`
+    : `<span class="badge work">処理中</span>`;
+  const quotes = (s.quotes || []).map(q => `<div class="quote">「${esc(q.quote)}」${q.context ? `<div class="ctx">${esc(q.context)}</div>` : ''}</div>`).join('');
+  const live = ingestStatus[s.id];
+  return `
+  <div class="src" id="src-${s.id}">
+    <div class="head" onclick="document.getElementById('src-${s.id}').classList.toggle('open')">
+      <span>${KIND_ICON[s.kind] || '•'}</span>
+      <span class="title">${esc(s.title || s.url || '（無題）')}</span>
+      ${st}
+    </div>
+    ${live ? `<div class="status-line">${esc(live)}</div>` : (s.status === 'error' && s.error ? `<div class="status-line">⚠️ ${esc(s.error)}</div>` : '')}
+    <div class="body">
+      ${s.url ? `<div class="small muted" style="margin-bottom:6px"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a></div>` : ''}
+      ${(s.status === 'error' || s.status === 'processing') ? `<button class="btn sm ghost" onclick="resumeIngest('${s.id}')">続きから取り込む</button>` : ''}
+      ${s.summary ? `<h3 style="margin-top:10px">要約</h3><div class="small">${esc(s.summary)}</div>` : ''}
+      ${quotes ? `<h3 style="margin-top:10px">逐語引用</h3>${quotes}` : ''}
+      <h3 style="margin-top:10px">全文（逐語）<button class="btn sm ghost" style="margin-left:6px" onclick="editTranscript('${s.id}')">手直し</button></h3>
+      <pre class="transcript" id="tr-${s.id}">${esc(s.transcript || '（まだありません）')}</pre>
+      <div style="margin-top:8px"><button class="btn sm danger" onclick="deleteSource('${s.id}')">このソースを削除</button></div>
+    </div>
+  </div>`;
+}
+function onKindChange() {
+  const k = $('#sKind').value;
+  $('#sUrlField').style.display = k === 'text' ? 'none' : 'block';
+  $('#sTextField').style.display = k === 'text' ? 'block' : 'none';
+}
+async function startIngest() {
+  const kind = $('#sKind').value;
+  const url = ($('#sUrl')?.value || '').trim();
+  const text = ($('#sText')?.value || '').trim();
+  if (kind !== 'text' && !url) return toast('URLを入力してください');
+  if (kind === 'text' && text.length < 20) return toast('本文をもう少し貼り付けてください');
+  const id = newId();
+  const row = {
+    id, mentor_id: currentId, kind, url: kind === 'text' ? null : url,
+    title: kind === 'text' ? (text.slice(0, 40) + '…') : url,
+    status: 'processing', transcript: kind === 'text' ? text : '',
+  };
+  const { error } = await db.from('mentor_sources').insert(row);
+  if (error) return toast('保存に失敗: ' + error.message);
+  if ($('#sUrl')) $('#sUrl').value = '';
+  if ($('#sText')) $('#sText').value = '';
+  await render();
+  runIngest(id, 'start', 0, kind === 'text' ? text : null);
+}
+async function resumeIngest(id) {
+  const s = sources.find(x => x.id === id);
+  if (!s) return;
+  const meta = s.meta || {};
+  if (s.kind === 'youtube' && (meta.seg_done || 0) < (meta.seg_total || 1) && (s.transcript || '').length) {
+    runIngest(id, 'transcript', meta.seg_done || 0);
+  } else if ((s.transcript || '').length > 20) {
+    runIngest(id, 'distill', 0);
+  } else {
+    runIngest(id, 'start', 0);
+  }
+}
+async function runIngest(id, phase, index, text) {
+  const set = msg => { ingestStatus[id] = msg; const el = document.querySelector(`#src-${id} .status-line`); if (el) el.textContent = msg; else render(); };
+  set('開始しています…');
+  try {
+    while (true) {
+      const r = await api('/api/mentor_ingest', { source_id: id, phase, index, text });
+      text = undefined;
+      if (r.phase === 'error') { set('⚠️ ' + r.message); await afterIngest(); return; }
+      if (r.phase === 'transcript') { phase = 'transcript'; index = r.index; set(`文字起こし中… ${r.seg_done}/${r.seg_total}`); continue; }
+      if (r.phase === 'distill') { phase = 'distill'; index = 0; set('要点と逐語引用を抽出中…'); continue; }
+      if (r.phase === 'done') { delete ingestStatus[id]; toast('取り込み完了：' + (r.title || '')); await afterIngest(); return; }
+      set('⚠️ 予期しない応答'); return;
+    }
+  } catch (e) {
+    set('⚠️ ' + e.message + '（「続きから取り込む」で再開できます）');
+    await afterIngest();
+  }
+}
+async function afterIngest() { if (activeTab === 'sources') await render(); }
+
+async function editTranscript(id) {
+  const s = sources.find(x => x.id === id);
+  if (!s) return;
+  const pre = $('#tr-' + id);
+  const val = prompt('全文を手直し（誤変換などを直したら OK。長い場合はこの簡易入力ではなく、一部だけの修正がおすすめです）', s.transcript || '');
+  if (val == null || val === s.transcript) return;
+  const { error } = await db.from('mentor_sources').update({ transcript: val, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) return toast('保存に失敗: ' + error.message);
+  pre.textContent = val; s.transcript = val; toast('保存しました');
+}
+async function deleteSource(id) {
+  if (!confirm('このソースを削除します。よろしいですか？')) return;
+  const { error } = await db.from('mentor_sources').delete().eq('id', id);
+  if (error) return toast('削除に失敗: ' + error.message);
+  toast('削除しました'); await render();
+}
+
+/* ===== プロファイル ===== */
+function viewProfile() {
+  const m = currentMentor();
+  const upd = m.profile_updated_at ? new Date(m.profile_updated_at).toLocaleString('ja-JP') : 'まだ生成されていません';
+  return `
+  <div class="card">
+    <div class="row mb">
+      <h3 style="flex:1">${esc(m.name)} の思考プロファイル</h3>
+      <button class="btn sm" id="profBtn" onclick="rebuildProfile()">再生成</button>
+    </div>
+    <div class="small muted" style="margin-bottom:10px">最終更新：${esc(upd)}　／　取り込んだソースを横断して、判断基準・思考の型・口ぐせをまとめます。</div>
+    <div class="profile-box">${m.profile ? esc(m.profile) : '<span class="muted">「再生成」を押すと、取り込み済みのソースから作成します。</span>'}</div>
+  </div>`;
+}
+async function rebuildProfile() {
+  const btn = $('#profBtn'); btn.disabled = true; btn.textContent = '生成中…';
+  try {
+    const r = await api('/api/mentor_profile', { mentor_id: currentId });
+    if (r.error) toast(r.error);
+    else { toast(`プロファイルを更新（ソース${r.source_count}件）`); await loadMentors(); }
+  } catch (e) { toast('失敗: ' + e.message); }
+  await render();
+}
+
+/* ===== 壁打ち ===== */
+function viewChat() {
+  return `
+  <div class="card">
+    <div class="modebar">
+      ${Object.keys(MODE_LABEL).map(k => `<button class="tab${k === activeMode ? ' active' : ''}" onclick="setMode('${k}')">${MODE_LABEL[k]}</button>`).join('')}
+    </div>
+    <div class="small muted" style="margin-bottom:10px">${modeHint()}</div>
+    <div class="chatlog" id="chatlog"><div class="empty">読み込み中…</div></div>
+    <div class="composer">
+      <textarea id="chatInput" placeholder="${activeMode === 'train' ? '自分の考えを書いて送る' : 'メッセージを送る'}"></textarea>
+      <button class="btn" id="sendBtn" onclick="sendChat()">送信</button>
+    </div>
+  </div>`;
+}
+function modeHint() {
+  return activeMode === 'spar' ? 'その人になりきって応答・反論・問い返しをします。'
+    : activeMode === 'train' ? '自分の考えを先に書くと、その人ならどう考えるか＋あなたとの差分を指摘します。'
+    : '取り込んだ発信の内容だけを根拠に、引用つきで答えます。';
+}
+function setMode(m) { activeMode = m; render(); }
+async function refreshChat() {
+  const { data, error } = await db.from('mentor_chats').select('role,content,created_at')
+    .eq('mentor_id', currentId).eq('mode', activeMode).order('created_at');
+  const log = $('#chatlog'); if (!log) return;
+  if (error) { log.innerHTML = `<div class="empty">読み込み失敗</div>`; return; }
+  if (!data || !data.length) { log.innerHTML = `<div class="empty">まだやり取りはありません。</div>`; return; }
+  log.innerHTML = data.map(c => `<div class="bubble ${c.role === 'user' ? 'me' : 'ai'}">${esc(c.content)}</div>`).join('');
+  log.scrollTop = log.scrollHeight;
+}
+async function sendChat() {
+  const inp = $('#chatInput'); const msg = inp.value.trim();
+  if (!msg) return;
+  const btn = $('#sendBtn'); btn.disabled = true; inp.disabled = true;
+  const log = $('#chatlog');
+  if (log.querySelector('.empty')) log.innerHTML = '';
+  log.insertAdjacentHTML('beforeend', `<div class="bubble me">${esc(msg)}</div><div class="bubble ai" id="pending">…</div>`);
+  log.scrollTop = log.scrollHeight;
+  try {
+    const r = await api('/api/mentor_chat', { mentor_id: currentId, mode: activeMode, message: msg });
+    $('#pending').remove();
+    if (r.error) { toast(r.error); }
+    else { inp.value = ''; }
+    await refreshChat();
+  } catch (e) {
+    $('#pending')?.remove();
+    toast('失敗: ' + e.message);
+  }
+  btn.disabled = false; inp.disabled = false; inp.focus();
+}
+
+/* ===== 人物設定 ===== */
+function viewPeople() {
+  const rows = mentors.map(m => `
+    <div class="src">
+      <div class="row">
+        <span class="title" style="flex:1">${esc(m.name)}</span>
+        <button class="btn sm ghost" onclick="renameMentor('${m.id}')">改名</button>
+        <button class="btn sm danger" onclick="deleteMentor('${m.id}')">削除</button>
+      </div>
+      ${m.note ? `<div class="small muted" style="margin-top:5px">${esc(m.note)}</div>` : ''}
+    </div>`).join('') || `<div class="empty">まだ登録がありません。</div>`;
+  return `
+  <div class="card">
+    <h3>新しい人物を登録</h3>
+    <div class="field"><label class="fld">名前</label><input type="text" id="mName" placeholder="例：〇〇さん" style="width:100%"></div>
+    <div class="field"><label class="fld">メモ（任意）</label><input type="text" id="mNote" placeholder="どんな人か・なぜトレースしたいか" style="width:100%"></div>
+    <button class="btn" onclick="addMentor()">登録</button>
+  </div>
+  <div class="card"><h3>登録済み（${mentors.length}）</h3>${rows}</div>`;
+}
+async function addMentor() {
+  const name = $('#mName').value.trim();
+  if (!name) return toast('名前を入力してください');
+  const id = newId();
+  const { error } = await db.from('mentors').insert({ id, name, note: $('#mNote').value.trim() });
+  if (error) return toast('登録に失敗: ' + error.message);
+  currentId = id; localStorage.setItem('study.mentor', id);
+  await loadMentors(); toast('登録しました'); render();
+}
+async function renameMentor(id) {
+  const m = mentors.find(x => x.id === id); if (!m) return;
+  const name = prompt('新しい名前', m.name); if (!name || name === m.name) return;
+  const { error } = await db.from('mentors').update({ name }).eq('id', id);
+  if (error) return toast('失敗: ' + error.message);
+  await loadMentors(); render();
+}
+async function deleteMentor(id) {
+  const m = mentors.find(x => x.id === id); if (!m) return;
+  if (!confirm(`「${m.name}」を削除します。取り込んだソースと壁打ちの記録もすべて消えます。よろしいですか？`)) return;
+  await db.from('mentor_chats').delete().eq('mentor_id', id);
+  await db.from('mentor_sources').delete().eq('mentor_id', id);
+  const { error } = await db.from('mentors').delete().eq('id', id);
+  if (error) return toast('削除に失敗: ' + error.message);
+  if (currentId === id) currentId = null;
+  await loadMentors(); toast('削除しました'); render();
+}
+
+/* ===== 起動 ===== */
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+$('#mentorSel').addEventListener('change', e => {
+  currentId = e.target.value; localStorage.setItem('study.mentor', currentId); render();
+});
+(async function init() {
+  await loadMentors();
+  setTab(mentors.length ? 'sources' : 'people');
+})();
+</script>
+</body>
+</html>

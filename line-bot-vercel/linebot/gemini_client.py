@@ -6,10 +6,11 @@ import requests
 from . import config
 
 
-def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800, tool_config=None):
+def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800, tool_config=None, model=None):
     """user_text は文字列、または動画等を渡す場合はparts配列（例：[{'file_data':{'file_uri':url}},{'text':'...'}]）。
     tool_config: 例えばFORCE_ANY_TOOLを渡すと、モデルが「ツールを呼ばず文章だけで済ませる」ことを禁止できる
     （AIが実行せずに「やりました」と口先だけで答えてしまう不具合の対策）。
+    model: 既定は config.GEMINI_MODEL。文字起こし等で別モデルを使いたい場合に上書きする。
     """
     parts = user_text if isinstance(user_text, list) else [{'text': user_text}]
     payload = {
@@ -22,7 +23,7 @@ def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800, tool_c
         if tool_config:
             payload['tool_config'] = tool_config
     url = (
-        f'https://generativelanguage.googleapis.com/v1beta/models/{config.GEMINI_MODEL}'
+        f'https://generativelanguage.googleapis.com/v1beta/models/{model or config.GEMINI_MODEL}'
         f':generateContent?key={config.GEMINI_API_KEY}'
     )
     try:
@@ -36,9 +37,9 @@ def call_gemini_raw(system_prompt, user_text, tools=None, max_tokens=800, tool_c
     return res.json()
 
 
-def call_gemini(system_prompt, user_text, max_tokens=800, tools=None):
+def call_gemini(system_prompt, user_text, max_tokens=800, tools=None, model=None):
     """応答テキストを返す（失敗時はNone）。"""
-    data = call_gemini_raw(system_prompt, user_text, tools, max_tokens)
+    data = call_gemini_raw(system_prompt, user_text, tools, max_tokens, model=model)
     if not data:
         return None
     parts = (((data.get('candidates') or [{}])[0]).get('content') or {}).get('parts') or []

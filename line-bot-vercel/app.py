@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 73
+APP_VERSION = 74
 
 
 def _respond(start_response, status, body, cors=False):
@@ -40,11 +40,24 @@ def _respond(start_response, status, body, cors=False):
     if cors:
         headers += [
             ('Access-Control-Allow-Origin', '*'),
-            ('Access-Control-Allow-Headers', 'Content-Type'),
+            ('Access-Control-Allow-Headers', 'Content-Type, X-App-Token'),
             ('Access-Control-Allow-Methods', 'POST, OPTIONS'),
         ]
     start_response(status, headers)
     return [payload]
+
+
+def _read_json_body(environ):
+    """POSTのJSONボディを読む。壊れていればNoneを返す。"""
+    try:
+        length = int(environ.get('CONTENT_LENGTH') or 0)
+    except ValueError:
+        length = 0
+    raw = environ['wsgi.input'].read(length) if length else b'{}'
+    try:
+        return json.loads(raw.decode('utf-8')) or {}
+    except Exception:
+        return None
 
 
 def _has_cron_secret(environ):
@@ -327,9 +340,45 @@ def _handle_preview_receipt(environ, start_response):
     return _respond(start_response, '200 OK', {'bytes': len(image_bytes), 'mime': mime, 'parsed': parsed}, cors=True)
 
 
+def _has_mentor_token(environ):
+    """MENTOR_APP_TOKEN が設定されている場合のみ、X-App-Token ヘッダの一致を求める。"""
+    if not config.MENTOR_APP_TOKEN:
+        return True
+    return environ.get('HTTP_X_APP_TOKEN', '') == config.MENTOR_APP_TOKEN
+
+
+def _handle_mentor(environ, start_response, kind):
+    """思考トレースWebアプリ（study.html）用。kind は 'ingest' / 'profile' / 'chat'。"""
+    if not _has_mentor_token(environ):
+        return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'}, cors=True)
+    body = _read_json_body(environ)
+    if body is None:
+        return _respond(start_response, '400 Bad Request', {'error': 'bad json'}, cors=True)
+    from linebot import mentors as mentors_mod
+    try:
+        if kind == 'ingest':
+            result = mentors_mod.ingest_step(
+                body.get('source_id'), body.get('phase') or 'start',
+                body.get('index') or 0, body.get('text'),
+            )
+        elif kind == 'profile':
+            result = mentors_mod.rebuild_profile(body.get('mentor_id'))
+        else:
+            result = mentors_mod.chat(body.get('mentor_id'), body.get('mode') or 'spar', body.get('message') or '')
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    return _respond(start_response, '200 OK', result, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
+
+    if path in ('/api/mentor_ingest', '/api/mentor_profile', '/api/mentor_chat'):
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_mentor(environ, start_response, path.rsplit('_', 1)[1])
 
     if path == '/api/preview_receipt':
         if method == 'OPTIONS':
