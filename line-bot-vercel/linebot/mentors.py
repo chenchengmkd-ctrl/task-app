@@ -200,6 +200,11 @@ def ingest_step(source_id, phase, index=0, text=None):
             err = gc.LAST_ERROR or err
 
         if seg is None:
+            # 混雑（503など）は永続的な失敗にせず、フロントに「同じ区間をあとで再試行して」と返す。
+            if gc._is_transient(err):
+                _patch_source(source_id, {'status': 'processing'})
+                return {'phase': 'retry', 'index': i, 'seg_done': int(meta.get('seg_done') or 0),
+                        'seg_total': seg_total, 'message': _err_note(err)}
             return _fail(source_id, f'{i + 1}区間目の文字起こしに失敗しました。\n（{_err_note(err)}）')
 
         seg = seg.strip()

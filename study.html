@@ -278,15 +278,27 @@ async function resumeIngest(id) {
     runIngest(id, 'start', 0);
   }
 }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function runIngest(id, phase, index, text) {
   const set = msg => { ingestStatus[id] = msg; const el = document.querySelector(`#src-${id} .status-line`); if (el) el.textContent = msg; else render(); };
   set('開始しています…');
+  let retries = 0;
   try {
     while (true) {
       const r = await api('/api/mentor_ingest', { source_id: id, phase, index, text });
       text = undefined;
       if (r.phase === 'error') { set('⚠️ ' + r.message); await afterIngest(); return; }
-      if (r.phase === 'transcript') { phase = 'transcript'; index = r.index; set(`文字起こし中… ${r.seg_done}/${r.seg_total}`); continue; }
+      if (r.phase === 'retry') {
+        retries++;
+        if (retries > 8) {
+          set(`⚠️ Geminiの混雑が続いています。${r.seg_done}/${r.seg_total}区間まで完了。時間をおいて「続きから取り込む」で再開してください。`);
+          await afterIngest(); return;
+        }
+        phase = 'transcript'; index = r.index;
+        for (let s = 25; s > 0; s--) { set(`混雑のため待機中… あと${s}秒（${retries}回目 / ${r.seg_done}・${r.seg_total}区間 完了）`); await sleep(1000); }
+        continue;
+      }
+      if (r.phase === 'transcript') { retries = 0; phase = 'transcript'; index = r.index; set(`文字起こし中… ${r.seg_done}/${r.seg_total}`); continue; }
       if (r.phase === 'distill') { phase = 'distill'; index = 0; set('要点と逐語引用を抽出中…'); continue; }
       if (r.phase === 'done') { delete ingestStatus[id]; toast('取り込み完了：' + (r.title || '')); await afterIngest(); return; }
       set('⚠️ 予期しない応答'); return;
