@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>議事録</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%97%92%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg:#f4f5f7; --card:#fff; --text:#1f2933; --muted:#7b8794; --border:#e4e7eb;
+    --accent:#3b82f6; --accent-hover:#2563eb; --field-bg:#fff; --shadow:0 1px 2px rgba(0,0,0,.06);
+    --good-bg:#d1fae5; --good-fg:#047857; --warn-bg:#fee2e2; --warn-fg:#b91c1c;
+    --work-bg:#fef3c7; --work-fg:#b45309; --quote-bg:#eef2f7;
+  }
+  [data-theme="dark"] {
+    --bg:#0f1419; --card:#1a2029; --text:#e2e8f0; --muted:#8a97a8; --border:#2d3643;
+    --accent:#3b82f6; --accent-hover:#60a5fa; --field-bg:#222b38; --shadow:0 1px 2px rgba(0,0,0,.3);
+    --good-bg:#10301f; --good-fg:#34d399; --warn-bg:#3b1f22; --warn-fg:#f87171;
+    --work-bg:#3a2f1a; --work-fg:#fbbf24; --quote-bg:#222b38;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    font-family:"Segoe UI","Hiragino Sans","Meiryo",sans-serif; background:var(--bg); color:var(--text);
+    line-height:1.55; font-size:14px; padding:14px 14px 40px;
+  }
+  .container { max-width:960px; margin:0 auto; }
+  header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  h1 { font-size:19px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  h1 a.home { font-size:12px; font-weight:600; color:var(--muted); text-decoration:none;
+    border:1px solid var(--border); border-radius:999px; padding:2px 9px; }
+  .grow { flex:1; }
+  input[type=text] { font:inherit; padding:8px 10px; border:1px solid var(--border); border-radius:8px;
+    background:var(--field-bg); color:var(--text); outline:none; width:100%; }
+  input:focus { border-color:var(--accent); }
+  .btn { font:inherit; font-weight:600; cursor:pointer; border:none; border-radius:8px;
+    padding:8px 15px; background:var(--accent); color:#fff; }
+  .btn:hover { background:var(--accent-hover); }
+  .btn.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+  .btn.sm { padding:5px 10px; font-size:12px; }
+
+  .tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .tab { font:inherit; font-weight:600; cursor:pointer; padding:7px 15px; border:1px solid var(--border);
+    background:var(--card); color:var(--muted); border-radius:9px; }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  .card { background:var(--card); border:1px solid var(--border); border-radius:11px; padding:13px;
+    box-shadow:var(--shadow); margin-bottom:12px; }
+  .card.click { cursor:pointer; }
+  .card.click:hover { border-color:var(--accent); }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .mtitle { font-weight:700; font-size:15px; }
+  .muted { color:var(--muted); font-size:12px; }
+  .chip { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px;
+    background:var(--quote-bg); color:var(--muted); white-space:nowrap; }
+  .chip.due { background:var(--warn-bg); color:var(--warn-fg); }
+  .chip.soon { background:var(--work-bg); color:var(--work-fg); }
+  .chip.ok { background:var(--good-bg); color:var(--good-fg); }
+  .empty { color:var(--muted); padding:18px 2px; text-align:center; }
+
+  /* 議事録本文 */
+  .md h2 { font-size:15px; margin:16px 0 7px; padding-bottom:5px; border-bottom:1px solid var(--border); }
+  .md h3 { font-size:14px; margin:13px 0 5px; color:var(--accent); }
+  .md p { margin:5px 0; }
+  .md ul { margin:5px 0 5px 20px; }
+  .md li { margin:3px 0; }
+  .md strong { font-weight:700; }
+  .md table { border-collapse:collapse; width:100%; margin:8px 0; font-size:13px; display:block;
+    overflow-x:auto; white-space:nowrap; }
+  .md th, .md td { border:1px solid var(--border); padding:6px 9px; text-align:left; }
+  .md th { background:var(--quote-bg); font-weight:700; }
+  .md code.ts { background:var(--quote-bg); color:var(--accent); border-radius:4px;
+    padding:1px 5px; font-size:12px; }
+  .md .kakunin { background:var(--warn-bg); color:var(--warn-fg); border-radius:4px; padding:0 4px; }
+
+  .hit { border-bottom:1px solid var(--border); padding:9px 0; }
+  .hit:last-child { border-bottom:none; }
+  mark { background:var(--work-bg); color:var(--work-fg); border-radius:3px; padding:0 2px; }
+  .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:var(--card);
+    border:1px solid var(--border); border-radius:9px; padding:9px 15px; box-shadow:var(--shadow);
+    display:none; z-index:9; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🗒️ 議事録 <a class="home" href="./index.html">タスク管理へ</a></h1>
+    <div class="grow"></div>
+    <button class="btn ghost sm" onclick="loadAll(true)">再読込</button>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="list" onclick="setTab('list')">会議</button>
+    <button class="tab" data-tab="actions" onclick="setTab('actions')">アクション</button>
+    <button class="tab" data-tab="search" onclick="setTab('search')">検索</button>
+  </div>
+
+  <div id="pane-list"></div>
+
+  <div id="pane-actions" style="display:none"></div>
+
+  <div id="pane-search" style="display:none">
+    <div class="card">
+      <input type="text" id="q" placeholder="議事録を横断して探す（スペース区切りでAND）">
+    </div>
+    <div id="results"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+/* ===== 設定（タスク管理アプリと同じSupabase） ===== */
+const SUPABASE_URL = 'https://xldkfkhgazpugfuscpqt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZGtma2hnYXpwdWdmdXNjcHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NDg3MzgsImV4cCI6MjA5OTQyNDczOH0.C3_TYQI8R3HeXYWTzca9erUMjpTWm2sneB7hk5Bre8Y';
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let meetings = [];
+let openId = null;
+let tab = 'list';
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+function toast(m){ const t=$('#toast'); t.textContent=m; t.style.display='block';
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.style.display='none',2600); }
+
+const todayISO = () => new Date().toLocaleDateString('sv-SE');
+function dueChip(due){
+  if(!due) return '<span class="chip">期限なし</span>';
+  const d = (new Date(due) - new Date(todayISO())) / 86400000;
+  const cls = d < 0 ? 'due' : d <= 3 ? 'soon' : 'ok';
+  const label = d < 0 ? `${Math.abs(Math.round(d))}日超過` : d === 0 ? '今日' : `あと${Math.round(d)}日`;
+  return `<span class="chip ${cls}">${due} ・ ${label}</span>`;
+}
+
+/* ===== 議事録のマークダウンを表示用HTMLにする =====
+   使うのは見出し・表・箇条書き・太字だけなので、ライブラリは入れず自前で処理する。 */
+function md2html(src){
+  const lines = String(src || '').split('\n');
+  const out = [];
+  let list = false, table = null;
+  const closeList = () => { if(list){ out.push('</ul>'); list = false; } };
+  const closeTable = () => {
+    if(!table) return;
+    const [head, ...body] = table;
+    out.push('<table><thead><tr>' + head.map(c=>`<th>${inline(c)}</th>`).join('') + '</tr></thead><tbody>'
+      + body.map(r=>'<tr>' + r.map(c=>`<td>${inline(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table>');
+    table = null;
+  };
+  const cells = l => l.replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+
+  for(const raw of lines){
+    const l = raw.trim();
+    if(l.startsWith('|') && l.endsWith('|')){
+      closeList();
+      if(/^\|[\s:|-]+\|$/.test(l)) continue;      // 表の区切り行
+      (table = table || []).push(cells(l));
+      continue;
+    }
+    closeTable();
+    if(!l){ closeList(); continue; }
+    let m;
+    if((m = l.match(/^###\s+(.*)$/))){ closeList(); out.push(`<h3>${inline(m[1])}</h3>`); }
+    else if((m = l.match(/^##\s+(.*)$/))){ closeList(); out.push(`<h2>${inline(m[1])}</h2>`); }
+    else if((m = l.match(/^#\s+(.*)$/))){ closeList(); out.push(`<h2>${inline(m[1])}</h2>`); }
+    else if((m = l.match(/^[-*・]\s+(.*)$/))){
+      if(!list){ out.push('<ul>'); list = true; }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else { closeList(); out.push(`<p>${inline(l)}</p>`); }
+  }
+  closeList(); closeTable();
+  return out.join('');
+}
+function inline(s){
+  return esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[(\d{2}:\d{2}:\d{2})\]/g, '<code class="ts">$1</code>')
+    .replace(/要確認/g, '<span class="kakunin">要確認</span>');
+}
+
+/* ===== 読み込み ===== */
+async function loadAll(notify){
+  const { data, error } = await db.from('meetings').select('*').order('meeting_date', { ascending:false });
+  if(error){ toast('読み込みに失敗: ' + error.message); return; }
+  meetings = data || [];
+  if(notify) toast(`${meetings.length}件の会議を読み込みました`);
+  render();
+}
+
+function setTab(t){
+  tab = t;
+  for(const el of document.querySelectorAll('.tab')) el.classList.toggle('active', el.dataset.tab === t);
+  $('#pane-list').style.display    = t === 'list'    ? 'block' : 'none';
+  $('#pane-actions').style.display = t === 'actions' ? 'block' : 'none';
+  $('#pane-search').style.display  = t === 'search'  ? 'block' : 'none';
+  render();
+}
+
+function render(){
+  if(tab === 'list') renderList();
+  else if(tab === 'actions') renderActions();
+  else doSearch();
+}
+
+function renderList(){
+  const el = $('#pane-list');
+  if(!meetings.length){
+    el.innerHTML = '<div class="card"><p class="empty">まだ議事録がありません。<br>'
+      + 'PCの議事録ツールで文字起こしして、「クラウドに送る」を押してください。</p></div>';
+    return;
+  }
+  el.innerHTML = meetings.map(m => {
+    const n = (m.actions || []).length;
+    const open = openId === m.id;
+    return `<div class="card">
+      <div class="row card click" style="border:none;box-shadow:none;padding:0;margin:0"
+           onclick="toggle('${m.id}')">
+        <div class="grow">
+          <div class="mtitle">${esc(m.title)}</div>
+          <div class="muted">${esc(m.meeting_date || '')}${m.duration_sec
+            ? ' ・ ' + Math.round(m.duration_sec/60) + '分' : ''}</div>
+        </div>
+        <span class="chip">${n ? 'アクション' + n + '件' : 'アクションなし'}</span>
+        <span class="muted">${open ? '▲' : '▼'}</span>
+      </div>
+      ${open ? `<div class="md" style="margin-top:12px">${md2html(m.minutes_md)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggle(id){ openId = openId === id ? null : id; renderList(); }
+
+function renderActions(){
+  const all = [];
+  for(const m of meetings)
+    for(const a of (m.actions || []))
+      all.push({ ...a, meeting: m.title, date: m.meeting_date });
+  all.sort((x, y) => (x.due || '9999').localeCompare(y.due || '9999'));
+
+  const el = $('#pane-actions');
+  if(!all.length){ el.innerHTML = '<div class="card"><p class="empty">アクションはありません。</p></div>'; return; }
+  el.innerHTML = '<div class="card">' + all.map(a => `
+    <div class="hit">
+      <div class="row">
+        <div class="grow"><strong>${esc(a.content)}</strong></div>
+        ${dueChip(a.due)}
+      </div>
+      <div class="muted">担当 ${esc(a.owner || '不明')} ・ ${esc(a.meeting)}${
+        a.at ? ' <code class="ts">' + esc(a.at) + '</code>' : ''}</div>
+    </div>`).join('') + '</div>';
+}
+
+function doSearch(){
+  const q = ($('#q').value || '').trim();
+  const el = $('#results');
+  if(!q){ el.innerHTML = ''; return; }
+  const words = q.split(/\s+/).filter(Boolean).map(w => w.toLowerCase());
+  const hits = [];
+  for(const m of meetings){
+    const found = String(m.minutes_md || '').split('\n')
+      .filter(l => l.trim() && words.every(w => l.toLowerCase().includes(w)));
+    if(found.length) hits.push({ m, found });
+  }
+  if(!hits.length){ el.innerHTML = '<div class="card"><p class="empty">見つかりませんでした。</p></div>'; return; }
+  const hl = s => words.reduce((t, w) =>
+    t.replace(new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), mm => `<mark>${mm}</mark>`), esc(s));
+  el.innerHTML = hits.map(h => `<div class="card">
+    <div class="mtitle">${esc(h.m.title)}</div>
+    <div class="muted" style="margin-bottom:6px">${esc(h.m.meeting_date || '')} ・ ${h.found.length}件</div>
+    ${h.found.slice(0, 12).map(l => `<div class="hit">${hl(l.replace(/^[#|*\-\s]+/, ''))}</div>`).join('')}
+  </div>`).join('');
+}
+
+$('#q').addEventListener('input', () => { clearTimeout(doSearch._t); doSearch._t = setTimeout(doSearch, 200); });
+loadAll();
+</script>
+</body>
+</html>

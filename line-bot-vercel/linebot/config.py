@@ -45,6 +45,11 @@ SQUARE_LOCATION_ID = _env('SQUARE_LOCATION_ID')
 MENTOR_APP_TOKEN = _env('MENTOR_APP_TOKEN')
 MENTOR_GEMINI_MODEL = _env('MENTOR_GEMINI_MODEL') or GEMINI_MODEL
 
+# 議事録（meetings.html / PCの議事録ツール）用。
+# PCから会議の文字起こしを送りつける口なので、こちらは MENTOR_APP_TOKEN と違い必須にしている。
+# 未設定だと /api/meeting_ingest は動かない（誰でも書き込める口を開けたままにしないため）。
+MEETING_TOKEN = _env('MEETING_TOKEN')
+
 APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/'   # タスク管理アプリ（LINEで羅列せずアプリに誘導する時に使う）
 
 DAY_START = '07:00'          # 「空き時間」を数えはじめる時刻

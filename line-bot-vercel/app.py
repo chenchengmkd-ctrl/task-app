@@ -370,9 +370,43 @@ def _handle_mentor(environ, start_response, kind):
     return _respond(start_response, '200 OK', result, cors=True)
 
 
+def _handle_meeting_ingest(environ, start_response):
+    """PCの議事録ツールから文字起こしを受け取り、議事録にして保存する。
+
+    文字起こし本文は保存しない（Geminiに通すだけ）。残るのは議事録とアクションだけ。
+    """
+    if not config.MEETING_TOKEN:
+        return _respond(start_response, '503 Service Unavailable',
+                        {'error': 'MEETING_TOKEN が未設定です。Vercelの環境変数に追加してRedeployしてください。'},
+                        cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.MEETING_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'}, cors=True)
+    body = _read_json_body(environ)
+    if body is None:
+        return _respond(start_response, '400 Bad Request', {'error': 'bad json'}, cors=True)
+    from linebot import meetings as meetings_mod
+    try:
+        result = meetings_mod.ingest(
+            body.get('source_file'), body.get('transcript'),
+            title=body.get('title') or '',
+            meeting_date=body.get('meeting_date'),
+            duration_sec=body.get('duration_sec'),
+        )
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    status = '200 OK' if result.get('ok') else '500 Internal Server Error'
+    return _respond(start_response, status, result, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
+
+    if path == '/api/meeting_ingest':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_meeting_ingest(environ, start_response)
 
     if path in ('/api/mentor_ingest', '/api/mentor_profile', '/api/mentor_chat'):
         if method == 'OPTIONS':
