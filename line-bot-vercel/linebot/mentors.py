@@ -56,14 +56,18 @@ def _fail(source_id, message):
 
 def _err_note(err):
     """Geminiのエラー文字列を、ユーザー向けの一言に言い換える。"""
-    if err and gc._is_transient(err):
-        return 'Geminiが今混雑しています（動画の処理は特に混みやすい）。数分おいて「続きから取り込む」で再開してください。'
+    e = err or ''
+    if 'RESOURCE_EXHAUSTED' in e or 'HTTP 429' in e or 'quota' in e.lower():
+        return 'GeminiのAPI無料枠の上限に達しました（1日あたりの回数制限など）。時間をおくか、日をあらためて再開してください。'
+    if gc._is_transient(e):
+        return 'Geminiが今混雑しています。数分おいて「続きから取り込む」で再開してください。'
     return f'詳細: {err or "不明"}'
 
 
 # ============ JSON抽出 ============
 def _extract_json(text):
-    """```json ...``` や前後の説明文が混ざっていても、最初のJSONオブジェクトを取り出す。"""
+    """```json ...``` や前後の説明文が混ざっていても、最初のJSONオブジェクトを取り出す。
+    出力がトークン上限で途中で切れていても、title/summary/完成しているquoteだけは拾う。"""
     if not text:
         return None
     t = re.sub(r'^```(?:json)?|```$', '', text.strip(), flags=re.MULTILINE).strip()
@@ -72,12 +76,38 @@ def _extract_json(text):
     except Exception:
         pass
     m = re.search(r'\{.*\}', t, re.DOTALL)
-    if not m:
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except Exception:
+            pass
+    return _salvage_json(t)
+
+
+def _salvage_json(t):
+    """途中で切れたJSONから title / summary / 完成した quote オブジェクトだけを正規表現で回収する。"""
+    def _un(s):
+        s = re.sub(r'\\+$', '', s).strip()               # 末尾の中途半端なエスケープを落とす
+        try:
+            return json.loads('"' + s + '"')             # \n や \" を正しく戻す
+        except Exception:
+            return s
+
+    def _field(name):
+        m = re.search(r'"%s"\s*:\s*"((?:[^"\\]|\\.)*)"' % name, t)   # 閉じ引用符あり
+        if m:
+            return _un(m.group(1))
+        m = re.search(r'"%s"\s*:\s*"(.+)$' % name, t, re.DOTALL)     # 途中で切れている
+        return _un(m.group(1)) if m else ''
+
+    title, summary = _field('title'), _field('summary')
+    if not (title or summary):
         return None
-    try:
-        return json.loads(m.group(0))
-    except Exception:
-        return None
+    quotes = []
+    for mq in re.finditer(
+        r'\{\s*"quote"\s*:\s*"((?:[^"\\]|\\.)*)"\s*(?:,\s*"context"\s*:\s*"((?:[^"\\]|\\.)*)")?\s*\}', t):
+        quotes.append({'quote': _un(mq.group(1)), 'context': _un(mq.group(2) or '')})
+    return {'title': title, 'summary': summary, 'quotes': quotes}
 
 
 # ============ 記事本文の取得 ============
@@ -125,6 +155,9 @@ def ingest_step(source_id, phase, index=0, text=None):
             return {'phase': 'distill'}
 
         if kind == 'article':
+            # すでに本文を取得済み（前回 distill で失敗しただけ）なら、取りに行かず要約へ進む。
+            if len((src.get('transcript') or '').strip()) >= 200:
+                return {'phase': 'distill'}
             body = _fetch_article(src.get('url') or '')
             if len(body) < 200:
                 return _fail(
@@ -203,7 +236,8 @@ def ingest_step(source_id, phase, index=0, text=None):
             # 混雑（503など）は永続的な失敗にせず、フロントに「同じ区間をあとで再試行して」と返す。
             if gc._is_transient(err):
                 _patch_source(source_id, {'status': 'processing'})
-                return {'phase': 'retry', 'index': i, 'seg_done': int(meta.get('seg_done') or 0),
+                return {'phase': 'retry', 'retry_phase': 'transcript', 'index': i,
+                        'seg_done': int(meta.get('seg_done') or 0),
                         'seg_total': seg_total, 'message': _err_note(err)}
             return _fail(source_id, f'{i + 1}区間目の文字起こしに失敗しました。\n（{_err_note(err)}）')
 
@@ -232,20 +266,24 @@ def ingest_step(source_id, phase, index=0, text=None):
                 '以下はある人物の発信（動画の書き起こし、または記事本文）です。次のJSONを作ってください。\n\n'
                 '{\n'
                 '  "title": "内容を表す20〜30字の日本語タイトル",\n'
-                '  "summary": "800字程度の日本語。単なる要約ではなく、この人物の主張・論理の運び方・'
+                '  "summary": "500字程度の日本語。単なる要約ではなく、この人物の主張・論理の運び方・'
                 '判断基準・立場が伝わるように書く。ニュアンスや温度感も残す。",\n'
                 '  "quotes": [\n'
-                '    {"quote": "この人物の考え方・価値観・判断基準がそのまま出ている発言を原文のまま", '
+                '    {"quote": "この人物の考え方・価値観・判断基準がそのまま出ている発言を原文のまま（120字以内）", '
                 '"context": "その発言が何についてのものか一言"}\n'
                 '  ]\n'
                 '}\n\n'
-                'quotes は8〜15個。必ず本文中の表現をそのまま抜き出す（作文しない）。\n\n'
+                'quotes は6〜10個。必ず本文中の表現をそのまま抜き出す（作文しない）。JSON全体で3000字を超えないこと。\n\n'
                 '=== 本文ここから ===\n' + transcript[:200_000]
             ),
-            4096, model=MODEL, retries=2,
+            8192, model=MODEL, retries=2,
         )
         data = _extract_json(reply)
-        if not data:
+        if not data or not (data.get('summary') or data.get('title')):
+            # 混雑・無料枠オーバー（429など）は永続的な失敗にせず「あとで要約だけやり直して」と返す。
+            if gc._is_transient(gc.LAST_ERROR):
+                _patch_source(source_id, {'status': 'processing'})
+                return {'phase': 'retry', 'retry_phase': 'distill', 'message': _err_note(gc.LAST_ERROR)}
             detail = gc.LAST_ERROR or ('応答を解析できませんでした: ' + (reply or '')[:200])
             return _fail(source_id, f'要約の生成に失敗しました。時間をおいて「続きから取り込む」で再実行してください。\n（詳細: {detail}）')
 

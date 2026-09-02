@@ -302,9 +302,11 @@ async function ingestLoop(id, phase, index, onStatus, text) {
     if (r.phase === 'error') return { ok: false, message: r.message };
     if (r.phase === 'retry') {
       retries++;
-      if (retries > 8) return { ok: false, message: `混雑が続き中断（${r.seg_done}/${r.seg_total}区間まで完了）` };
-      phase = 'transcript'; index = r.index;
-      for (let s = 25; s > 0; s--) { onStatus(`混雑のため待機中… あと${s}秒（${retries}回目）`); await sleep(1000); }
+      if (retries > 5) return { ok: false, message: r.message || '混雑が続いたため中断', transient: true };
+      phase = r.retry_phase || 'transcript';
+      index = phase === 'transcript' ? (r.index || 0) : 0;
+      const wait = 15 + retries * 10;
+      for (let s = wait; s > 0; s--) { onStatus(`混雑のため待機中… あと${s}秒（${retries}回目）`); await sleep(1000); }
       continue;
     }
     if (r.phase === 'transcript') { retries = 0; phase = 'transcript'; index = r.index; onStatus(`文字起こし中… ${r.seg_done}/${r.seg_total}`); continue; }
@@ -324,20 +326,23 @@ async function runIngest(id, phase, index, text) {
 }
 async function afterIngest() { if (activeTab === 'sources') await render(); }
 
+let bulkRunning = false;
 async function bulkAdd() {
+  if (bulkRunning) return toast('すでに取り込み中です。二重に開始しないでください');
   if (!currentId) return toast('先に人物を選んでください');
   const raw = ($('#bulkUrls') || {}).value || '';
   const urls = [...new Set(raw.split(/[\s,]+/).map(s => s.trim()).filter(u => /^https?:\/\//i.test(u)))];
   if (!urls.length) return toast('URLを貼り付けてください（1行に1つ）');
-  const mins = Math.ceil(urls.length * 18 / 60);
-  if (!confirm(`${urls.length}件を順番に取り込みます。目安で${mins}分ほどかかります。\nこの画面は開いたままにしてください。始めますか？`)) return;
+  const mins = Math.ceil(urls.length * 20 / 60);
+  if (!confirm(`${urls.length}件を順番に取り込みます。目安で${mins}分ほど（無料枠の上限に当たったら途中で止まります）。\nこの画面は開いたままにしてください。始めますか？`)) return;
 
+  bulkRunning = true;
   const box = $('#bulkProgress'); const btn = $('#bulkBtn');
   btn.disabled = true; btn.textContent = '取り込み中…';
   const { data: existing } = await db.from('mentor_sources').select('id,url,status').eq('mentor_id', currentId);
   const byUrl = {}; (existing || []).forEach(s => { byUrl[s.url] = s; });
 
-  let done = 0, skip = 0, fail = 0; const failed = [];
+  let done = 0, skip = 0, fail = 0, quotaStreak = 0, stopped = false; const failed = [];
   const head = i => `【${i}/${urls.length}】 済:${done}  スキップ:${skip}  失敗:${fail}`;
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
@@ -349,13 +354,29 @@ async function bulkAdd() {
     if (!ex) {
       const { error } = await db.from('mentor_sources').insert({ id, mentor_id: currentId, kind: 'article', url, title: url, status: 'processing' });
       if (error) { fail++; failed.push(url + '  → 保存に失敗'); continue; }
+      byUrl[url] = { id, url, status: 'processing' };
     }
     const r = await ingestLoop(id, 'start', 0, prog);
-    if (r.ok) done++; else { fail++; failed.push(url + '  → ' + r.message); }
-    if (i < urls.length - 1) await sleep(4000);
+    if (r.ok) { done++; quotaStreak = 0; }
+    else {
+      fail++; failed.push(url + '  → ' + r.message);
+      const isQuota = /無料枠|429|RESOURCE_EXHAUSTED|quota|混雑/i.test(r.message || '');
+      quotaStreak = isQuota ? quotaStreak + 1 : 0;
+      if (quotaStreak >= 4) { stopped = true; break; }
+    }
+    if (i < urls.length - 1) await sleep(7000);
   }
 
+  bulkRunning = false;
   btn.disabled = false; btn.textContent = 'まとめて取り込む';
+  if (stopped) {
+    box.textContent = `いったん中断しました（済 ${done} / スキップ ${skip} / 失敗 ${fail}）\n\n`
+      + 'GeminiのAPI無料枠の上限に達したようです。時間をおくか、日をあらためて、'
+      + 'もう一度この欄に同じURLを貼って「まとめて取り込む」を押してください。済んだ分は自動で飛ばします。';
+    await render();
+    toast('無料枠オーバーで中断しました。時間をおいて再開してください');
+    return;
+  }
   box.textContent = `完了：済 ${done} / スキップ ${skip} / 失敗 ${fail}`;
   if (failed.length) {
     box.textContent += '\n\n▼ 取り込めなかったURL（ログイン必須・JavaScript表示のページが多いです。'
