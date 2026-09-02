@@ -180,11 +180,7 @@ def ingest(source_file, transcript, title='', meeting_date=None, duration_sec=No
             # 議事録は書けたのに末尾のJSONを出し損ねることがある（実際に起きた）。
             # 本文には「## 1. アクション」の表が入っているので、そこから抜き直す。
             actions = _parse_actions(
-                call_gemini(_ACTIONS_SYSTEM, f'{hint}
-
----
-
-{minutes}',
+                call_gemini(_ACTIONS_SYSTEM, f'{hint}\n\n---\n\n{minutes}',
                             max_tokens=3000, model=_model(), retries=2))
 
     row = {
