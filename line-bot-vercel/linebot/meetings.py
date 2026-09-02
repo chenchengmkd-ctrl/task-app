@@ -176,6 +176,16 @@ def ingest(source_file, transcript, title='', meeting_date=None, duration_sec=No
         minutes, actions = _split_output(out)
         if not minutes:
             return {'ok': False, 'error': '議事録の本文を取り出せませんでした。'}
+        if not actions:
+            # 議事録は書けたのに末尾のJSONを出し損ねることがある（実際に起きた）。
+            # 本文には「## 1. アクション」の表が入っているので、そこから抜き直す。
+            actions = _parse_actions(
+                call_gemini(_ACTIONS_SYSTEM, f'{hint}
+
+---
+
+{minutes}',
+                            max_tokens=3000, model=_model(), retries=2))
 
     row = {
         'title': title or source_file,
