@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 77
+APP_VERSION = 78
 
 
 def _respond(start_response, status, body, cors=False):
@@ -391,6 +391,7 @@ def _handle_meeting_ingest(environ, start_response):
             title=body.get('title') or '',
             meeting_date=body.get('meeting_date'),
             duration_sec=body.get('duration_sec'),
+            minutes_md=body.get('minutes_md'),
         )
     except Exception as e:
         return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
