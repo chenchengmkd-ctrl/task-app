@@ -392,6 +392,7 @@ def _handle_meeting_ingest(environ, start_response):
             meeting_date=body.get('meeting_date'),
             duration_sec=body.get('duration_sec'),
             minutes_md=body.get('minutes_md'),
+            notify=bool(body.get('notify')),
         )
     except Exception as e:
         return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)

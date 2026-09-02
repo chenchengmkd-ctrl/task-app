@@ -141,8 +141,21 @@ def _split_output(text):
     return minutes.strip(), _parse_actions(actions_part)
 
 
+def _notify_line(title, action_count):
+    """議事録ができたことをLINEで知らせる。中身は羅列せず、件数とアプリのリンクだけ。"""
+    try:
+        from .line_client import get_users, push_text
+        text = (f'🗒 議事録ができました\n{title}\n'
+                f'アクション{action_count}件\n\n'
+                f'{config.APP_URL}meetings.html')
+        for uid in get_users():
+            push_text(uid, text)
+    except Exception as e:  # noqa: BLE001
+        print('meetings: LINE通知に失敗', e)
+
+
 def ingest(source_file, transcript, title='', meeting_date=None, duration_sec=None,
-           minutes_md=None):
+           minutes_md=None, notify=False):
     """議事録を保存する。結果の dict を返す。
 
     minutes_md が渡されていればそれをそのまま保存し、アクションだけ抜き出す
@@ -203,6 +216,9 @@ def ingest(source_file, transcript, title='', meeting_date=None, duration_sec=No
         mid = config.new_id()
         if not post_supabase('meetings', [{**row, 'id': mid}]):
             return {'ok': False, 'error': '議事録の保存に失敗しました。'}
+
+    if notify:
+        _notify_line(row['title'], len(actions))
 
     return {'ok': True, 'id': mid, 'title': row['title'],
             'actions': actions, 'action_count': len(actions),
