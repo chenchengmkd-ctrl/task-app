@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+
+# 思考トレース: 全文の書き出しはローカルのみ（元記事の丸写しに近いのでコミットしない）。
+# study-data/export_mentor.py で Supabase からいつでも再生成できる。
+study-data/*/transcripts/
+article_ingest*.log
