@@ -138,7 +138,15 @@ def _split_output(text):
         return '', []
     body = text.split(MINUTES_MARK, 1)[-1]
     minutes, _, actions_part = body.partition(ACTIONS_MARK)
-    return minutes.strip(), _parse_actions(actions_part)
+    return _clean_md(minutes), _parse_actions(actions_part)
+
+
+def _clean_md(md):
+    """モデルが時々まぜてくる生の「\\n」（改行のつもりの文字列）を実際の改行に直す。
+    見出しの末尾に付くと `## 2. 議題\\n` のように表示が崩れる。議事録に
+    バックスラッシュが正当に出ることはないので、まるごと置き換えてよい。
+    """
+    return (md or '').replace('\\n', '\n').strip()
 
 
 def _notify_line(title, action_count):
