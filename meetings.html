@@ -224,12 +224,26 @@ function renderList(){
         <span class="chip">${n ? 'アクション' + n + '件' : 'アクションなし'}</span>
         <span class="muted">${open ? '▲' : '▼'}</span>
       </div>
-      ${open ? `<div class="md" style="margin-top:12px">${md2html(m.minutes_md)}</div>` : ''}
+      ${open ? `<div class="md" style="margin-top:12px">${md2html(m.minutes_md)}</div>
+        <div class="row" style="justify-content:flex-end;margin-top:10px">
+          <button class="btn ghost sm" onclick="removeMeeting('${m.id}')">この議事録を削除</button>
+        </div>` : ''}
     </div>`;
   }).join('');
 }
 
 function toggle(id){ openId = openId === id ? null : id; renderList(); }
+
+// 作り直しでうまくいかなかった議事録などを消す。同じ録画をPCから送り直せば作り直せる。
+async function removeMeeting(id){
+  const m = meetings.find(x => x.id === id);
+  if(!confirm((m ? m.title + '\n\n' : '') + 'この議事録を削除します。よろしいですか？')) return;
+  const { error } = await db.from('meetings').delete().eq('id', id);
+  if(error){ toast('削除に失敗: ' + error.message); return; }
+  openId = null;
+  toast('削除しました');
+  loadAll();
+}
 
 function renderActions(){
   const all = [];
