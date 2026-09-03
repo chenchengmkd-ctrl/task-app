@@ -819,6 +819,8 @@ def finance_help():
         '・出数取込 2026-07　→ 過去分をまとめて取り込み',
         '・資金繰り予想　→ 現金売上累計と次回金曜振込の見込み',
         '・週次CF　　　→ 翌週の入金・支出の見積もり（日曜夜に自動送信）',
+        '・入力確認　　→ 今日の入力状況（未入力があれば案内）。以前は毎日16時に自動送信していたが、'
+        '通知の送りすぎでLINEの月間無料通数を使い切ったため自動送信は廃止（見たい時にこちらへ）',
         '',
         '▼ レシートを撮るだけ',
         'レシートの写真をこのトークに送ると読み取ってそのまま登録します（確認の返信は不要）。',
@@ -900,10 +902,3 @@ def build_finance_reminder(date_iso=None):
     lines.append('　食材 肉のハナマサ お米 1000')
     lines.append('（書き方は「入力ヘルプ」）')
     return '\n'.join(lines)
-
-
-def send_finance_reminder(push_text, get_users):
-    """cronから呼ぶ。毎日16時の入力リマインド（本文＋テンプレートの2通）。"""
-    body = build_finance_reminder()
-    for uid in get_users():
-        push_text(uid, body)

@@ -14,13 +14,13 @@ from linebot.router import handle_event
 from linebot.tasks import check_timed_reminders
 from linebot.recurring import check_recurring_reminders
 from linebot.planning import check_daily_plan
-from linebot.agent import send_agent_checkin, send_weekly_report
+from linebot.agent import send_weekly_report
 from linebot.heartbeat import push_heartbeat_commit
 from linebot.richmenu import setup_rich_menu
 from linebot.gemini_client import call_gemini
 from linebot.reports import build_daily_report, build_weekly_report
 from linebot.finance import (
-    send_finance_report, send_finance_reminder,
+    send_finance_report,
     build_daily_finance_report, build_month_finance_report, build_finance_reminder,
 )
 from linebot.line_client import push_text, get_users
@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 81
+APP_VERSION = 82
 
 
 def _respond(start_response, status, body, cors=False):
@@ -438,10 +438,10 @@ def app(environ, start_response):
         return _handle_preview(environ, start_response)
     if path == '/api/webhook' and method == 'POST':
         return _handle_webhook(environ, start_response)
-    # 毎朝のタスクリマインド（/api/cron_morning_reminder）と振り返りの催促（/api/cron_daily_log_prompt）は廃止。
+    # 毎朝のタスクリマインド（/api/cron_morning_reminder）と振り返りの催促（/api/cron_daily_log_prompt）、
+    # 日報＋期限未設定タスクの棚卸し（/api/cron_agent_checkin）、財務の入力リマインド（/api/cron_finance_reminder）は
+    # プッシュ通知の削減（LINEの月間無料通数を使い切ったため、2026-08-26）のため廃止。
     # 「明日やることを決める」「今日やることを渡す」だけに絞るため（planning.py を参照）。
-    if path == '/api/cron_agent_checkin' and method == 'GET':
-        return _run_cron(environ, start_response, send_agent_checkin, 'send_agent_checkin')
     if path == '/api/cron_weekly_report' and method == 'GET':
         return _run_weekly_report(environ, start_response)
     if path == '/api/cron_finance_report' and method == 'GET':
@@ -452,8 +452,6 @@ def app(environ, start_response):
     if path == '/api/cron_weekly_cf' and method == 'GET':
         from linebot.weekly_cf import send_weekly_cf
         return _run_cron(environ, start_response, send_weekly_cf, 'weekly_cf')
-    if path == '/api/cron_finance_reminder' and method == 'GET':
-        return _run_cron(environ, start_response, send_finance_reminder, 'send_finance_reminder')
     if path == '/api/cron_poll' and method == 'GET':
         return _run_poll(environ, start_response)
 

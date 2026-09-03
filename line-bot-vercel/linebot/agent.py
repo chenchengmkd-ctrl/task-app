@@ -598,29 +598,6 @@ def handle_pending_ai_clarify(user_id, text):
     return ask_agent(user_id, text)
 
 
-# ============ 毎晩の日報プッシュ（Cronから呼ばれる） ============
-def send_agent_checkin(push_text_fn, get_users_fn):
-    """プッシュ型：毎晩の日報＋期限未設定タスクの棚卸し。AIコーチによる進捗チェックインは廃止済み。"""
-    from . import reports as reports_mod
-
-    # 日次レポートは番号を振るため、ユーザーごとに組み立てて送る
-    for uid in get_users_fn():
-        push_text_fn(uid, reports_mod.build_daily_report(uid))
-
-    # 期限未設定タスクの棚卸し。以前は全部並べていたが、毎晩同じ顔ぶれが長々と続いて読み飛ばされていたため、
-    # 件数だけ伝えてアプリでまとめて設定してもらう形に変えた。
-    # ペンディング状態のタスクは、期限をあえて決めずに保留しているものなので対象から除く。
-    no_due = get_supabase(
-        'tasks',
-        'done=eq.false&deleted=eq.false&due=is.null&status=neq.pending&select=id',
-    )
-    if no_due:
-        msg = (f'📅 期限が未設定のタスクが{len(no_due)}件あります。\n'
-               'アプリを開いてまとめて決めてしまいましょう。\n' + config.APP_URL)
-        for uid in get_users_fn():
-            push_text_fn(uid, msg)
-
-
 def send_weekly_report(push_text_fn, get_users_fn):
     """毎週日曜21時：その週の完了実績・ペース・積み残しを送る。番号はユーザーごとに記憶する。"""
     from . import reports as reports_mod
