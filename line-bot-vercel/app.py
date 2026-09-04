@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 84
+APP_VERSION = 85
 
 
 def _respond(start_response, status, body, cors=False):
@@ -417,6 +417,21 @@ def _handle_meeting_mentor_finish(environ, start_response):
     return _respond(start_response, '200 OK', out, cors=True)
 
 
+def _handle_meeting_mentor_backfill(environ, start_response):
+    """既存の議事録1本を、あとから #会議 メンターに取り込む。"""
+    if not config.MEETING_TOKEN or environ.get('HTTP_X_APP_TOKEN', '') != config.MEETING_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'}, cors=True)
+    body = _read_json_body(environ)
+    if not body or not body.get('meeting_id'):
+        return _respond(start_response, '400 Bad Request', {'error': 'meeting_id がありません'}, cors=True)
+    from linebot import meetings as meetings_mod
+    try:
+        out = meetings_mod.backfill_mentor(body['meeting_id'])
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    return _respond(start_response, '200 OK', out, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -432,6 +447,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_meeting_mentor_finish(environ, start_response)
+
+    if path == '/api/meeting_mentor_backfill':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_meeting_mentor_backfill(environ, start_response)
 
     if path in ('/api/mentor_ingest', '/api/mentor_profile', '/api/mentor_chat'):
         if method == 'OPTIONS':

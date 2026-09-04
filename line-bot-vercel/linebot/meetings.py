@@ -212,6 +212,20 @@ def _feed_meeting_mentors(title, meeting_date, minutes):
     return fed
 
 
+def backfill_mentor(meeting_id):
+    """既存の議事録1本について、#会議 メンターへの取り込みだけをやり直す。
+    過去の会議をあとから思考トレースに反映するとき用。仕上げ待ちリストを返す。
+    """
+    rows = get_supabase('meetings',
+                        f'id=eq.{quote(str(meeting_id))}&select=title,meeting_date,minutes_md')
+    if not rows:
+        return {'ok': False, 'error': 'その議事録が見つかりません。'}
+    m = rows[0]
+    fed = _feed_meeting_mentors(m.get('title') or '', m.get('meeting_date'),
+                                m.get('minutes_md') or '')
+    return {'ok': True, 'title': m.get('title'), 'mentors_fed': fed}
+
+
 def finish_mentor_source(source_id, mentor_id=None):
     """会議から作ったメンターのソースを仕上げる。要約・逐語引用 → プロファイル再生成。
     PC側から /api/meeting_mentor_finish 経由で、議事録保存の直後に呼ばれる。
