@@ -52,6 +52,12 @@
     --track:#2d3643;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* スクロールバーをOS標準の白いバーではなくテーマの色に合わせる（Firefox＋Chrome系の両方） */
+  * { scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: var(--track); border-radius: 999px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--muted); }
   body {
     font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
     background: var(--bg);
