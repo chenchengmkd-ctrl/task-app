@@ -400,6 +400,23 @@ def _handle_meeting_ingest(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
+def _handle_meeting_mentor_finish(environ, start_response):
+    """議事録から作った思考トレースのソースを仕上げる（要約・逐語引用・プロファイル再生成）。
+    重いのでメインの meeting_ingest から切り離し、PC側が続けて呼ぶ。
+    """
+    if not config.MEETING_TOKEN or environ.get('HTTP_X_APP_TOKEN', '') != config.MEETING_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'error': 'unauthorized'}, cors=True)
+    body = _read_json_body(environ)
+    if not body or not body.get('source_id'):
+        return _respond(start_response, '400 Bad Request', {'error': 'source_id がありません'}, cors=True)
+    from linebot import meetings as meetings_mod
+    try:
+        out = meetings_mod.finish_mentor_source(body['source_id'], body.get('mentor_id'))
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    return _respond(start_response, '200 OK', out, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -409,6 +426,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_meeting_ingest(environ, start_response)
+
+    if path == '/api/meeting_mentor_finish':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_meeting_mentor_finish(environ, start_response)
 
     if path in ('/api/mentor_ingest', '/api/mentor_profile', '/api/mentor_chat'):
         if method == 'OPTIONS':

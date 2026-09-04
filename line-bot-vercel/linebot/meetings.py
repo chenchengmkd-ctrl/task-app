@@ -149,13 +149,92 @@ def _clean_md(md):
     return (md or '').replace('\\n', '\n').strip()
 
 
-def _notify_line(title, action_count):
+_COACH_TAG = '#会議'
+
+
+def _feed_meeting_mentors(title, meeting_date, minutes):
+    """思考トレース（study.html）のメンターに、この会議での指摘を自動で足す。
+
+    対象は mentors テーブルで note に「#会議」を含む人物。study.html の「人物設定」で
+    メモ欄に #会議 と書いておくと、以降の議事録からその人の発言だけが抽出されて
+    ソースになる。
+
+    ここでは**抽出とソース登録まで**（Geminiを1回だけ）。要約・逐語引用・プロファイル
+    再生成は時間がかかる（Vercelの60秒制限）ので、PC側が続けて
+    /api/meeting_mentor_finish を呼んで仕上げる。
+
+    失敗は握りつぶす（議事録の保存を巻き込まない）。
+    仕上げ待ちの {name, mentor_id, source_id} のリストを返す。
+    """
+    try:
+        rows = get_supabase('mentors', 'select=id,name,note')
+    except Exception as e:  # noqa: BLE001
+        print('meetings: mentors 取得に失敗', e)
+        return []
+    targets = [m for m in rows if _COACH_TAG in (m.get('note') or '')]
+    if not targets:
+        return []
+
+    fed = []
+    for m in targets:
+        name = m.get('name') or ''
+        bare = re.sub(r'(さん|くん|君|様|さま|氏)$', '', name)
+        extracted = call_gemini(
+            f'あなたは会議の議事録から、特定の人物（{name}）の考え方だけを取り出す担当です。',
+            (f'次の議事録から、{name}（{bare}）がした指摘・助言・判断・問いかけを、'
+             f'本人の論理と言い回しをなるべく残して箇条書きで書き出してください。\n'
+             f'・会議の決定事項、事実報告、他の人の発言は含めない\n'
+             f'・{name} が「なぜそう言うのか」「何と何を比べているのか」が分かるように書く\n'
+             f'・繰り返し出てくる考え方の型があれば、それも書く\n'
+             f'該当する発言が議事録に無ければ「なし」とだけ返す。\n\n'
+             f'--- 議事録（{title} / {meeting_date}）---\n\n{minutes}'),
+            4000, model=_model(), retries=2)
+        if not extracted or extracted.strip() in ('なし', '') or len(extracted.strip()) < 40:
+            continue
+
+        sid = config.new_id()
+        row = {
+            'id': sid, 'mentor_id': m['id'], 'kind': 'text',
+            'title': f'会議: {title}（{meeting_date}）',
+            'transcript': extracted.strip(), 'status': 'processing',
+            'meta': {'from_meeting': True},
+        }
+        if not post_supabase('mentor_sources', [row]):
+            continue
+        fed.append({'name': name, 'mentor_id': m['id'], 'source_id': sid})
+    return fed
+
+
+def finish_mentor_source(source_id, mentor_id=None):
+    """会議から作ったメンターのソースを仕上げる。要約・逐語引用 → プロファイル再生成。
+    PC側から /api/meeting_mentor_finish 経由で、議事録保存の直後に呼ばれる。
+    """
+    from . import mentors as mentors_mod
+    out = {'source_id': source_id}
+    try:
+        step = mentors_mod.ingest_step(source_id, 'distill')
+        out['distill'] = step.get('phase')
+    except Exception as e:  # noqa: BLE001
+        out['distill_error'] = repr(e)
+    if mentor_id:
+        try:
+            r = mentors_mod.rebuild_profile(mentor_id)
+            out['profile'] = 'ok' if r.get('profile') else r.get('error')
+        except Exception as e:  # noqa: BLE001
+            out['profile_error'] = repr(e)
+    return out
+
+
+def _notify_line(title, action_count, fed_mentors=None):
     """議事録ができたことをLINEで知らせる。中身は羅列せず、件数とアプリのリンクだけ。"""
     try:
         from .line_client import get_users, push_text
         text = (f'🗒 議事録ができました\n{title}\n'
                 f'アクション{action_count}件\n\n'
                 f'{config.APP_URL}meetings.html')
+        if fed_mentors:
+            names = "・".join(f.get('name', '') for f in fed_mentors)
+            text += f'\n\n🧠 {names} の思考トレースにも追加しました'
         for uid in get_users():
             push_text(uid, text)
     except Exception as e:  # noqa: BLE001
@@ -225,9 +304,12 @@ def ingest(source_file, transcript, title='', meeting_date=None, duration_sec=No
         if not post_supabase('meetings', [{**row, 'id': mid}]):
             return {'ok': False, 'error': '議事録の保存に失敗しました。'}
 
+    fed = _feed_meeting_mentors(row['title'], meeting_date, minutes)
+
     if notify:
-        _notify_line(row['title'], len(actions))
+        _notify_line(row['title'], len(actions), fed)
 
     return {'ok': True, 'id': mid, 'title': row['title'],
             'actions': actions, 'action_count': len(actions),
-            'minutes_md': minutes, 'pasted': bool(minutes_md)}
+            'minutes_md': minutes, 'pasted': bool(minutes_md),
+            'mentors_fed': fed}
