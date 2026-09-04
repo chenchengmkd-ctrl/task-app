@@ -178,13 +178,20 @@ def _feed_meeting_mentors(title, meeting_date, minutes):
     fed = []
     for m in targets:
         name = m.get('name') or ''
-        bare = re.sub(r'(さん|くん|君|様|さま|氏)$', '', name)
+        # 会議での呼び名がメンター名と違うことがある（ビジネスネームなど）。
+        # メモ欄に「別名:向井さん,向井」と書いておくと拾う。
+        alias_m = re.search(r'別名[:：]\s*([^\s#]+)', m.get('note') or '')
+        aliases = [a.strip() for a in re.split(r'[,、/]', alias_m.group(1))] if alias_m else []
+        names = [n for n in [name] + aliases if n]
+        label = '／'.join(names)
         extracted = call_gemini(
-            f'あなたは会議の議事録から、特定の人物（{name}）の考え方だけを取り出す担当です。',
-            (f'次の議事録から、{name}（{bare}）がした指摘・助言・判断・問いかけを、'
+            f'あなたは会議の議事録から、特定の人物（{label}）の考え方だけを取り出す担当です。',
+            (f'次の議事録で、指導・助言する立場の人物を探してください。'
+             f'その人物は「{label}」と呼ばれています（複数の呼び名は同一人物）。\n'
+             f'その人物がした指摘・助言・判断・問いかけを、'
              f'本人の論理と言い回しをなるべく残して箇条書きで書き出してください。\n'
              f'・会議の決定事項、事実報告、他の人の発言は含めない\n'
-             f'・{name} が「なぜそう言うのか」「何と何を比べているのか」が分かるように書く\n'
+             f'・「なぜそう言うのか」「何と何を比べているのか」が分かるように書く\n'
              f'・繰り返し出てくる考え方の型があれば、それも書く\n'
              f'該当する発言が議事録に無ければ「なし」とだけ返す。\n\n'
              f'--- 議事録（{title} / {meeting_date}）---\n\n{minutes}'),
