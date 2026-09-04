@@ -153,8 +153,7 @@
     border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; min-width: 20px; text-align: center;
   }
   .col-list {
-    list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    align-content: start; gap: 5px; min-height: 36px;
+    list-style: none; display: flex; flex-direction: column; gap: 5px; min-height: 36px;
     overflow-y: auto; flex: 1 1 auto; padding-right: 3px;
     overflow-anchor: none;   /* 再描画のたびにブラウザの自動スクロール調整で位置がズレるのを防ぐ */
   }
