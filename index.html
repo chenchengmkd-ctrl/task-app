@@ -101,10 +101,12 @@
   /* 入力フォーム */
   .add-form {
     background: var(--card); border: 1px solid var(--border);
-    border-radius: 11px; padding: 11px; box-shadow: var(--shadow);
+    border-radius: 11px; padding: 9px; box-shadow: var(--shadow);
     margin-bottom: 12px;
   }
-  .add-form .row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 7px; }
+  .add-form .row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .add-form .row:first-child { flex-wrap: nowrap; }
+  #addForm .btn { padding: 7px 12px; font-size: 13px; }
   .add-form .row:last-child { margin-bottom: 0; }
   .add-form .row[hidden] { display: none; }
   .add-form-more {
@@ -119,7 +121,7 @@
   }
   input[type="date"], input[type="time"] { color-scheme: light dark; }
   input:focus, select:focus { border-color: var(--accent); }
-  #title { flex: 1; }
+  #title { flex: 1; min-width: 0; padding: 7px 9px; font-size: 13px; }
   #tags { flex: 1; }
   .btn {
     font: inherit; font-weight: 600; cursor: pointer; border: none;
