@@ -67,23 +67,36 @@
     padding: 14px 14px 28px;
     transition: background .2s, color .2s;
   }
-  .container { max-width: 1280px; margin: 0 auto; }
-  header { margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
-  h1 { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex: 1; }
+  .container { max-width: 1600px; margin: 0 auto; }
+  /* 左サイドバー（タイトル・タブ・追加フォーム・フィルタ）＋右メイン（実際のタスク一覧） */
+  .app-shell { display: flex; align-items: flex-start; gap: 18px; }
+  .sidebar {
+    flex: none; width: 300px;
+    display: flex; flex-direction: column; gap: 14px;
+    position: sticky; top: 14px;
+  }
+  .sidebar > * { margin-bottom: 0; }
+  .main-content { flex: 1; min-width: 0; }
+  header { display: flex; align-items: center; gap: 10px; }
+  h1 { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   h1 .count {
     font-size: 12px; font-weight: 600; color: var(--muted);
     background: var(--card); padding: 2px 9px; border-radius: 999px;
     border: 1px solid var(--border);
   }
-  /* タブ（ボード / 定期タスク） */
-  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  /* タブ（サイドバーの中で縦に並べる） */
+  .tabs { display: flex; flex-direction: column; gap: 6px; }
   .tab {
     font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
     padding: 7px 16px; border: 1px solid var(--border); background: var(--card);
     color: var(--muted); border-radius: 9px; transition: all .15s;
+    text-align: left;
   }
   .tab:hover { border-color: var(--accent); }
   .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #boardControls { display: flex; flex-direction: column; gap: 14px; }
+  #boardControls[hidden] { display: none; }
+  #boardControls > * { margin-bottom: 0; }
 
   /* 入力フォーム */
   .add-form {
@@ -91,7 +104,7 @@
     border-radius: 11px; padding: 11px; box-shadow: var(--shadow);
     margin-bottom: 12px;
   }
-  .add-form .row { display: flex; gap: 7px; margin-bottom: 7px; }
+  .add-form .row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 7px; }
   .add-form .row:last-child { margin-bottom: 0; }
   input[type="text"], input[type="date"], input[type="time"], select {
     font: inherit; padding: 8px 10px; border: 1px solid var(--border);
@@ -127,7 +140,6 @@
   .chip[draggable="true"] { cursor: grab; }
   .chip.dragging { opacity: .4; }
   .chip.drag-over { outline: 2px dashed var(--accent); outline-offset: 1px; }
-  .toolbar .spacer { flex: 1; }
   .toolbar select { padding: 5px 9px; font-size: 13px; }
   .toolbar .search {
     padding: 6px 10px; font-size: 13px; min-width: 150px;
@@ -419,10 +431,11 @@
   footer button:hover { color: var(--high); }
 
   @media (max-width: 600px) {
-    .add-form .row { flex-wrap: wrap; }
     #title, #tags { flex-basis: 100%; }
-    .add-form #estimate { max-width: none; }
     .toolbar .search { flex: 1; min-width: 0; }
+    /* 画面が狭い時はサイドバーを上に積む通常のレイアウトへ戻す */
+    .app-shell { flex-direction: column; }
+    .sidebar { width: 100%; position: static; }
   }
 
 </style>
@@ -430,6 +443,8 @@
 </head>
 <body>
 <div class="container">
+ <div class="app-shell">
+  <aside class="sidebar">
   <header>
     <h1>📋 タスク管理 <span class="count" id="count"></span>
       <a href="./study.html" style="font-size:12px;font-weight:600;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:2px 9px">🧠 思考トレース</a>
@@ -443,7 +458,7 @@
     <button type="button" class="tab" data-view="trash">🗑 ゴミ箱 <span id="trashCount"></span></button>
   </div>
 
-  <section id="boardView">
+  <div id="boardControls">
   <!-- タスク追加フォーム -->
   <form class="add-form" id="addForm" autocomplete="off">
     <div class="row">
@@ -470,7 +485,6 @@
   <div class="toolbar">
     <div class="filter-chips" id="filterChips"></div>
     <input type="search" id="search" class="search" placeholder="🔍 検索…">
-    <span class="spacer"></span>
     <select id="sort" title="並べ替え">
       <option value="custom">↕ カスタム順 (ドラッグ可)</option>
       <option value="due">↕ 期限が近い順</option>
@@ -479,7 +493,11 @@
     </select>
     <button type="button" class="chip" id="syncBtn">☁️ 今すぐ同期</button>
   </div>
+  </div>
+  </aside>
 
+  <main class="main-content">
+  <section id="boardView">
   <div id="board"></div>
   </section>
 
@@ -554,6 +572,8 @@
     </div>
     <ul id="trashList"></ul>
   </section>
+  </main>
+ </div>
 
   <footer>
     <span id="footerText"></span>
@@ -1876,6 +1896,8 @@ document.querySelectorAll(".tab").forEach(tab => {
     const v = tab.dataset.view;
     VIEW_IDS.forEach(id => { document.getElementById(id).hidden = true; });
     document.getElementById(v + "View").hidden = false;
+    // タスク追加フォーム・フィルタはボード専用なので、ボード以外のタブでは隠す
+    document.getElementById("boardControls").hidden = v !== "board";
   });
 });
 
