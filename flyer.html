@@ -388,15 +388,15 @@ const TILES = {
     url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     opts:{ maxZoom:19, attribution:'&copy; OpenStreetMap contributors' },
   },
-  voyager: {
-    name:'見やすい地図（Google風）',
-    url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    opts:{ maxZoom:20, subdomains:'abcd', attribution:'&copy; OpenStreetMap contributors &copy; CARTO' },
+  pale: {
+    name:'淡色地図（文字が読みやすい）',
+    url:'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',
+    opts:{ maxZoom:19, maxNativeZoom:18, attribution:'&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>' },
   },
   photo: {
-    name:'航空写真（国土地理院）',
+    name:'航空写真（建物の形で分かる）',
     url:'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',
-    opts:{ maxZoom:18, attribution:'&copy; 国土地理院' },
+    opts:{ maxZoom:19, maxNativeZoom:18, attribution:'&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>' },
   },
 };
 
