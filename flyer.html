@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1f2933">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>チラシ配り管理</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%8D%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --text:#1f2933; --muted:#7b8794; --border:#e4e7eb;
+    --accent:#3b82f6; --field-bg:#fff;
+    --shadow:0 2px 10px rgba(0,0,0,.12); --shadow-lg:0 -6px 28px rgba(0,0,0,.18);
+    --todo:#94a3b8; --done:#16a34a; --later:#2563eb; --ng:#dc2626;
+    --safe-b:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    font-family:"Segoe UI","Hiragino Sans","Meiryo",sans-serif;
+    background:var(--bg); color:var(--text); font-size:14px; line-height:1.5;
+    overflow:hidden; overscroll-behavior:none;
+  }
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;border:none;background:none}
+
+  /* ---------- 地図 ---------- */
+  #map{position:fixed; inset:0; background:#e8eaed}
+  .leaflet-container{font-family:inherit; background:#e8eaed}
+  body.adding #map{cursor:crosshair}
+
+  /* ---------- ピン ---------- */
+  .pin{
+    width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+    border:2.5px solid #fff; box-shadow:0 2px 5px rgba(0,0,0,.4);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .pin span{transform:rotate(45deg);color:#fff;font-size:14px;font-weight:700;line-height:1}
+  .pin.sel{outline:3px solid #fbbf24;outline-offset:2px}
+  .store{
+    width:30px;height:30px;border-radius:50%;background:#fff;border:2px solid #dc2626;
+    display:flex;align-items:center;justify-content:center;font-size:15px;
+    box-shadow:0 2px 6px rgba(0,0,0,.3);
+  }
+  .me-dot{
+    width:18px;height:18px;border-radius:50%;background:#1a73e8;
+    border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25),0 2px 6px rgba(0,0,0,.35);
+  }
+
+  /* ---------- 上部バー ---------- */
+  .topbar{
+    position:fixed;top:0;left:0;right:0;z-index:600;
+    padding:calc(env(safe-area-inset-top,0px) + 8px) 8px 8px;
+    background:linear-gradient(#f4f5f7f2,#f4f5f7d9 70%,#f4f5f700);
+    pointer-events:none;
+  }
+  .topbar > *{pointer-events:auto}
+  .titlerow{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .titlerow h1{font-size:15px;font-weight:700;display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .titlerow .grow{flex:1}
+  .iconbtn{
+    background:var(--card);border:1px solid var(--border);border-radius:10px;
+    width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+    font-size:16px;box-shadow:var(--shadow);flex:none;
+  }
+  .iconbtn:active{background:#eceff3}
+
+  .chips{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{
+    display:flex;align-items:center;gap:5px;flex:none;
+    background:var(--card);border:1px solid var(--border);border-radius:999px;
+    padding:5px 11px;font-size:12px;font-weight:600;box-shadow:var(--shadow);
+    transition:opacity .15s;
+  }
+  .chip.off{opacity:.38}
+  .chip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .chip .n{font-variant-numeric:tabular-nums}
+  .bar{
+    margin-top:6px;height:6px;border-radius:999px;background:#dfe3e8;overflow:hidden;
+    box-shadow:var(--shadow);
+  }
+  .bar > i{display:block;height:100%;background:var(--done);width:0;transition:width .3s}
+
+  /* ---------- 追加モードのバー ---------- */
+  .addbar{
+    position:fixed;left:8px;right:8px;z-index:640;
+    bottom:calc(var(--safe-b) + 84px);
+    background:#1f2933;color:#fff;border-radius:14px;padding:9px 10px;
+    box-shadow:var(--shadow-lg);display:none;align-items:center;gap:8px;
+  }
+  body.adding .addbar{display:flex}
+  .addbar .lead{font-size:12px;font-weight:700;flex:1;line-height:1.35}
+  .addbar .lead em{font-style:normal;opacity:.7;font-weight:600;display:block;font-size:11px}
+  .addbar select{
+    background:#2f3b49;border:1px solid #435063;border-radius:9px;padding:6px 8px;
+    font-size:12px;font-weight:700;color:#fff;
+  }
+  .addbar .undo{
+    background:#3a4756;border-radius:9px;padding:6px 9px;font-size:12px;font-weight:700;color:#fff;
+  }
+  .addbar .undo:disabled{opacity:.35}
+
+  /* ---------- 右下ボタン ---------- */
+  .fabs{
+    position:fixed;right:12px;bottom:calc(var(--safe-b) + 16px);z-index:620;
+    display:flex;flex-direction:column;gap:10px;align-items:flex-end;
+  }
+  .fab{
+    background:var(--card);border-radius:50%;width:48px;height:48px;
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;font-size:20px;
+    border:1px solid var(--border);
+  }
+  .fab.primary{
+    width:58px;height:58px;background:var(--accent);color:#fff;border-color:transparent;font-size:15px;
+    font-weight:700;flex-direction:column;gap:1px;line-height:1;
+  }
+  .fab.primary b{font-size:22px;font-weight:700}
+  .fab.primary.on{background:#1f2933}
+  .fab.locating{color:var(--accent)}
+
+  /* ---------- ボトムシート ---------- */
+  .sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:700;
+    background:var(--card);border-radius:18px 18px 0 0;box-shadow:var(--shadow-lg);
+    padding:10px 14px calc(var(--safe-b) + 16px);
+    transform:translateY(110%);transition:transform .22s ease;
+    max-height:86vh;overflow-y:auto;
+  }
+  .sheet.open{transform:translateY(0)}
+  .grab{width:38px;height:4px;border-radius:999px;background:#d3d8de;margin:2px auto 10px}
+  .sheet h2{font-size:15px;font-weight:700;display:flex;align-items:center;gap:7px;margin-bottom:10px}
+  .sheet h2 .grow{flex:1}
+  .sheet .close{font-size:13px;font-weight:700;color:var(--muted);padding:4px 8px}
+  .field{margin-bottom:11px}
+  .field > label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:4px}
+  .field input[type=text],.field textarea,.field select{
+    width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:10px;
+    background:var(--field-bg);outline:none;font-size:15px;
+  }
+  .field textarea{resize:vertical;min-height:64px;font-size:14px}
+  .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent)}
+  .statusgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .sbtn{
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    border:2px solid var(--border);border-radius:11px;padding:11px 6px;
+    font-size:13.5px;font-weight:700;background:var(--card);
+  }
+  .sbtn .dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .sbtn.on{border-color:currentColor;background:#f6f8fa}
+  .meta{font-size:11.5px;color:var(--muted);margin:8px 0 12px;line-height:1.6}
+  .rowbtns{display:flex;gap:8px}
+  .btn{
+    flex:1;border-radius:11px;padding:11px;font-size:14px;font-weight:700;
+    background:var(--accent);color:#fff;text-align:center;
+  }
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+  .btn.danger{background:transparent;color:var(--ng);border:1px solid #f3c2c2;flex:none;padding:11px 14px}
+
+  /* ---------- 一覧 ---------- */
+  .listrow{
+    display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid var(--border);
+    text-align:left;width:100%;
+  }
+  .listrow:last-child{border-bottom:none}
+  .listrow .dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .listrow .txt{flex:1;min-width:0}
+  .listrow .t1{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .listrow .t2{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .listrow .go{font-size:11px;color:var(--accent);font-weight:700;flex:none}
+  .empty{text-align:center;color:var(--muted);font-size:13px;padding:26px 10px}
+
+  /* ---------- モーダル ---------- */
+  .modal{
+    position:fixed;inset:0;z-index:900;background:rgba(15,20,25,.55);
+    display:none;align-items:center;justify-content:center;padding:18px;
+  }
+  .modal.open{display:flex}
+  .modal .box{
+    background:var(--card);border-radius:16px;padding:18px;width:100%;max-width:380px;
+    box-shadow:var(--shadow-lg);max-height:88vh;overflow-y:auto;
+  }
+  .modal h3{font-size:16px;font-weight:700;margin-bottom:6px}
+  .modal p{font-size:12.5px;color:var(--muted);margin-bottom:13px;line-height:1.6}
+  .modal hr{border:none;border-top:1px solid var(--border);margin:15px 0}
+
+  /* ---------- 位置決めモード ---------- */
+  .crosshair{
+    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:610;
+    pointer-events:none;display:none;
+  }
+  body.picking .crosshair{display:block}
+  .crosshair .ring{position:relative;width:46px;height:46px;border:3px solid #dc2626;border-radius:50%;
+    box-shadow:0 0 0 2px #fff,0 2px 8px rgba(0,0,0,.35)}
+  .crosshair .ring::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;
+    margin:-3px 0 0 -3px;background:#dc2626;border-radius:50%}
+  .pickbar{
+    position:fixed;left:10px;right:10px;bottom:calc(var(--safe-b) + 16px);z-index:660;
+    background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow-lg);display:none;
+  }
+  body.picking .pickbar{display:block}
+  body.picking .fabs,body.picking .addbar{display:none !important}
+  .pickbar .t{font-size:13px;font-weight:700;margin-bottom:9px;text-align:center}
+
+  /* ---------- トースト・同期状態 ---------- */
+  .toast{
+    position:fixed;left:50%;transform:translateX(-50%) translateY(-14px);
+    top:calc(env(safe-area-inset-top,0px) + 92px);z-index:950;
+    background:#1f2933;color:#fff;border-radius:999px;padding:9px 16px;font-size:12.5px;font-weight:600;
+    opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:88vw;text-align:center;
+  }
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .syncdot{
+    font-size:10.5px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:4px;
+    background:var(--card);border:1px solid var(--border);border-radius:999px;padding:5px 9px;
+    box-shadow:var(--shadow);white-space:nowrap;
+  }
+  .syncdot i{width:7px;height:7px;border-radius:50%;background:var(--done);display:block}
+  .syncdot.warn i{background:#f59e0b}
+  .syncdot.bad i{background:var(--ng)}
+  .leaflet-control-attribution{font-size:9px}
+  .leaflet-bottom.leaflet-right{margin-bottom:calc(var(--safe-b) + 78px)}
+  .leaflet-bottom.leaflet-left{margin-bottom:calc(var(--safe-b) + 78px)}
+  body.picking .leaflet-bottom,body.adding .leaflet-bottom.leaflet-left{display:none}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="crosshair"><div class="ring"></div></div>
+
+<!-- ===== 上部：タイトル・進捗 ===== -->
+<div class="topbar">
+  <div class="titlerow">
+    <h1>📍 チラシ配り</h1>
+    <div class="syncdot" id="syncDot"><i></i><span id="syncTxt">接続中</span></div>
+    <div class="grow"></div>
+    <button type="button" class="iconbtn" id="btnList" title="一覧">☰</button>
+    <button type="button" class="iconbtn" id="btnSettings" title="設定">⚙</button>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="bar"><i id="barFill"></i></div>
+</div>
+
+<!-- ===== 追加モードのバー ===== -->
+<div class="addbar">
+  <div class="lead">
+    建物をタップでピン追加
+    <em id="addHint">長押しでメモ付き追加</em>
+  </div>
+  <select id="addStatus"></select>
+  <button type="button" class="undo" id="btnUndo" disabled>取消</button>
+</div>
+
+<!-- ===== 右下ボタン ===== -->
+<div class="fabs">
+  <button type="button" class="fab" id="btnLocate" title="現在地">◎</button>
+  <button type="button" class="fab primary" id="btnAdd"><b>＋</b>ピン</button>
+</div>
+
+<!-- ===== お店の位置を決めるバー ===== -->
+<div class="pickbar">
+  <div class="t" id="pickTitle">地図を動かして お店の位置 を中心に合わせてください</div>
+  <div class="rowbtns">
+    <button type="button" class="btn ghost" id="pickCancel">やめる</button>
+    <button type="button" class="btn" id="pickOk">ここに決定</button>
+  </div>
+</div>
+
+<!-- ===== ピン編集シート ===== -->
+<div class="sheet" id="pinSheet">
+  <div class="grab"></div>
+  <h2><span id="pinTitle">ピン</span><span class="grow"></span>
+    <button type="button" class="close" id="pinClose">閉じる</button></h2>
+
+  <div class="field">
+    <label>状況</label>
+    <div class="statusgrid" id="pinStatus"></div>
+  </div>
+  <div class="field">
+    <label>建物名・部屋番号など（任意）</label>
+    <input type="text" id="pinLabel" placeholder="例）〇〇ハイツ 101〜305">
+  </div>
+  <div class="field">
+    <label>メモ（任意）</label>
+    <textarea id="pinNote" placeholder="例）管理人さんに許可もらった／ポスト共用部のみ"></textarea>
+  </div>
+  <div class="meta" id="pinMeta"></div>
+  <div class="rowbtns">
+    <button type="button" class="btn danger" id="pinDelete">削除</button>
+    <button type="button" class="btn" id="pinSave">保存して閉じる</button>
+  </div>
+</div>
+
+<!-- ===== 一覧シート ===== -->
+<div class="sheet" id="listSheet">
+  <div class="grab"></div>
+  <h2><span id="listTitle">ピン一覧</span><span class="grow"></span>
+    <button type="button" class="close" id="listClose">閉じる</button></h2>
+  <div class="field">
+    <select id="listFilter"></select>
+  </div>
+  <div id="listBody"></div>
+</div>
+
+<!-- ===== 名前入力 ===== -->
+<div class="modal" id="nameModal">
+  <div class="box">
+    <h3>お名前を入れてください</h3>
+    <p>誰がどの建物を回ったか分かるようにするためだけに使います。ログインはありません。</p>
+    <div class="field"><input type="text" id="nameInput" placeholder="例）田中" maxlength="12"></div>
+    <button type="button" class="btn" id="nameOk">はじめる</button>
+  </div>
+</div>
+
+<!-- ===== 設定 ===== -->
+<div class="modal" id="setModal">
+  <div class="box">
+    <h3>設定</h3>
+    <div class="field">
+      <label>自分の名前</label>
+      <input type="text" id="setName" maxlength="12">
+    </div>
+    <div class="field">
+      <label>地図の種類</label>
+      <select id="setTiles"></select>
+    </div>
+    <hr>
+    <div class="field">
+      <label>お店の位置（地図の中心）</label>
+      <div class="rowbtns">
+        <button type="button" class="btn ghost" id="setUseGps">現在地にする</button>
+        <button type="button" class="btn ghost" id="setPick">地図で選ぶ</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>配る範囲（お店からの距離）</label>
+      <select id="setRadius">
+        <option value="400">徒歩5分くらい（半径400m）</option>
+        <option value="800">徒歩10分くらい（半径800m）</option>
+        <option value="1200">徒歩15分くらい（半径1.2km）</option>
+        <option value="2000">広め（半径2km）</option>
+      </select>
+    </div>
+    <p id="setCenterInfo"></p>
+    <hr>
+    <div class="field">
+      <label>次のラウンドを始める</label>
+      <button type="button" class="btn ghost" id="setReset">すべてのピンを「未訪問」に戻す</button>
+    </div>
+    <div class="rowbtns">
+      <a class="btn ghost" href="./index.html" style="text-decoration:none;line-height:1.5">📋 タスク管理へ</a>
+      <button type="button" class="btn" id="setClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+/* ============================================================
+   チラシ配り進捗管理
+   地図: OpenStreetMap + Leaflet / 保存: Supabase（無料枠）
+   ============================================================ */
+
+const SUPABASE_URL = 'https://xldkfkhgazpugfuscpqt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZGtma2hnYXpwdWdmdXNjcHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NDg3MzgsImV4cCI6MjA5OTQyNDczOH0.C3_TYQI8R3HeXYWTzca9erUMjpTWm2sneB7hk5Bre8Y';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------- ステータス定義 ---------- */
+const STATUS = {
+  todo : { label:'未訪問',   short:'未訪問',   color:'#94a3b8', icon:'･' },
+  done : { label:'配布済み', short:'配布済み', color:'#16a34a', icon:'✓' },
+  later: { label:'要再訪',   short:'要再訪',   color:'#2563eb', icon:'↻' },
+  ng   : { label:'配布不可', short:'配布不可', color:'#dc2626', icon:'×' },
+};
+const STATUS_KEYS = ['done','todo','later','ng'];
+
+/* ---------- 地図タイル ---------- */
+const TILES = {
+  osm: {
+    name:'標準地図（建物がはっきり）',
+    url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    opts:{ maxZoom:19, attribution:'&copy; OpenStreetMap contributors' },
+  },
+  voyager: {
+    name:'見やすい地図（Google風）',
+    url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    opts:{ maxZoom:20, subdomains:'abcd', attribution:'&copy; OpenStreetMap contributors &copy; CARTO' },
+  },
+  photo: {
+    name:'航空写真（国土地理院）',
+    url:'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',
+    opts:{ maxZoom:18, attribution:'&copy; 国土地理院' },
+  },
+};
+
+/* ---------- ローカル設定 ---------- */
+const LS = {
+  me:'flyer_me', tiles:'flyer_tiles', cache:'flyer_cache', queue:'flyer_queue', filter:'flyer_filter',
+};
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+/* ---------- 状態 ---------- */
+let me       = lsGet(LS.me, '') || '';
+let pins     = new Map();                       // id -> pin
+let markers  = new Map();                       // id -> L.Marker
+let settings = { center:null, radius:800 };
+let filter   = new Set(lsGet(LS.filter, STATUS_KEYS));
+let selectedId = null;
+let lastAddedId = null;
+let addMode = false;
+let pickMode = null;                            // 'store' のとき位置決め中
+let areaCircle = null, storeMarker = null, meMarker = null, meCircle = null;
+let watchId = null, firstFix = true;
+let queue = lsGet(LS.queue, []);                // 送信できなかった変更
+
+const $ = (id) => document.getElementById(id);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('on'), 2000);
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const hm = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  return sameDay ? ('今日 ' + hm) : ((d.getMonth()+1) + '/' + d.getDate() + ' ' + hm);
+}
+
+/* ============================================================
+   地図
+   ============================================================ */
+const DEFAULT_CENTER = [35.681236, 139.767125]; // 未設定のときの仮の中心（東京駅）
+
+const map = L.map('map', {
+  center: DEFAULT_CENTER,
+  zoom: 17,
+  zoomControl: false,
+  attributionControl: true,
+  doubleClickZoom: false,
+});
+L.control.zoom({ position:'bottomleft' }).addTo(map);
+
+let tileKey = lsGet(LS.tiles, 'osm');
+if (!TILES[tileKey]) tileKey = 'osm';
+let tileLayer = null;
+
+function applyTiles(key) {
+  tileKey = TILES[key] ? key : 'osm';
+  lsSet(LS.tiles, tileKey);
+  if (tileLayer) map.removeLayer(tileLayer);
+  const t = TILES[tileKey];
+  tileLayer = L.tileLayer(t.url, t.opts).addTo(map);
+  if (tileLayer.bringToBack) tileLayer.bringToBack();
+}
+applyTiles(tileKey);
+
+/* 対象エリアだけを見せる（範囲外に出られないようにする） */
+function applyArea(fly) {
+  if (!settings.center) return;
+  const c = L.latLng(settings.center.lat, settings.center.lng);
+  const r = Number(settings.radius) || 800;
+
+  if (areaCircle) map.removeLayer(areaCircle);
+  areaCircle = L.circle(c, {
+    radius: r, color:'#dc2626', weight:2, opacity:.55, dashArray:'7 7',
+    fillColor:'#dc2626', fillOpacity:.04, interactive:false,
+  }).addTo(map);
+  if (storeMarker) map.removeLayer(storeMarker);
+  storeMarker = L.marker(c, {
+    icon: L.divIcon({ className:'', html:'<div class="store">🏠</div>', iconSize:[30,30], iconAnchor:[15,15] }),
+    interactive:false, zIndexOffset:-500,
+  }).addTo(map);
+
+  // 対象エリアの外には行けないようにする（少しだけ余裕をもたせる）
+  map.setMaxBounds(c.toBounds(r * 3));
+  // 引きで見たときにエリア全体が入るところまでは縮小できるようにする
+  map.setMinZoom(Math.max(11, map.getBoundsZoom(c.toBounds(r * 2))));
+  // 起動直後はエリア全体ではなく、歩きながら使いやすい縮尺で開く
+  if (fly) map.setView(c, 17, { animate:false });
+}
+
+/* ============================================================
+   ピンの描画
+   ============================================================ */
+function pinIcon(status, selected) {
+  const s = STATUS[status] || STATUS.todo;
+  return L.divIcon({
+    className: '',
+    html: '<div class="pin' + (selected ? ' sel' : '') + '" style="background:' + s.color + '">'
+        + '<span>' + s.icon + '</span></div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 28],
+  });
+}
+
+function visible(p) { return !p.deleted && filter.has(p.status); }
+
+function renderPins() {
+  // 追加・更新
+  pins.forEach((p, id) => {
+    if (!visible(p)) {
+      if (markers.has(id)) { map.removeLayer(markers.get(id)); markers.delete(id); }
+      return;
+    }
+    let m = markers.get(id);
+    const icon = pinIcon(p.status, id === selectedId);
+    if (!m) {
+      m = L.marker([p.lat, p.lng], { icon, keyboard:false });
+      m.on('click', (e) => { L.DomEvent.stop(e); openPin(id); });
+      m.addTo(map);
+      markers.set(id, m);
+    } else {
+      const ll = m.getLatLng();
+      if (ll.lat !== p.lat || ll.lng !== p.lng) m.setLatLng([p.lat, p.lng]);
+      m.setIcon(icon);
+    }
+    m._status = p.status;
+  });
+  // 消えたもの
+  markers.forEach((m, id) => {
+    if (!pins.has(id) || !visible(pins.get(id))) { map.removeLayer(m); markers.delete(id); }
+  });
+  renderProgress();
+  if ($('listSheet').classList.contains('open')) renderList();
+}
+
+/* ============================================================
+   進捗の表示
+   ============================================================ */
+function counts() {
+  const c = { todo:0, done:0, later:0, ng:0, total:0 };
+  pins.forEach((p) => { if (!p.deleted) { c[p.status] = (c[p.status] || 0) + 1; c.total++; } });
+  return c;
+}
+
+function renderProgress() {
+  const c = counts();
+  const box = $('chips');
+  box.innerHTML = STATUS_KEYS.map((k) =>
+    '<button type="button" class="chip' + (filter.has(k) ? '' : ' off') + '" data-s="' + k + '">'
+    + '<i class="dot" style="background:' + STATUS[k].color + '"></i>'
+    + STATUS[k].short + '<b class="n">' + (c[k] || 0) + '</b></button>'
+  ).join('') + '<span class="chip" style="box-shadow:none;background:transparent;border-color:transparent">合計 ' + c.total + '</span>';
+
+  box.querySelectorAll('.chip[data-s]').forEach((el) => {
+    el.onclick = () => {
+      const k = el.dataset.s;
+      if (filter.has(k)) filter.delete(k); else filter.add(k);
+      if (filter.size === 0) STATUS_KEYS.forEach((x) => filter.add(x)); // 全部消すのは不便なので戻す
+      lsSet(LS.filter, [...filter]);
+      renderPins();
+    };
+  });
+
+  const pct = c.total ? Math.round((c.done / c.total) * 100) : 0;
+  $('barFill').style.width = pct + '%';
+}
+
+/* ============================================================
+   保存（オフラインでも消えないようにキューに積む）
+   ============================================================ */
+function cacheLocal() {
+  lsSet(LS.cache, { pins:[...pins.values()], settings });
+}
+
+function setSync(state, text) {
+  const d = $('syncDot');
+  d.className = 'syncdot' + (state === 'ok' ? '' : ' ' + state);
+  $('syncTxt').textContent = text;
+}
+
+function enqueue(pin) {
+  queue = queue.filter((q) => q.id !== pin.id);
+  queue.push(pin);
+  lsSet(LS.queue, queue);
+  setSync('warn', '未送信 ' + queue.length + '件');
+}
+
+async function flushQueue() {
+  if (!queue.length) return;
+  const batch = queue.slice(0, 50);
+  const { error } = await db.from('flyer_pins').upsert(batch);
+  if (error) { setSync('bad', '未送信 ' + queue.length + '件'); return; }
+  const ids = new Set(batch.map((b) => b.id));
+  queue = queue.filter((q) => !ids.has(q.id));
+  lsSet(LS.queue, queue);
+  setSync(queue.length ? 'warn' : 'ok', queue.length ? ('未送信 ' + queue.length + '件') : '同期中');
+}
+
+async function savePin(p) {
+  p.updated_at = new Date().toISOString();
+  p.author = p.author || me;
+  pins.set(p.id, p);
+  cacheLocal();
+  renderPins();
+  const { error } = await db.from('flyer_pins').upsert(p);
+  if (error) { enqueue(p); } else if (!queue.length) { setSync('ok', '同期中'); }
+}
+
+async function saveSettings() {
+  cacheLocal();
+  const { error } = await db.from('flyer_settings')
+    .upsert({ id:'map', data:settings, updated_at:new Date().toISOString() });
+  if (error) toast('設定を共有できませんでした（この端末には保存済み）');
+}
+
+/* ============================================================
+   読み込み・同期
+   ============================================================ */
+function mergePin(row) {
+  const cur = pins.get(row.id);
+  // 同じピンを2人が触ったときは、あとから更新された方を残す
+  if (cur && cur.updated_at && row.updated_at && cur.updated_at > row.updated_at) return;
+  pins.set(row.id, row);
+}
+
+async function loadAll(quiet) {
+  try {
+    const [pinRes, setRes] = await Promise.all([
+      db.from('flyer_pins').select('*'),
+      db.from('flyer_settings').select('*').eq('id', 'map').maybeSingle(),
+    ]);
+    if (pinRes.error) throw pinRes.error;
+
+    // ローカルの未送信ぶんが上書きされないようにマージする
+    (pinRes.data || []).forEach(mergePin);
+    queue.forEach((q) => pins.set(q.id, q));
+
+    if (setRes && setRes.data && setRes.data.data) {
+      const remote = setRes.data.data;
+      const hadCenter = !!(settings.center);
+      settings = Object.assign({ center:null, radius:800 }, remote);
+      if (settings.center) applyArea(!hadCenter);
+    }
+    cacheLocal();
+    renderPins();
+    setSync(queue.length ? 'warn' : 'ok', queue.length ? ('未送信 ' + queue.length + '件') : '同期中');
+    if (!quiet && !settings.center) promptStoreLocation();
+  } catch (e) {
+    const msg = String((e && (e.message || e.hint)) || '');
+    if (/flyer_pins/.test(msg) && /does not exist|not find|schema cache/i.test(msg)) {
+      setSync('bad', '準備が必要');
+      if (!quiet) alert(['保存用のテーブルがまだありません。','','FLYER_SETUP.md の手順にある SQL を Supabase で1回だけ実行してください。','それまでは、この端末の中だけに記録されます。'].join(String.fromCharCode(10)));
+      return;
+    }
+    setSync('bad', 'オフライン');
+    if (!quiet) toast('通信できません。この端末の記録で表示しています');
+  }
+}
+
+function subscribeRealtime() {
+  db.channel('flyer-pins')
+    .on('postgres_changes', { event:'*', schema:'public', table:'flyer_pins' }, (payload) => {
+      const row = payload.new;
+      if (!row || !row.id) return;
+      if (queue.some((q) => q.id === row.id)) return; // 自分の未送信ぶんが優先
+      mergePin(row);
+      cacheLocal();
+      renderPins();
+      if (selectedId === row.id && !sheetDirty) fillPinSheet(row);
+    })
+    .on('postgres_changes', { event:'*', schema:'public', table:'flyer_settings' }, () => loadAll(true))
+    .subscribe();
+}
+
+/* ============================================================
+   ピンの追加・編集
+   ============================================================ */
+function newPin(lat, lng, status) {
+  const now = new Date().toISOString();
+  return {
+    id: uid(), lat, lng, status: status || 'done',
+    label:'', note:'', author: me, deleted:false, created_at: now, updated_at: now,
+  };
+}
+
+function addPinAt(latlng, status, openSheet) {
+  if (settings.center) {
+    const d = L.latLng(settings.center.lat, settings.center.lng).distanceTo(latlng);
+    if (d > Number(settings.radius) * 2) { toast('対象エリアの外です'); return; }
+  }
+  const p = newPin(
+    Math.round(latlng.lat * 1e7) / 1e7,
+    Math.round(latlng.lng * 1e7) / 1e7,
+    status
+  );
+  savePin(p);
+  lastAddedId = p.id;
+  $('btnUndo').disabled = false;
+  if (openSheet) openPin(p.id);
+  else toast(STATUS[p.status].label + ' を追加');
+}
+
+let sheetDirty = false;
+
+function openPin(id) {
+  const p = pins.get(id);
+  if (!p) return;
+  selectedId = id;
+  sheetDirty = false;
+  closeSheet('listSheet');
+  fillPinSheet(p);
+  $('pinSheet').classList.add('open');
+  renderPins();
+}
+
+function fillPinSheet(p) {
+  $('pinTitle').textContent = p.label ? p.label : 'ピン';
+  $('pinLabel').value = p.label || '';
+  $('pinNote').value = p.note || '';
+  $('pinStatus').innerHTML = STATUS_KEYS.map((k) =>
+    '<button type="button" class="sbtn' + (p.status === k ? ' on' : '') + '" data-s="' + k + '"'
+    + ' style="color:' + STATUS[k].color + '">'
+    + '<i class="dot" style="background:' + STATUS[k].color + '"></i>'
+    + '<span style="color:var(--text)">' + STATUS[k].label + '</span></button>'
+  ).join('');
+  $('pinStatus').querySelectorAll('.sbtn').forEach((el) => {
+    el.onclick = () => {
+      const cur = pins.get(selectedId);
+      if (!cur) return;
+      cur.status = el.dataset.s;
+      cur.author = me;
+      savePin(cur);
+      fillPinSheet(cur);
+      toast(STATUS[cur.status].label + ' にしました');
+    };
+  });
+  $('pinMeta').innerHTML =
+    '最終更新：' + (esc(p.author) || '(名前なし)') + ' ・ ' + fmtTime(p.updated_at)
+    + '<br>作成：' + fmtTime(p.created_at);
+}
+
+function collectPinSheet() {
+  const p = pins.get(selectedId);
+  if (!p) return null;
+  const label = $('pinLabel').value.trim();
+  const note  = $('pinNote').value.trim();
+  if (label !== (p.label || '') || note !== (p.note || '')) {
+    p.label = label; p.note = note; p.author = me;
+    sheetDirty = false;
+    return p;
+  }
+  sheetDirty = false;
+  return null;
+}
+
+function closeSheet(which) {
+  $(which).classList.remove('open');
+  if (which === 'pinSheet') { selectedId = null; renderPins(); }
+}
+
+/* ============================================================
+   一覧
+   ============================================================ */
+function renderList() {
+  const mode = $('listFilter').value || 'all';
+  const rows = [...pins.values()]
+    .filter((p) => !p.deleted && (mode === 'all' || p.status === mode))
+    .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+
+  $('listTitle').textContent = 'ピン一覧（' + rows.length + '件）';
+  const body = $('listBody');
+  if (!rows.length) { body.innerHTML = '<div class="empty">まだピンがありません</div>'; return; }
+
+  body.innerHTML = rows.map((p) =>
+    '<button type="button" class="listrow" data-id="' + p.id + '">'
+    + '<i class="dot" style="background:' + STATUS[p.status].color + '"></i>'
+    + '<span class="txt">'
+    + '<span class="t1">' + (esc(p.label) || STATUS[p.status].label) + '</span>'
+    + '<span class="t2">' + STATUS[p.status].label + ' ・ ' + (esc(p.author) || '?')
+    + ' ・ ' + fmtTime(p.updated_at) + (p.note ? ' ・ ' + esc(p.note) : '') + '</span>'
+    + '</span><span class="go">地図で見る</span></button>'
+  ).join('');
+
+  body.querySelectorAll('.listrow').forEach((el) => {
+    el.onclick = () => {
+      const p = pins.get(el.dataset.id);
+      if (!p) return;
+      map.setView([p.lat, p.lng], Math.max(map.getZoom(), 18));
+      openPin(p.id);
+    };
+  });
+}
+
+/* ============================================================
+   現在位置
+   ============================================================ */
+function startWatch() {
+  if (!navigator.geolocation) { toast('この端末では位置情報が使えません'); return; }
+  if (watchId !== null) return;
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      const acc = pos.coords.accuracy || 0;
+      if (!meMarker) {
+        meMarker = L.marker(ll, {
+          icon: L.divIcon({ className:'', html:'<div class="me-dot"></div>', iconSize:[18,18], iconAnchor:[9,9] }),
+          interactive:false, zIndexOffset:1000,
+        }).addTo(map);
+        meCircle = L.circle(ll, { radius:acc, color:'#1a73e8', weight:1, opacity:.4,
+          fillColor:'#1a73e8', fillOpacity:.10, interactive:false }).addTo(map);
+      } else {
+        meMarker.setLatLng(ll);
+        meCircle.setLatLng(ll).setRadius(acc);
+      }
+      $('btnLocate').classList.add('locating');
+      if (firstFix) { firstFix = false; if (settings.center) map.setView(ll, 18); }
+    },
+    (err) => {
+      $('btnLocate').classList.remove('locating');
+      if (err.code === 1) toast('位置情報が許可されていません（ブラウザの設定から許可してください）');
+      else toast('現在地を取得できませんでした');
+    },
+    { enableHighAccuracy:true, maximumAge:5000, timeout:15000 }
+  );
+}
+
+/* ============================================================
+   お店の位置を決める
+   ============================================================ */
+function promptStoreLocation() {
+  if ($('nameModal').classList.contains('open')) return;
+  toast('はじめに お店の位置 を決めてください');
+  openSettings();
+}
+
+function startPick() {
+  pickMode = 'store';
+  document.body.classList.add('picking');
+  closeSheet('pinSheet'); closeSheet('listSheet');
+  $('setModal').classList.remove('open');
+  map.setMaxBounds(null);
+  map.setMinZoom(3);
+  if (settings.center) map.setView([settings.center.lat, settings.center.lng], 17);
+}
+
+function endPick(commit) {
+  if (commit) {
+    const c = map.getCenter();
+    settings.center = { lat: Math.round(c.lat*1e7)/1e7, lng: Math.round(c.lng*1e7)/1e7 };
+    saveSettings();
+    toast('お店の位置を決めました');
+  }
+  pickMode = null;
+  document.body.classList.remove('picking');
+  applyArea(commit);
+  if (!commit && !settings.center) { map.setMaxBounds(null); map.setMinZoom(3); }
+  updateSettingsInfo();
+}
+
+/* ============================================================
+   設定
+   ============================================================ */
+function openSettings() {
+  $('setName').value = me;
+  $('setTiles').innerHTML = Object.keys(TILES)
+    .map((k) => '<option value="' + k + '"' + (k === tileKey ? ' selected' : '') + '>' + TILES[k].name + '</option>').join('');
+  $('setRadius').value = String(settings.radius || 800);
+  updateSettingsInfo();
+  $('setModal').classList.add('open');
+}
+
+function updateSettingsInfo() {
+  $('setCenterInfo').textContent = settings.center
+    ? ('現在の中心：' + settings.center.lat.toFixed(5) + ', ' + settings.center.lng.toFixed(5))
+    : 'まだお店の位置が決まっていません。上の2つのどちらかで決めてください。';
+}
+
+/* ============================================================
+   イベント
+   ============================================================ */
+let suppressClickUntil = 0;
+
+map.on('click', (e) => {
+  if (pickMode) return;
+  if (Date.now() < suppressClickUntil) return;
+  if (addMode) addPinAt(e.latlng, $('addStatus').value, false);
+});
+
+// 長押し（スマホ）／右クリック（PC）＝ メモを書きながら追加
+function longPressAdd(latlng) {
+  if (pickMode) return;
+  suppressClickUntil = Date.now() + 700;
+  addPinAt(latlng, addMode ? $('addStatus').value : 'todo', true);
+}
+map.on('contextmenu', (e) => { L.DomEvent.preventDefault(e); longPressAdd(e.latlng); });
+
+// iOS Safari は長押しで contextmenu を出さないため、タッチを自分で見る
+(function touchLongPress() {
+  const el = map.getContainer();
+  let timer = null, sx = 0, sy = 0;
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { cancel(); return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+    cancel();
+    timer = setTimeout(() => {
+      timer = null;
+      longPressAdd(map.mouseEventToLatLng({ clientX:sx, clientY:sy }));
+    }, 550);
+  }, { passive:true });
+  el.addEventListener('touchmove', (e) => {
+    if (!timer) return;
+    const t = e.touches[0];
+    if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) cancel();
+  }, { passive:true });
+  el.addEventListener('touchend', cancel, { passive:true });
+  el.addEventListener('touchcancel', cancel, { passive:true });
+})();
+
+$('btnAdd').onclick = () => {
+  addMode = !addMode;
+  document.body.classList.toggle('adding', addMode);
+  $('btnAdd').classList.toggle('on', addMode);
+  $('btnAdd').innerHTML = addMode ? '<b>✓</b>やめる' : '<b>＋</b>ピン';
+  if (addMode) { closeSheet('pinSheet'); closeSheet('listSheet'); }
+};
+
+$('btnUndo').onclick = () => {
+  const p = lastAddedId && pins.get(lastAddedId);
+  if (!p) return;
+  p.deleted = true;
+  savePin(p);
+  lastAddedId = null;
+  $('btnUndo').disabled = true;
+  toast('直前のピンを取り消しました');
+};
+
+$('btnLocate').onclick = () => {
+  startWatch();
+  if (meMarker) map.setView(meMarker.getLatLng(), Math.max(map.getZoom(), 18));
+  else toast('現在地を探しています…');
+};
+
+$('btnList').onclick = () => {
+  closeSheet('pinSheet');
+  renderList();
+  $('listSheet').classList.add('open');
+};
+$('listClose').onclick = () => closeSheet('listSheet');
+$('listFilter').onchange = renderList;
+
+$('pinClose').onclick = () => { const p = collectPinSheet(); if (p) savePin(p); closeSheet('pinSheet'); };
+$('pinSave').onclick  = () => { const p = collectPinSheet(); if (p) savePin(p); closeSheet('pinSheet'); toast('保存しました'); };
+$('pinLabel').oninput = $('pinNote').oninput = () => { sheetDirty = true; };
+$('pinDelete').onclick = () => {
+  const p = pins.get(selectedId);
+  if (!p) return;
+  if (!confirm('このピンを削除します。よろしいですか？')) return;
+  p.deleted = true;
+  savePin(p);
+  closeSheet('pinSheet');
+  toast('削除しました');
+};
+
+$('pickOk').onclick = () => endPick(true);
+$('pickCancel').onclick = () => endPick(false);
+
+$('btnSettings').onclick = openSettings;
+$('setClose').onclick = () => $('setModal').classList.remove('open');
+$('setName').onchange = () => {
+  me = $('setName').value.trim() || me;
+  lsSet(LS.me, me);
+};
+$('setTiles').onchange = () => applyTiles($('setTiles').value);
+$('setRadius').onchange = () => {
+  settings.radius = Number($('setRadius').value);
+  saveSettings();
+  applyArea(true);
+};
+$('setPick').onclick = startPick;
+$('setUseGps').onclick = () => {
+  if (!navigator.geolocation) { toast('この端末では位置情報が使えません'); return; }
+  toast('現在地を取得しています…');
+  navigator.geolocation.getCurrentPosition((pos) => {
+    settings.center = {
+      lat: Math.round(pos.coords.latitude * 1e7) / 1e7,
+      lng: Math.round(pos.coords.longitude * 1e7) / 1e7,
+    };
+    saveSettings();
+    applyArea(true);
+    updateSettingsInfo();
+    startWatch();
+    toast('現在地をお店の位置にしました');
+  }, () => toast('現在地を取得できませんでした。「地図で選ぶ」をお使いください'),
+     { enableHighAccuracy:true, timeout:15000 });
+};
+$('setReset').onclick = async () => {
+  const c = counts();
+  if (!c.total) { toast('ピンがありません'); return; }
+  if (!confirm('すべてのピン（' + c.total + '件）を「未訪問」に戻します。\n新しいチラシ配りを始めるときに使ってください。よろしいですか？')) return;
+  const list = [...pins.values()].filter((p) => !p.deleted && p.status !== 'todo');
+  const now = new Date().toISOString();
+  list.forEach((p) => { p.status = 'todo'; p.author = me; p.updated_at = now; pins.set(p.id, p); });
+  cacheLocal(); renderPins();
+  const { error } = await db.from('flyer_pins').upsert(list);
+  if (error) { list.forEach(enqueue); }
+  $('setModal').classList.remove('open');
+  toast(list.length + '件を未訪問に戻しました');
+};
+
+$('nameOk').onclick = () => {
+  const v = $('nameInput').value.trim();
+  if (!v) { $('nameInput').focus(); return; }
+  me = v;
+  lsSet(LS.me, me);
+  $('nameModal').classList.remove('open');
+  if (!settings.center) promptStoreLocation();
+};
+$('nameInput').onkeydown = (e) => { if (e.key === 'Enter') $('nameOk').click(); };
+
+// シートの外側をタップしたら閉じる
+map.on('movestart', () => { if (!pickMode) { const p = collectPinSheet(); if (p) savePin(p); } });
+
+window.addEventListener('online', () => { flushQueue(); loadAll(true); });
+
+/* ============================================================
+   起動
+   ============================================================ */
+(function init() {
+  // 追加モードのステータス選択
+  $('addStatus').innerHTML = STATUS_KEYS
+    .map((k) => '<option value="' + k + '"' + (k === 'done' ? ' selected' : '') + '>' + STATUS[k].label + '</option>').join('');
+  // 一覧の絞り込み
+  $('listFilter').innerHTML = '<option value="all">すべて表示</option>'
+    + STATUS_KEYS.map((k) => '<option value="' + k + '">' + STATUS[k].label + 'だけ</option>').join('');
+
+  // 前回の状態をすぐ出す（通信を待たない）
+  const cache = lsGet(LS.cache, null);
+  if (cache) {
+    (cache.pins || []).forEach((p) => pins.set(p.id, p));
+    if (cache.settings) settings = Object.assign(settings, cache.settings);
+  }
+  queue.forEach((q) => pins.set(q.id, q));
+  if (settings.center) applyArea(true);
+  renderPins();
+  setSync(queue.length ? 'warn' : 'ok', queue.length ? ('未送信 ' + queue.length + '件') : '接続中');
+
+  if (!me) $('nameModal').classList.add('open');
+
+  loadAll(false);
+  subscribeRealtime();
+  startWatch();
+
+  // 念のため定期的に取り直す（リアルタイムが届かないときの保険）
+  setInterval(() => { flushQueue(); loadAll(true); }, 12000);
+})();
+</script>
+</body>
+</html>
