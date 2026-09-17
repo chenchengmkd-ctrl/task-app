@@ -44,6 +44,12 @@
     display:flex;align-items:center;justify-content:center;font-size:15px;
     box-shadow:0 2px 6px rgba(0,0,0,.3);
   }
+  .arealabel{
+    transform:translate(-50%,-50%);white-space:nowrap;
+    font-size:11px;font-weight:700;color:#5b21b6;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;
+    pointer-events:none;
+  }
   .me-dot{
     width:18px;height:18px;border-radius:50%;background:#1a73e8;
     border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25),0 2px 6px rgba(0,0,0,.35);
@@ -160,6 +166,17 @@
   .btn.danger{background:transparent;color:var(--ng);border:1px solid #f3c2c2;flex:none;padding:11px 14px}
 
   /* ---------- 一覧 ---------- */
+  .areastat{margin-bottom:10px;border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .arearow{
+    display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+    padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px;
+  }
+  .arearow:last-child{border-bottom:none}
+  .arearow.on{background:#eef2ff}
+  .arearow .an{flex:none;width:8.5em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .arearow .ab{flex:1;height:6px;border-radius:999px;background:#dfe3e8;overflow:hidden}
+  .arearow .ab i{display:block;height:100%;background:var(--done)}
+  .arearow .ac{flex:none;font-variant-numeric:tabular-nums;color:var(--muted);font-weight:700}
   .listrow{
     display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid var(--border);
     text-align:left;width:100%;
@@ -171,6 +188,26 @@
   .listrow .t2{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .listrow .go{font-size:11px;color:var(--accent);font-weight:700;flex:none}
   .empty{text-align:center;color:var(--muted);font-size:13px;padding:26px 10px}
+
+  /* ---------- 場所の吹き出し ---------- */
+  .leaflet-popup-content{margin:10px 12px;font-size:13px}
+  .leaflet-popup-content-wrapper{border-radius:13px}
+  .pl-area{font-size:13px;font-weight:700;margin-bottom:2px}
+  .pl-cap{font-size:10.5px;color:var(--muted);font-weight:600;margin-bottom:6px}
+  .pl-list{max-height:180px;overflow-y:auto;margin:0 -4px 8px}
+  .pl-row{
+    display:block;width:100%;text-align:left;padding:6px 6px;border-radius:8px;
+    border-bottom:1px solid var(--border);
+  }
+  .pl-row:last-child{border-bottom:none}
+  .pl-row:active{background:#eef2ff}
+  .pl-name{display:block;font-size:13px;font-weight:600;line-height:1.35}
+  .pl-sub{display:block;font-size:10.5px;color:var(--muted)}
+  .pl-none{font-size:12px;color:var(--muted);padding:4px 2px 8px}
+  .pl-add{
+    display:block;width:100%;background:var(--accent);color:#fff;
+    border-radius:9px;padding:8px;font-size:13px;font-weight:700;text-align:center;
+  }
 
   /* ---------- モーダル ---------- */
   .modal{
@@ -336,8 +373,17 @@
         <button type="button" class="btn ghost" id="setPick">地図で選ぶ</button>
       </div>
     </div>
+    <p id="setCenterInfo"></p>
+    <hr>
     <div class="field">
-      <label>配る範囲（お店からの距離）</label>
+      <label>配る範囲の決め方</label>
+      <select id="setAreaMode">
+        <option value="areas">決めた町丁目のぜんぶ</option>
+        <option value="circle">お店からの距離で決める</option>
+      </select>
+    </div>
+    <div class="field" id="setRadiusField">
+      <label>お店からの距離</label>
       <select id="setRadius">
         <option value="400">徒歩5分くらい（半径400m）</option>
         <option value="800">徒歩10分くらい（半径800m）</option>
@@ -345,7 +391,10 @@
         <option value="2000">広め（半径2km）</option>
       </select>
     </div>
-    <p id="setCenterInfo"></p>
+    <div class="field">
+      <label><input type="checkbox" id="setShowAreas" style="width:auto;margin-right:7px;vertical-align:-2px">町丁目の区域を地図に表示する</label>
+      <p id="setAreaInfo" style="margin:5px 0 0"></p>
+    </div>
     <hr>
     <div class="field">
       <label>次のラウンドを始める</label>
@@ -405,6 +454,61 @@ const TILES = {
   },
 };
 
+/* ---------- 配る対象の町丁目（OpenStreetMapの行政区域から作成・15区域） ----------
+   境界線のデータをアプリに直接入れてあるので、通信なしでも区域は表示できる。
+   区域を足す／減らすときは AREAS の中身を差し替える。                              */
+const AREAS = {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"内神田一丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.766714,35.688867],[139.766656,35.688876],[139.766391,35.688918],[139.766029,35.688975],[139.765642,35.689046],[139.765037,35.68916],[139.764245,35.689308],[139.764304,35.6895],[139.764421,35.690014],[139.764528,35.690509],[139.764586,35.690782],[139.764616,35.691028],[139.76476,35.691686],[139.764919,35.692459],[139.765318,35.692419],[139.765724,35.692372],[139.766171,35.692319],[139.766202,35.692315],[139.766615,35.692272],[139.766804,35.692253],[139.767095,35.692222],[139.767449,35.692183],[139.767421,35.692019],[139.767385,35.691855],[139.767372,35.691795],[139.767335,35.691615],[139.767307,35.691473],[139.767286,35.691364],[139.767263,35.691264],[139.767217,35.691065],[139.76717,35.690862],[139.767131,35.690684],[139.767105,35.690578],[139.767079,35.69045],[139.767062,35.690374],[139.767018,35.690185],[139.766984,35.690031],[139.766948,35.689867],[139.766901,35.689656],[139.766876,35.689554],[139.766849,35.689436],[139.766808,35.689247],[139.766764,35.689052],[139.766714,35.688867]]]}},{"type":"Feature","properties":{"name":"内神田二丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.768815,35.688872],[139.767938,35.688594],[139.767935,35.688591],[139.767764,35.688659],[139.767592,35.688729],[139.767175,35.688794],[139.766714,35.688867],[139.766764,35.689052],[139.766808,35.689247],[139.766849,35.689436],[139.766876,35.689554],[139.766901,35.689656],[139.766948,35.689867],[139.766984,35.690031],[139.767018,35.690185],[139.767062,35.690374],[139.767079,35.69045],[139.767105,35.690578],[139.767131,35.690684],[139.76717,35.690862],[139.767217,35.691065],[139.767263,35.691264],[139.767286,35.691364],[139.767307,35.691473],[139.767335,35.691615],[139.767372,35.691795],[139.767385,35.691855],[139.767421,35.692019],[139.767449,35.692183],[139.767598,35.692186],[139.768035,35.692296],[139.76817,35.69233],[139.76845,35.692406],[139.76902,35.692559],[139.769039,35.69249],[139.769068,35.692358],[139.769111,35.692157],[139.769106,35.692063],[139.769094,35.691853],[139.769073,35.691661],[139.769056,35.691487],[139.769043,35.691348],[139.76903,35.691191],[139.769016,35.691067],[139.768995,35.690891],[139.768985,35.690798],[139.768968,35.69061],[139.768955,35.690475],[139.768952,35.690415],[139.768909,35.690226],[139.768883,35.690104],[139.76884,35.6899],[139.768819,35.689806],[139.768821,35.689704],[139.76885,35.689539],[139.768662,35.689404],[139.768474,35.689285],[139.768674,35.689034],[139.768714,35.688989],[139.768815,35.688872]]]}},{"type":"Feature","properties":{"name":"内神田三丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.76902,35.692559],[139.769197,35.692606],[139.769488,35.692684],[139.769821,35.692773],[139.770143,35.692864],[139.770252,35.692894],[139.770276,35.6929],[139.770686,35.69301],[139.770987,35.693095],[139.771265,35.693168],[139.771368,35.693197],[139.771358,35.693182],[139.771164,35.692806],[139.770917,35.692399],[139.770787,35.692159],[139.770637,35.69177],[139.77047,35.691326],[139.770415,35.691131],[139.770223,35.690426],[139.769708,35.689169],[139.769057,35.688949],[139.768815,35.688872],[139.768714,35.688989],[139.768674,35.689034],[139.768474,35.689285],[139.768662,35.689404],[139.76885,35.689539],[139.768821,35.689704],[139.768819,35.689806],[139.76884,35.6899],[139.768883,35.690104],[139.768909,35.690226],[139.768952,35.690415],[139.768955,35.690475],[139.768968,35.69061],[139.768985,35.690798],[139.768995,35.690891],[139.769016,35.691067],[139.76903,35.691191],[139.769043,35.691348],[139.769056,35.691487],[139.769073,35.691661],[139.769094,35.691853],[139.769106,35.692063],[139.769111,35.692157],[139.769068,35.692358],[139.769039,35.69249],[139.76902,35.692559]]]}},{"type":"Feature","properties":{"name":"神田司町二丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.76902,35.692559],[139.76845,35.692406],[139.76817,35.69233],[139.768035,35.692296],[139.767598,35.692186],[139.767449,35.692183],[139.767095,35.692222],[139.766804,35.692253],[139.766615,35.692272],[139.766202,35.692315],[139.766171,35.692319],[139.766189,35.692426],[139.76621,35.692557],[139.76624,35.692729],[139.766271,35.692928],[139.766307,35.693147],[139.766358,35.69346],[139.766392,35.69373],[139.766409,35.693866],[139.766415,35.69414],[139.766603,35.694192],[139.766998,35.694299],[139.767465,35.694439],[139.767577,35.694512],[139.768045,35.694695],[139.768383,35.694828],[139.768426,35.694555],[139.768478,35.694227],[139.768523,35.693898],[139.768551,35.693697],[139.768686,35.693368],[139.768823,35.693038],[139.768965,35.692695],[139.76902,35.692559]]]}},{"type":"Feature","properties":{"name":"神田多町二丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.770252,35.692894],[139.770143,35.692864],[139.769821,35.692773],[139.769488,35.692684],[139.769197,35.692606],[139.76902,35.692559],[139.768965,35.692695],[139.768823,35.693038],[139.768686,35.693368],[139.768551,35.693697],[139.768523,35.693898],[139.768478,35.694227],[139.768426,35.694555],[139.768383,35.694828],[139.768577,35.694905],[139.768846,35.69501],[139.769328,35.695143],[139.769373,35.695031],[139.769516,35.694673],[139.769682,35.694265],[139.769781,35.694032],[139.769857,35.69385],[139.769926,35.693684],[139.769981,35.693551],[139.77004,35.693407],[139.770101,35.69326],[139.770162,35.69311],[139.77021,35.692994],[139.770252,35.692894]]]}},{"type":"Feature","properties":{"name":"神田須田町一丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.767481,35.695425],[139.768193,35.695699],[139.768076,35.695895],[139.767925,35.696163],[139.768059,35.696219],[139.768417,35.696362],[139.7684,35.696402],[139.768446,35.69647],[139.768654,35.696768],[139.768751,35.696907],[139.768953,35.697193],[139.769236,35.697586],[139.769124,35.697691],[139.768887,35.697913],[139.768693,35.698101],[139.768717,35.698134],[139.768836,35.698285],[139.768897,35.69836],[139.769156,35.6982],[139.76939,35.698056],[139.7696,35.697927],[139.769749,35.697835],[139.769949,35.697712],[139.770121,35.697606],[139.770392,35.69744],[139.770548,35.697344],[139.770714,35.697242],[139.770755,35.697227],[139.7709,35.697177],[139.770996,35.697143],[139.770746,35.696528],[139.770811,35.69649],[139.770908,35.696419],[139.77102,35.696317],[139.771103,35.696211],[139.771183,35.696096],[139.771273,35.695935],[139.771315,35.695855],[139.771415,35.695672],[139.771442,35.695591],[139.771493,35.695456],[139.771517,35.695394],[139.77154,35.695258],[139.771557,35.695161],[139.771579,35.694981],[139.77158,35.69487],[139.77158,35.694789],[139.771572,35.694522],[139.771496,35.694501],[139.771205,35.694421],[139.770898,35.694337],[139.770624,35.694262],[139.770526,35.694241],[139.770222,35.694156],[139.769882,35.69406],[139.769781,35.694032],[139.769682,35.694265],[139.769516,35.694673],[139.769373,35.695031],[139.769328,35.695143],[139.768846,35.69501],[139.768577,35.694905],[139.768383,35.694828],[139.768045,35.694695],[139.767577,35.694512],[139.767465,35.694439],[139.767469,35.69463],[139.767474,35.694876],[139.767477,35.695163],[139.767485,35.695344],[139.767481,35.695425]]]}},{"type":"Feature","properties":{"name":"神田鍛冶町三丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.769781,35.694032],[139.769857,35.69385],[139.769926,35.693684],[139.769981,35.693551],[139.77004,35.693407],[139.770101,35.69326],[139.770162,35.69311],[139.77021,35.692994],[139.770252,35.692894],[139.770276,35.6929],[139.770686,35.69301],[139.770987,35.693095],[139.771265,35.693168],[139.771368,35.693197],[139.771365,35.693256],[139.771406,35.693377],[139.771452,35.693501],[139.771503,35.693756],[139.771528,35.693875],[139.771549,35.69417],[139.771572,35.694522],[139.771496,35.694501],[139.771205,35.694421],[139.770898,35.694337],[139.770624,35.694262],[139.770526,35.694241],[139.770222,35.694156],[139.769882,35.69406],[139.769781,35.694032]]]}},{"type":"Feature","properties":{"name":"鍛冶町一丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.770223,35.690426],[139.769708,35.689169],[139.770074,35.68929],[139.770359,35.689385],[139.770804,35.689528],[139.77107,35.689612],[139.771077,35.689614],[139.771344,35.6897],[139.771745,35.689828],[139.771921,35.689885],[139.772334,35.690018],[139.77239,35.690038],[139.772434,35.690056],[139.772509,35.690084],[139.772605,35.690115],[139.772915,35.690218],[139.77309,35.690275],[139.773367,35.690367],[139.773642,35.690458],[139.773812,35.690514],[139.773801,35.690542],[139.773752,35.690664],[139.773728,35.690725],[139.773677,35.690854],[139.773622,35.690989],[139.773577,35.691095],[139.773506,35.691262],[139.773477,35.691331],[139.77329,35.691276],[139.772919,35.691168],[139.772571,35.691067],[139.772157,35.690947],[139.771845,35.690858],[139.771599,35.690792],[139.771383,35.69073],[139.770963,35.690609],[139.770778,35.690556],[139.770671,35.690526],[139.770557,35.690501],[139.770347,35.690454],[139.770223,35.690426]]]}},{"type":"Feature","properties":{"name":"鍛冶町二丁目","level":"10"},"geometry":{"type":"Polygon","coordinates":[[[139.773184,35.692055],[139.77314,35.69217],[139.773101,35.692269],[139.773026,35.692444],[139.772983,35.692542],[139.772855,35.692822],[139.772792,35.692979],[139.772774,35.693023],[139.772567,35.693526],[139.772474,35.693775],[139.772439,35.693867],[139.772303,35.694211],[139.772234,35.694389],[139.772123,35.694674],[139.771837,35.694595],[139.771572,35.694522],[139.771549,35.69417],[139.771528,35.693875],[139.771503,35.693756],[139.771452,35.693501],[139.771406,35.693377],[139.771365,35.693256],[139.771368,35.693197],[139.771358,35.693182],[139.771164,35.692806],[139.770917,35.692399],[139.770787,35.692159],[139.770637,35.69177],[139.77047,35.691326],[139.770415,35.691131],[139.770223,35.690426],[139.770347,35.690454],[139.770557,35.690501],[139.770671,35.690526],[139.770778,35.690556],[139.770963,35.690609],[139.771383,35.69073],[139.771599,35.690792],[139.771845,35.690858],[139.772157,35.690947],[139.772571,35.691067],[139.772919,35.691168],[139.77329,35.691276],[139.773477,35.691331],[139.773458,35.691377],[139.77334,35.691662],[139.773184,35.692055]]]}},{"type":"Feature","properties":{"name":"神田美倉町","level":"9"},"geometry":{"type":"Polygon","coordinates":[[[139.775183,35.690969],[139.774953,35.690892],[139.774492,35.690739],[139.77421,35.690645],[139.773982,35.69057],[139.773857,35.690528],[139.773812,35.690514],[139.773801,35.690542],[139.773752,35.690664],[139.773728,35.690725],[139.773677,35.690854],[139.773622,35.690989],[139.773771,35.691037],[139.774224,35.691185],[139.774538,35.691289],[139.774689,35.691338],[139.774768,35.691362],[139.775003,35.691422],[139.775049,35.69129],[139.775136,35.691082],[139.775183,35.690969]]]}},{"type":"Feature","properties":{"name":"神田北乗物町","level":"9"},"geometry":{"type":"Polygon","coordinates":[[[139.774518,35.692871],[139.774206,35.692786],[139.774064,35.692743],[139.7738,35.692667],[139.773472,35.692573],[139.773235,35.692504],[139.773026,35.692444],[139.773101,35.692269],[139.77314,35.69217],[139.773184,35.692055],[139.7734,35.692114],[139.773815,35.692227],[139.774111,35.692311],[139.774617,35.692459],[139.774697,35.692482],[139.774671,35.692558],[139.774588,35.692702],[139.774546,35.6928],[139.774518,35.692871]]]}},{"type":"Feature","properties":{"name":"神田紺屋町","level":"9"},"geometry":{"type":"Polygon","coordinates":[[[139.774743,35.692379],[139.774939,35.691819],[139.774939,35.691769],[139.774831,35.691729],[139.774735,35.691699],[139.774548,35.691644],[139.77431,35.691575],[139.773927,35.691462],[139.773675,35.691388],[139.773477,35.691331],[139.773458,35.691377],[139.77334,35.691662],[139.773184,35.692055],[139.7734,35.692114],[139.773815,35.692227],[139.774111,35.692311],[139.774617,35.692459],[139.774697,35.692482],[139.774743,35.692379]]]}},{"type":"Feature","properties":{"name":"神田富山町","level":"9"},"geometry":{"type":"Polygon","coordinates":[[[139.772474,35.693775],[139.772567,35.693526],[139.772774,35.693023],[139.772792,35.692979],[139.773014,35.693044],[139.773718,35.693247],[139.7743,35.693396],[139.774228,35.693585],[139.774152,35.693776],[139.774093,35.693921],[139.774029,35.694071],[139.773982,35.694181],[139.773684,35.694101],[139.773393,35.694026],[139.77276,35.693853],[139.772474,35.693775]]]}},{"type":"Feature","properties":{"name":"神田東松下町","level":"9"},"geometry":{"type":"Polygon","coordinates":[[[139.772123,35.694674],[139.772234,35.694389],[139.772303,35.694211],[139.772439,35.693867],[139.772474,35.693775],[139.77276,35.693853],[139.773393,35.694026],[139.773684,35.694101],[139.773982,35.694181],[139.774029,35.694071],[139.774093,35.693921],[139.774152,35.693776],[139.774228,35.693585],[139.7743,35.693396],[139.77434,35.693299],[139.774577,35.693373],[139.774799,35.693441],[139.774863,35.693438],[139.774896,35.693435],[139.774973,35.693943],[139.774996,35.694093],[139.775011,35.694198],[139.774875,35.694155],[139.774797,35.694128],[139.774698,35.694101],[139.774568,35.694417],[139.774525,35.694524],[139.774468,35.694684],[139.774877,35.694803],[139.774664,35.695366],[139.774624,35.695352],[139.774562,35.695334],[139.774373,35.695284],[139.773978,35.695177],[139.773616,35.695077],[139.773366,35.695012],[139.773032,35.69493],[139.772609,35.694822],[139.772548,35.694789],[139.772481,35.694771],[139.772292,35.694719],[139.772123,35.694674]]]}},{"type":"Feature","properties":{"name":"神田東紺屋町","level":"9"},"geometry":{"type":"Polygon","coordinates":[[[139.774896,35.693435],[139.774863,35.693438],[139.774799,35.693441],[139.774577,35.693373],[139.77434,35.693299],[139.774436,35.69306],[139.774518,35.692871],[139.774546,35.6928],[139.774588,35.692702],[139.774671,35.692558],[139.774697,35.692482],[139.774743,35.692379],[139.774895,35.693427],[139.774896,35.693435]]]}}]};
+
+// 区域全体を囲む四角。地図の初期表示と、動かせる範囲の計算に使う
+const AREA_BOUNDS = (() => {
+  let s = 90, w = 180, n = -90, e = -180;
+  AREAS.features.forEach((f) => f.geometry.coordinates[0].forEach(([x, y]) => {
+    if (y < s) s = y; if (y > n) n = y; if (x < w) w = x; if (x > e) e = x;
+  }));
+  return L.latLngBounds([s, w], [n, e]);
+})();
+
+// 点が多角形の中にあるか（交差数判定）。町丁目の割り出しに使う
+function inRing(lat, lng, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+// その座標がどの町丁目か。どの区域にも入っていなければ空文字
+function areaOf(lat, lng) {
+  for (const f of AREAS.features) {
+    if (inRing(lat, lng, f.geometry.coordinates[0])) return f.properties.name;
+  }
+  return '';
+}
+
+const AREA_NAMES = AREAS.features.map((f) => f.properties.name);
+
+/* ---------- 区域内のお店・施設（OpenStreetMapから取得して埋め込み） ----------
+   [名前, 種類, 緯度, 経度] の配列。通信せずにその場で近い順に出せるようにしてある。
+   お店の入れ替わりを反映したいときは、この POIS を作り直して差し替える。        */
+const POIS = [];
+
+// タップした場所から半径 radius メートル以内のお店を、近い順に返す
+function nearbyPlaces(lat, lng, radius, limit) {
+  radius = radius || 60; limit = limit || 8;
+  const dLat = radius / 111320;
+  const dLng = radius / (111320 * Math.cos(lat * Math.PI / 180));
+  const out = [];
+  for (let i = 0; i < POIS.length; i++) {
+    const q = POIS[i];
+    if (Math.abs(q[2] - lat) > dLat || Math.abs(q[3] - lng) > dLng) continue;
+    const d = map.distance([lat, lng], [q[2], q[3]]);
+    if (d <= radius) out.push({ name:q[0], kind:q[1], lat:q[2], lng:q[3], d:Math.round(d) });
+  }
+  out.sort((a, b) => a.d - b.d);
+  return out.slice(0, limit);
+}
+
 /* ---------- ローカル設定 ---------- */
 const LS = {
   me:'flyer_me', tiles:'flyer_tiles', cache:'flyer_cache', queue:'flyer_queue', filter:'flyer_filter',
@@ -416,13 +520,14 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 let me       = lsGet(LS.me, '') || '';
 let pins     = new Map();                       // id -> pin
 let markers  = new Map();                       // id -> L.Marker
-let settings = { center:null, radius:800 };
+let settings = { center:null, radius:800, areaMode:'areas', showAreas:true };
 let filter   = new Set(lsGet(LS.filter, STATUS_KEYS));
 let selectedId = null;
 let lastAddedId = null;
 let addMode = false;
 let pickMode = null;                            // 'store' のとき位置決め中
 let areaCircle = null, storeMarker = null, meMarker = null, meCircle = null;
+let areaLayer = null, areaLabels = null;
 let watchId = null, firstFix = true;
 let queue = lsGet(LS.queue, []);                // 送信できなかった変更
 
@@ -476,29 +581,78 @@ function applyTiles(key) {
 }
 applyTiles(tileKey);
 
+/* ---------- 配る区域（町丁目）を地図に描く ---------- */
+function renderAreas() {
+  if (areaLayer) { map.removeLayer(areaLayer); areaLayer = null; }
+  if (areaLabels) { map.removeLayer(areaLabels); areaLabels = null; }
+  if (settings.showAreas === false) return;
+
+  areaLayer = L.geoJSON(AREAS, {
+    style: () => ({
+      color:'#7c3aed', weight:2, opacity:.9,
+      fillColor:'#7c3aed', fillOpacity:.07, interactive:false,
+    }),
+  }).addTo(map);
+  areaLayer.bringToBack();
+
+  // 区域の名前。近づいたときだけ出す（引いた画面では邪魔になるため）
+  areaLabels = L.layerGroup();
+  AREAS.features.forEach((f) => {
+    const b = L.geoJSON(f).getBounds();
+    areaLabels.addLayer(L.marker(b.getCenter(), {
+      icon: L.divIcon({ className:'', html:'<div class="arealabel">' + esc(f.properties.name) + '</div>', iconSize:[0,0] }),
+      interactive:false, zIndexOffset:-800,
+    }));
+  });
+  updateAreaLabels();
+}
+
+function updateAreaLabels() {
+  if (!areaLabels) return;
+  const show = map.getZoom() >= 16;
+  if (show && !map.hasLayer(areaLabels)) areaLabels.addTo(map);
+  if (!show && map.hasLayer(areaLabels)) map.removeLayer(areaLabels);
+}
+
 /* 対象エリアだけを見せる（範囲外に出られないようにする） */
 function applyArea(fly) {
-  if (!settings.center) return;
-  const c = L.latLng(settings.center.lat, settings.center.lng);
-  const r = Number(settings.radius) || 800;
+  renderAreas();
 
-  if (areaCircle) map.removeLayer(areaCircle);
-  areaCircle = L.circle(c, {
-    radius: r, color:'#dc2626', weight:2, opacity:.55, dashArray:'7 7',
-    fillColor:'#dc2626', fillOpacity:.04, interactive:false,
-  }).addTo(map);
-  if (storeMarker) map.removeLayer(storeMarker);
-  storeMarker = L.marker(c, {
-    icon: L.divIcon({ className:'', html:'<div class="store">🏠</div>', iconSize:[30,30], iconAnchor:[15,15] }),
-    interactive:false, zIndexOffset:-500,
-  }).addTo(map);
+  // お店の位置が決まっていれば、家マークと距離の円も出す
+  if (areaCircle) { map.removeLayer(areaCircle); areaCircle = null; }
+  if (storeMarker) { map.removeLayer(storeMarker); storeMarker = null; }
+  if (settings.center) {
+    const c = L.latLng(settings.center.lat, settings.center.lng);
+    storeMarker = L.marker(c, {
+      icon: L.divIcon({ className:'', html:'<div class="store">🏠</div>', iconSize:[30,30], iconAnchor:[15,15] }),
+      interactive:false, zIndexOffset:-500,
+    }).addTo(map);
+    if (settings.areaMode === 'circle') {
+      areaCircle = L.circle(c, {
+        radius: Number(settings.radius) || 800, color:'#dc2626', weight:2, opacity:.55,
+        dashArray:'7 7', fillColor:'#dc2626', fillOpacity:.04, interactive:false,
+      }).addTo(map);
+    }
+  }
 
-  // 対象エリアの外には行けないようにする（少しだけ余裕をもたせる）
-  map.setMaxBounds(c.toBounds(r * 3));
-  // 引きで見たときにエリア全体が入るところまでは縮小できるようにする
-  map.setMinZoom(Math.max(11, map.getBoundsZoom(c.toBounds(r * 2))));
-  // 起動直後はエリア全体ではなく、歩きながら使いやすい縮尺で開く
-  if (fly) map.setView(c, 17, { animate:false });
+  // 動ける範囲。既定は「決めた町丁目の全体」、お店からの距離で決めることもできる
+  let bounds = null;
+  if (settings.areaMode === 'circle' && settings.center) {
+    const c = L.latLng(settings.center.lat, settings.center.lng);
+    bounds = c.toBounds((Number(settings.radius) || 800) * 2);
+  } else if (AREAS.features.length) {
+    bounds = AREA_BOUNDS;
+  }
+  if (!bounds) { map.setMaxBounds(null); map.setMinZoom(3); return; }
+
+  map.setMaxBounds(bounds.pad(0.35));
+  // 引きで見たときに対象エリア全体が入るところまでは縮小できるようにする
+  map.setMinZoom(Math.max(11, map.getBoundsZoom(bounds)));
+  // 起動直後は、歩きながら使いやすい縮尺で開く
+  if (fly) {
+    if (settings.center) map.setView(L.latLng(settings.center.lat, settings.center.lng), 17, { animate:false });
+    else map.fitBounds(bounds, { animate:false });
+  }
 }
 
 /* ============================================================
@@ -630,6 +784,7 @@ async function saveSettings() {
    読み込み・同期
    ============================================================ */
 function mergePin(row) {
+  if (row && row.area == null) row.area = areaOf(row.lat, row.lng);
   const cur = pins.get(row.id);
   // 同じピンを2人が触ったときは、あとから更新された方を残す
   if (cur && cur.updated_at && row.updated_at && cur.updated_at > row.updated_at) return;
@@ -649,15 +804,15 @@ async function loadAll(quiet) {
     queue.forEach((q) => pins.set(q.id, q));
 
     if (setRes && setRes.data && setRes.data.data) {
-      const remote = setRes.data.data;
       const hadCenter = !!(settings.center);
-      settings = Object.assign({ center:null, radius:800 }, remote);
-      if (settings.center) applyArea(!hadCenter);
+      const before = JSON.stringify(settings);
+      settings = Object.assign({ center:null, radius:800, areaMode:'areas', showAreas:true }, setRes.data.data);
+      // 12秒ごとの取り直しで地図がちらつかないよう、本当に変わったときだけ描き直す
+      if (JSON.stringify(settings) !== before) applyArea(!hadCenter && !!settings.center);
     }
     cacheLocal();
     renderPins();
     setSync(queue.length ? 'warn' : 'ok', queue.length ? ('未送信 ' + queue.length + '件') : '同期中');
-    if (!quiet && !settings.center) promptStoreLocation();
   } catch (e) {
     const msg = String((e && (e.message || e.hint)) || '');
     if (/flyer_pins/.test(msg) && /does not exist|not find|schema cache/i.test(msg)) {
@@ -686,26 +841,68 @@ function subscribeRealtime() {
 }
 
 /* ============================================================
+   地図をタップしたとき：その場所のお店の名前と町丁目を出す
+   ============================================================ */
+let placePopup = null;
+let placeList = [];
+
+function placeRows(list) {
+  if (!POIS.length) return '<div class="pl-none">お店のデータが入っていません</div>';
+  if (!list.length) return '<div class="pl-none">この近くに登録されたお店はありません</div>';
+  return list.map((q, i) =>
+    '<button type="button" class="pl-row" data-i="' + i + '">'
+    + '<span class="pl-name">' + esc(q.name) + '</span>'
+    + '<span class="pl-sub">' + (q.kind ? esc(q.kind) + ' ・ ' : '') + q.d + 'm</span>'
+    + '</button>').join('');
+}
+
+function showPlacePopup(latlng) {
+  const area = areaOf(latlng.lat, latlng.lng);
+  placeList = nearbyPlaces(latlng.lat, latlng.lng, 60, 8);
+  const html =
+    '<div class="pl">'
+    + '<div class="pl-area">' + (area ? esc(area) : '対象エリアの外') + '</div>'
+    + '<div class="pl-cap">この場所のお店（近い順・タップでピン）</div>'
+    + '<div class="pl-list">' + placeRows(placeList) + '</div>'
+    + '<button type="button" class="pl-add" data-here="1">ここにピンを立てる</button>'
+    + '</div>';
+  placePopup = L.popup({ maxWidth:270, minWidth:210, autoPanPadding:[16, 100], closeButton:true })
+    .setLatLng(latlng).setContent(html).openOn(map);
+}
+
+// 吹き出しの中のボタン（開くたびに作り直されるので、まとめて拾う）
+document.addEventListener('click', (ev) => {
+  const row = ev.target.closest && ev.target.closest('.pl-row');
+  const add = ev.target.closest && ev.target.closest('.pl-add');
+  if (!row && !add) return;
+  const at = placePopup && placePopup.getLatLng();
+  map.closePopup();
+  if (add) { if (at) addPinAt(at, addMode ? $('addStatus').value : 'todo', true); return; }
+  const q = placeList[Number(row.dataset.i)];
+  if (!q) return;
+  addPinAt(L.latLng(q.lat, q.lng), addMode ? $('addStatus').value : 'todo', true, q.name);
+});
+
+/* ============================================================
    ピンの追加・編集
    ============================================================ */
 function newPin(lat, lng, status) {
   const now = new Date().toISOString();
   return {
-    id: uid(), lat, lng, status: status || 'done',
+    id: uid(), lat, lng, status: status || 'done', area: areaOf(lat, lng),
     label:'', note:'', author: me, deleted:false, created_at: now, updated_at: now,
   };
 }
 
-function addPinAt(latlng, status, openSheet) {
-  if (settings.center) {
-    const d = L.latLng(settings.center.lat, settings.center.lng).distanceTo(latlng);
-    if (d > Number(settings.radius) * 2) { toast('対象エリアの外です'); return; }
-  }
+function addPinAt(latlng, status, openSheet, label) {
+  const limit = map.options.maxBounds;
+  if (limit && !limit.contains(latlng)) { toast('対象エリアの外です'); return; }
   const p = newPin(
     Math.round(latlng.lat * 1e7) / 1e7,
     Math.round(latlng.lng * 1e7) / 1e7,
     status
   );
+  if (label) p.label = label;
   savePin(p);
   lastAddedId = p.id;
   $('btnUndo').disabled = false;
@@ -748,7 +945,8 @@ function fillPinSheet(p) {
     };
   });
   $('pinMeta').innerHTML =
-    '最終更新：' + (esc(p.author) || '(名前なし)') + ' ・ ' + fmtTime(p.updated_at)
+    (p.area ? '場所：<b>' + esc(p.area) + '</b><br>' : '')
+    + '最終更新：' + (esc(p.author) || '(名前なし)') + ' ・ ' + fmtTime(p.updated_at)
     + '<br>作成：' + fmtTime(p.created_at);
 }
 
@@ -776,23 +974,49 @@ function closeSheet(which) {
    ============================================================ */
 function renderList() {
   const mode = $('listFilter').value || 'all';
-  const rows = [...pins.values()]
-    .filter((p) => !p.deleted && (mode === 'all' || p.status === mode))
+  const alive = [...pins.values()].filter((p) => !p.deleted);
+  const rows = alive
+    .filter((p) => mode === 'all'
+               || (mode.startsWith('area:') ? p.area === mode.slice(5) : p.status === mode))
     .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
 
   $('listTitle').textContent = 'ピン一覧（' + rows.length + '件）';
   const body = $('listBody');
-  if (!rows.length) { body.innerHTML = '<div class="empty">まだピンがありません</div>'; return; }
 
-  body.innerHTML = rows.map((p) =>
-    '<button type="button" class="listrow" data-id="' + p.id + '">'
-    + '<i class="dot" style="background:' + STATUS[p.status].color + '"></i>'
-    + '<span class="txt">'
-    + '<span class="t1">' + (esc(p.label) || STATUS[p.status].label) + '</span>'
-    + '<span class="t2">' + STATUS[p.status].label + ' ・ ' + (esc(p.author) || '?')
-    + ' ・ ' + fmtTime(p.updated_at) + (p.note ? ' ・ ' + esc(p.note) : '') + '</span>'
-    + '</span><span class="go">地図で見る</span></button>'
-  ).join('');
+  // 町丁目ごとの進捗（配布済み ÷ その町丁目のピン数）
+  let head = '';
+  const byArea = new Map();
+  alive.forEach((p) => {
+    const k = p.area || 'その他';
+    if (!byArea.has(k)) byArea.set(k, { done:0, total:0 });
+    const a = byArea.get(k);
+    a.total++; if (p.status === 'done') a.done++;
+  });
+  if (byArea.size) {
+    const order = AREA_NAMES.filter((n) => byArea.has(n)).concat(byArea.has('その他') ? ['その他'] : []);
+    head = '<div class="areastat">' + order.map((n) => {
+      const a = byArea.get(n);
+      const pct = a.total ? Math.round(a.done / a.total * 100) : 0;
+      return '<button type="button" class="arearow' + (mode === 'area:' + n ? ' on' : '') + '" data-area="' + esc(n) + '">'
+            + '<span class="an">' + esc(n) + '</span>'
+            + '<span class="ab"><i style="width:' + pct + '%"></i></span>'
+            + '<span class="ac">' + a.done + '/' + a.total + '</span></button>';
+    }).join('') + '</div>';
+  }
+
+  if (!rows.length) { body.innerHTML = head + '<div class="empty">まだピンがありません</div>'; }
+  else {
+    body.innerHTML = head + rows.map((p) =>
+      '<button type="button" class="listrow" data-id="' + p.id + '">'
+      + '<i class="dot" style="background:' + STATUS[p.status].color + '"></i>'
+      + '<span class="txt">'
+      + '<span class="t1">' + (esc(p.label) || STATUS[p.status].label) + '</span>'
+      + '<span class="t2">' + (p.area ? esc(p.area) + ' ・ ' : '') + STATUS[p.status].label
+      + ' ・ ' + (esc(p.author) || '?') + ' ・ ' + fmtTime(p.updated_at)
+      + (p.note ? ' ・ ' + esc(p.note) : '') + '</span>'
+      + '</span><span class="go">地図で見る</span></button>'
+    ).join('');
+  }
 
   body.querySelectorAll('.listrow').forEach((el) => {
     el.onclick = () => {
@@ -800,6 +1024,13 @@ function renderList() {
       if (!p) return;
       map.setView([p.lat, p.lng], Math.max(map.getZoom(), 18));
       openPin(p.id);
+    };
+  });
+  body.querySelectorAll('.arearow').forEach((el) => {
+    el.onclick = () => {
+      const v = 'area:' + el.dataset.area;
+      $('listFilter').value = ($('listFilter').value === v) ? 'all' : v;
+      renderList();
     };
   });
 }
@@ -840,12 +1071,6 @@ function startWatch() {
 /* ============================================================
    お店の位置を決める
    ============================================================ */
-function promptStoreLocation() {
-  if ($('nameModal').classList.contains('open')) return;
-  toast('はじめに お店の位置 を決めてください');
-  openSettings();
-}
-
 function startPick() {
   pickMode = 'store';
   document.body.classList.add('picking');
@@ -878,14 +1103,18 @@ function openSettings() {
   $('setTiles').innerHTML = Object.keys(TILES)
     .map((k) => '<option value="' + k + '"' + (k === tileKey ? ' selected' : '') + '>' + TILES[k].name + '</option>').join('');
   $('setRadius').value = String(settings.radius || 800);
+  $('setAreaMode').value = settings.areaMode || 'areas';
+  $('setShowAreas').checked = settings.showAreas !== false;
   updateSettingsInfo();
   $('setModal').classList.add('open');
 }
 
 function updateSettingsInfo() {
   $('setCenterInfo').textContent = settings.center
-    ? ('現在の中心：' + settings.center.lat.toFixed(5) + ', ' + settings.center.lng.toFixed(5))
-    : 'まだお店の位置が決まっていません。上の2つのどちらかで決めてください。';
+    ? ('お店の位置：' + settings.center.lat.toFixed(5) + ', ' + settings.center.lng.toFixed(5))
+    : 'お店の位置は未設定です（決めると🏠マークが出ます。決めなくても使えます）';
+  $('setAreaInfo').textContent = '登録ずみの区域：' + AREA_NAMES.length + 'か所（' + AREA_NAMES.slice(0, 2).join('、') + ' ほか）';
+  $('setRadiusField').style.display = ($('setAreaMode').value === 'circle') ? '' : 'none';
 }
 
 /* ============================================================
@@ -896,7 +1125,9 @@ let suppressClickUntil = 0;
 map.on('click', (e) => {
   if (pickMode) return;
   if (Date.now() < suppressClickUntil) return;
-  if (addMode) addPinAt(e.latlng, $('addStatus').value, false);
+  if (addMode) { addPinAt(e.latlng, $('addStatus').value, false); return; }
+  closeSheet('pinSheet'); closeSheet('listSheet');
+  showPlacePopup(e.latlng);
 });
 
 // 長押し（スマホ）／右クリック（PC）＝ メモを書きながら追加
@@ -985,6 +1216,21 @@ $('setName').onchange = () => {
   lsSet(LS.me, me);
 };
 $('setTiles').onchange = () => applyTiles($('setTiles').value);
+$('setAreaMode').onchange = () => {
+  settings.areaMode = $('setAreaMode').value;
+  if (settings.areaMode === 'circle' && !settings.center) {
+    toast('先にお店の位置を決めてください');
+    settings.areaMode = 'areas'; $('setAreaMode').value = 'areas';
+  }
+  updateSettingsInfo();
+  saveSettings();
+  applyArea(true);
+};
+$('setShowAreas').onchange = () => {
+  settings.showAreas = $('setShowAreas').checked;
+  saveSettings();
+  applyArea(false);
+};
 $('setRadius').onchange = () => {
   settings.radius = Number($('setRadius').value);
   saveSettings();
@@ -1027,11 +1273,12 @@ $('nameOk').onclick = () => {
   me = v;
   lsSet(LS.me, me);
   $('nameModal').classList.remove('open');
-  if (!settings.center) promptStoreLocation();
 };
 $('nameInput').onkeydown = (e) => { if (e.key === 'Enter') $('nameOk').click(); };
 
 // シートの外側をタップしたら閉じる
+map.on('zoomend', updateAreaLabels);
+
 map.on('movestart', () => { if (!pickMode) { const p = collectPinSheet(); if (p) savePin(p); } });
 
 window.addEventListener('online', () => { flushQueue(); loadAll(true); });
@@ -1045,7 +1292,8 @@ window.addEventListener('online', () => { flushQueue(); loadAll(true); });
     .map((k) => '<option value="' + k + '"' + (k === 'done' ? ' selected' : '') + '>' + STATUS[k].label + '</option>').join('');
   // 一覧の絞り込み
   $('listFilter').innerHTML = '<option value="all">すべて表示</option>'
-    + STATUS_KEYS.map((k) => '<option value="' + k + '">' + STATUS[k].label + 'だけ</option>').join('');
+    + STATUS_KEYS.map((k) => '<option value="' + k + '">' + STATUS[k].label + 'だけ</option>').join('')
+    + AREA_NAMES.map((n) => '<option value="area:' + esc(n) + '">' + esc(n) + 'だけ</option>').join('');
 
   // 前回の状態をすぐ出す（通信を待たない）
   const cache = lsGet(LS.cache, null);
@@ -1054,7 +1302,7 @@ window.addEventListener('online', () => { flushQueue(); loadAll(true); });
     if (cache.settings) settings = Object.assign(settings, cache.settings);
   }
   queue.forEach((q) => pins.set(q.id, q));
-  if (settings.center) applyArea(true);
+  applyArea(true);
   renderPins();
   setSync(queue.length ? 'warn' : 'ok', queue.length ? ('未送信 ' + queue.length + '件') : '接続中');
 
