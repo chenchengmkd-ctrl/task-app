@@ -384,17 +384,22 @@ const STATUS_KEYS = ['done','todo','later','ng'];
 /* ---------- 地図タイル ---------- */
 const TILES = {
   osm: {
-    name:'標準地図（建物がはっきり）',
+    name:'標準地図（お店の名前が多い）',
     url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     opts:{ maxZoom:19, attribution:'&copy; OpenStreetMap contributors' },
   },
+  gsi: {
+    name:'地理院地図（国の公式・番地が見やすい）',
+    url:'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',
+    opts:{ maxZoom:19, maxNativeZoom:18, attribution:'&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>' },
+  },
   pale: {
-    name:'淡色地図（文字が読みやすい）',
+    name:'淡色地図（うすい色で見やすい）',
     url:'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',
     opts:{ maxZoom:19, maxNativeZoom:18, attribution:'&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>' },
   },
   photo: {
-    name:'航空写真（建物の形で分かる）',
+    name:'航空写真（上から見た実物）',
     url:'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',
     opts:{ maxZoom:19, maxNativeZoom:18, attribution:'&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>' },
   },
