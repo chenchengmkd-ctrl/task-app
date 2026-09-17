@@ -650,7 +650,9 @@ function applyArea(fly) {
   map.setMinZoom(Math.max(11, map.getBoundsZoom(bounds)));
   // 起動直後は、歩きながら使いやすい縮尺で開く
   if (fly) {
-    if (settings.center) map.setView(L.latLng(settings.center.lat, settings.center.lng), 17, { animate:false });
+    const c = settings.center && L.latLng(settings.center.lat, settings.center.lng);
+    // お店が対象エリアの外に登録されていても、地図が飛ばされないようにする
+    if (c && bounds.contains(c)) map.setView(c, 17, { animate:false });
     else map.fitBounds(bounds, { animate:false });
   }
 }
@@ -745,6 +747,13 @@ function setSync(state, text) {
   $('syncTxt').textContent = text;
 }
 
+// 町丁目(area)は緯度経度から毎回わり出せるので、サーバには送らない。
+// （テーブルにその列は無い。送るとupsertごと失敗して相手に届かなくなる）
+function forDb(p) {
+  const { area, ...rest } = p;
+  return rest;
+}
+
 function enqueue(pin) {
   queue = queue.filter((q) => q.id !== pin.id);
   queue.push(pin);
@@ -755,7 +764,7 @@ function enqueue(pin) {
 async function flushQueue() {
   if (!queue.length) return;
   const batch = queue.slice(0, 50);
-  const { error } = await db.from('flyer_pins').upsert(batch);
+  const { error } = await db.from('flyer_pins').upsert(batch.map(forDb));
   if (error) { setSync('bad', '未送信 ' + queue.length + '件'); return; }
   const ids = new Set(batch.map((b) => b.id));
   queue = queue.filter((q) => !ids.has(q.id));
@@ -769,8 +778,9 @@ async function savePin(p) {
   pins.set(p.id, p);
   cacheLocal();
   renderPins();
-  const { error } = await db.from('flyer_pins').upsert(p);
-  if (error) { enqueue(p); } else if (!queue.length) { setSync('ok', '同期中'); }
+  const { error } = await db.from('flyer_pins').upsert(forDb(p));
+  if (error) { enqueue(p); console.warn('保存できませんでした', error); }
+  else if (!queue.length) { setSync('ok', '同期中'); }
 }
 
 async function saveSettings() {
@@ -1261,7 +1271,7 @@ $('setReset').onclick = async () => {
   const now = new Date().toISOString();
   list.forEach((p) => { p.status = 'todo'; p.author = me; p.updated_at = now; pins.set(p.id, p); });
   cacheLocal(); renderPins();
-  const { error } = await db.from('flyer_pins').upsert(list);
+  const { error } = await db.from('flyer_pins').upsert(list.map(forDb));
   if (error) { list.forEach(enqueue); }
   $('setModal').classList.remove('open');
   toast(list.length + '件を未訪問に戻しました');
