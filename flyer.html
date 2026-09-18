@@ -163,6 +163,20 @@
   .sbtn .dot{width:11px;height:11px;border-radius:50%;flex:none}
   .sbtn.on{border-color:currentColor;background:#f6f8fa}
   .meta{font-size:11.5px;color:var(--muted);margin:8px 0 12px;line-height:1.6}
+  .pinshops{
+    background:#f6f8fa;border-radius:10px;padding:8px 10px;max-height:150px;overflow-y:auto;
+  }
+  .pinshops-cap{font-size:12px;font-weight:700;margin-bottom:6px}
+  .pinshops-row{font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--border);line-height:1.4}
+  .pinshops-row:last-child{border-bottom:none}
+  .pl-k{
+    display:inline-block;min-width:2.6em;text-align:center;margin-right:6px;
+    border-radius:5px;padding:1px 4px;font-size:10px;font-weight:700;
+    background:#e5e7eb;color:#4b5563;
+  }
+  .k-biz  .pl-k{background:#dbeafe;color:#1d4ed8}
+  .k-food .pl-k{background:#fef3c7;color:#b45309}
+  .k-shop .pl-k{background:#dcfce7;color:#15803d}
   .rowbtns{display:flex;gap:8px}
   .btn{
     flex:1;border-radius:11px;padding:11px;font-size:14px;font-weight:700;
@@ -382,6 +396,7 @@
     <label>建物名・部屋番号など（任意）</label>
     <input type="text" id="pinLabel" placeholder="例）〇〇ハイツ 101〜305">
   </div>
+  <div id="pinShopsBox"></div>
   <div class="field">
     <label>配った枚数</label>
     <div class="counter">
@@ -1230,6 +1245,17 @@ function fillPinSheet(p) {
     + '記録日：' + fmtDay(dayKey(p)) + '<br>'
     + '最終更新：' + (esc(p.author) || '(名前なし)') + ' ・ ' + fmtTime(p.updated_at)
     + '<br>作成：' + fmtTime(p.created_at);
+
+  // この建物に入っているお店・会社（記録するときの参考として出す。地図の吹き出しには出さない）
+  const bi = BLD_INDEX.has(p.id) ? BLD_INDEX.get(p.id) : -1;
+  const shops = (bi >= 0 && lsGet(LS.shops, true) !== false) ? placesInBuilding(bi) : [];
+  $('pinShopsBox').innerHTML = shops.length
+    ? '<div class="field"><label>この建物のお店・会社（参考）</label>'
+      + '<div class="pinshops"><div class="pinshops-cap">' + placeSummary(shops) + '</div>'
+      + shops.map((q) => '<div class="pinshops-row k-' + q.kind + '">'
+          + '<span class="pl-k">' + PKIND[q.kind] + '</span>' + esc(q.name) + '</div>').join('')
+      + '</div></div>'
+    : '';
 }
 
 function collectPinSheet() {
