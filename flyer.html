@@ -259,16 +259,11 @@
   .pl-sub{display:block;font-size:10.5px;color:var(--muted)}
   .pl-none{font-size:12px;color:var(--muted);padding:4px 2px 8px}
   .pl-bname{font-size:14px;font-weight:700;margin:2px 0 6px;line-height:1.35}
-  .pl-row2{font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--border);line-height:1.4}
-  .pl-row2:last-child{border-bottom:none}
-  .pl-k{
-    display:inline-block;min-width:2.6em;text-align:center;margin-right:6px;
-    border-radius:5px;padding:1px 4px;font-size:10px;font-weight:700;
-    background:#e5e7eb;color:#4b5563;
-  }
-  .k-biz  .pl-k{background:#dbeafe;color:#1d4ed8}
-  .k-food .pl-k{background:#fef3c7;color:#b45309}
-  .k-shop .pl-k{background:#dcfce7;color:#15803d}
+  .pl-rec{background:#f6f8fa;border-radius:9px;padding:8px 10px;margin-bottom:8px}
+  .pl-recrow{font-size:12.5px;line-height:1.6}
+  .pl-recrow b{font-size:14px}
+  .pl-recrow.pl-note{color:var(--muted);white-space:pre-wrap}
+  .pl-recrow.pl-sub{color:var(--muted);font-size:11px;margin-top:2px}
   .pl-add{
     display:block;width:100%;background:var(--accent);color:#fff;
     border-radius:9px;padding:8px;font-size:13px;font-weight:700;text-align:center;
@@ -523,7 +518,7 @@ const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const STATUS = {
   done : { label:'配布済み',       short:'配布済み', color:'#16a34a', icon:'✓' },
   later: { label:'要再訪',         short:'要再訪',   color:'#2563eb', icon:'↻' },
-  none : { label:'配れる所なし',   short:'配れず',   color:'#6b7280', icon:'–' },
+  none : { label:'配れる所なし',   short:'配れず',   color:'#ea580c', icon:'–' },
 };
 const STATUS_KEYS = ['done','later','none'];
 
@@ -1083,37 +1078,41 @@ function placeSummary(list) {
   return PKIND_ORDER.filter((k) => n[k]).map((k) => PKIND[k] + ' ' + n[k]).join(' ・ ');
 }
 
+// タップした場所の吹き出し：地図のデータではなく「自分たちが記録した内容」を出す
 function showPlacePopup(latlng) {
   const area = areaOf(latlng.lat, latlng.lng);
   placeBld = buildingAt(latlng.lat, latlng.lng);
   const bname = placeBld >= 0 ? (BUILDINGS[placeBld][2] || '') : '';
-  const inside = lsGet(LS.shops, true) === false ? [] : placesInBuilding(placeBld);
   const rec = placeBld >= 0 ? pins.get('b' + BUILDINGS[placeBld][0]) : null;
+  const has = rec && !rec.deleted;
 
   let body;
   if (placeBld < 0) {
     body = '<div class="pl-none">ここには建物の登録がありません</div>';
-  } else if (bname || inside.length) {
-    body = (bname ? '<div class="pl-bname">' + esc(bname) + '</div>' : '')
-      + (inside.length
-          ? '<div class="pl-cap">' + placeSummary(inside) + '</div><div class="pl-list">'
-            + inside.map((q) => '<div class="pl-row2 k-' + q.kind + '">'
-                + '<span class="pl-k">' + PKIND[q.kind] + '</span>' + esc(q.name) + '</div>').join('')
-            + '</div>'
-          : '');
+  } else if (has) {
+    const n = [];
+    if (Number(rec.sheets))  n.push('配った枚数 <b>' + rec.sheets + '</b>枚');
+    if (Number(rec.refused)) n.push('断られた <b>' + rec.refused + '</b>件');
+    body =
+      '<div class="pl-bname">' + esc(rec.label || bname || '（名前なし）') + '</div>'
+      + '<div class="pl-rec">'
+      + (n.length ? '<div class="pl-recrow">' + n.join(' ・ ') + '</div>' : '')
+      + (rec.note ? '<div class="pl-recrow pl-note">' + esc(rec.note) + '</div>' : '')
+      + '<div class="pl-recrow pl-sub">' + (esc(rec.author) || '?') + ' ・ ' + fmtDay(dayKey(rec)) + '</div>'
+      + '</div>';
   } else {
-    body = '<div class="pl-none">この建物の名前は登録されていません</div>';
+    body = bname
+      ? '<div class="pl-bname">' + esc(bname) + '</div><div class="pl-none">まだ記録がありません</div>'
+      : '<div class="pl-none">まだ記録がありません（建物名は未登録）</div>';
   }
 
   const html =
     '<div class="pl">'
     + '<div class="pl-area">' + (area ? esc(area) : '対象エリアの外')
-    + (rec && !rec.deleted ? ' ・ <span style="color:' + STATUS[rec.status].color + '">'
-        + STATUS[rec.status].label + '</span>' : '') + '</div>'
+    + (has ? ' ・ <span style="color:' + STATUS[rec.status].color + '">' + STATUS[rec.status].label + '</span>' : '') + '</div>'
     + body
     + (placeBld >= 0
-        ? '<button type="button" class="pl-add" data-bld="1">'
-          + (rec && !rec.deleted ? 'この建物を開く' : 'この建物に印をつける') + '</button>'
+        ? '<button type="button" class="pl-add" data-bld="1">' + (has ? 'この建物を開く' : 'この建物に印をつける') + '</button>'
         : '<button type="button" class="pl-add" data-here="1">ここにピンを立てる</button>')
     + '</div>';
   placePopup = L.popup({ maxWidth:270, minWidth:210, autoPanPadding:[16, 100], closeButton:true })
@@ -1336,8 +1335,9 @@ function renderDayList() {
   pins.forEach((p) => {
     const k = dayKey(p);
     if (!k) return;
-    if (!byDay.has(k)) byDay.set(k, { sheets:0, done:0, refused:0, none:0, later:0, who:new Map() });
+    if (!byDay.has(k)) byDay.set(k, { visited:0, sheets:0, done:0, refused:0, none:0, later:0, who:new Map() });
     const d = byDay.get(k);
+    d.visited++;                              // その日に回った軒数（状況にかかわらず）
     d.sheets  += Number(p.sheets) || 0;
     d.refused += Number(p.refused) || 0;
     if (p.status === 'done') d.done++;
@@ -1354,13 +1354,13 @@ function renderDayList() {
 
   const all = days.reduce((a, k) => {
     const d = byDay.get(k);
-    a.sheets += d.sheets; a.done += d.done; a.refused += d.refused; return a;
-  }, { sheets:0, done:0, refused:0 });
+    a.visited += d.visited; a.sheets += d.sheets; a.done += d.done; a.refused += d.refused; return a;
+  }, { visited:0, sheets:0, done:0, refused:0 });
 
   body.innerHTML =
     '<div class="daytot">'
-    + '<div><b>' + all.sheets + '</b>合計 配った枚数</div>'
-    + '<div><b>' + all.done + '</b>配れた件数</div>'
+    + '<div><b>' + all.visited + '</b>合計 回った軒数</div>'
+    + '<div><b>' + all.sheets + '</b>配った枚数</div>'
     + '<div><b>' + all.refused + '</b>断られた件数</div>'
     + '</div>'
     + days.map((k) => {
@@ -1368,8 +1368,8 @@ function renderDayList() {
       const who = [...d.who.entries()].map(([w, n]) => esc(w) + (n ? ' ' + n + '枚' : '')).join('、');
       return '<button type="button" class="dayrow" data-day="' + k + '">'
         + '<span class="dd">' + fmtDay(k) + '</span>'
-        + '<span class="dn"><b>' + d.sheets + '枚</b> ・ 配れた ' + d.done + '件'
-        + ' ・ 断り ' + d.refused + '件 ・ 配れず ' + d.none + '件'
+        + '<span class="dn"><b>' + d.visited + '軒</b> 回った ・ 配った <b>' + d.sheets + '枚</b>'
+        + '<br>配れた ' + d.done + '件 ・ 断り ' + d.refused + '件 ・ 配れず ' + d.none + '件'
         + (who ? '<br>' + who : '') + '</span></button>';
     }).join('');
 
