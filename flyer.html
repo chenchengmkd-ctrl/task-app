@@ -44,6 +44,13 @@
     display:flex;align-items:center;justify-content:center;font-size:15px;
     box-shadow:0 2px 6px rgba(0,0,0,.3);
   }
+  .pinlabel{
+    transform:translate(-50%,10px);white-space:nowrap;max-width:150px;
+    overflow:hidden;text-overflow:ellipsis;
+    font-size:11px;font-weight:700;color:#1f2933;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;
+    pointer-events:none;
+  }
   .arealabel{
     transform:translate(-50%,-50%);white-space:nowrap;
     font-size:11px;font-weight:700;color:#5b21b6;
@@ -393,8 +400,8 @@
     <div class="statusgrid" id="pinStatus"></div>
   </div>
   <div class="field">
-    <label>建物名・部屋番号など（任意）</label>
-    <input type="text" id="pinLabel" placeholder="例）〇〇ハイツ 101〜305">
+    <label>建物名（任意）</label>
+    <input type="text" id="pinLabel" placeholder="例）〇〇ハイツ">
   </div>
   <div id="pinShopsBox"></div>
   <div class="field">
@@ -533,7 +540,7 @@ const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const STATUS = {
   done : { label:'配布済み',       short:'配布済み', color:'#16a34a', icon:'✓' },
   later: { label:'要再訪',         short:'要再訪',   color:'#2563eb', icon:'↻' },
-  none : { label:'配れる所なし',   short:'配れず',   color:'#ea580c', icon:'–' },
+  none : { label:'配れる所なし',   short:'配れず',   color:'#65a30d', icon:'–' },
 };
 const STATUS_KEYS = ['done','later','none'];
 
@@ -683,6 +690,7 @@ let addMode = false;
 let pickMode = null;                            // 'store' のとき位置決め中
 let areaCircle = null, storeMarker = null, meMarker = null, meCircle = null;
 let areaLayer = null, areaLabels = null;
+let pinLabels = null;
 // 建物の塗りは数が増えるので、1枚のキャンバスにまとめて描く（スマホでも軽い）
 const bldRenderer = L.canvas({ padding:0.3 });
 let watchId = null, firstFix = true;
@@ -789,6 +797,13 @@ function updateAreaLabels() {
   if (!show && map.hasLayer(areaLabels)) map.removeLayer(areaLabels);
 }
 
+function updatePinLabels() {
+  if (!pinLabels) return;
+  const show = map.getZoom() >= 17;   // 建物名は区域名より引いたら消してよい
+  if (show && !map.hasLayer(pinLabels)) pinLabels.addTo(map);
+  if (!show && map.hasLayer(pinLabels)) map.removeLayer(pinLabels);
+}
+
 /* 対象エリアだけを見せる（範囲外に出られないようにする） */
 function applyArea(fly) {
   renderAreas();
@@ -850,6 +865,8 @@ function visible(p) { return !p.deleted && filter.has(p.status); }
 
 function renderPins() {
   // 建物の記録は形のまま塗り、それ以外はピンを立てる
+  if (pinLabels) map.removeLayer(pinLabels);
+  pinLabels = L.layerGroup();
   pins.forEach((p, id) => {
     const bi = BLD_INDEX.has(id) ? BLD_INDEX.get(id) : -1;
     if (!visible(p)) {
@@ -869,6 +886,10 @@ function renderPins() {
       }
       m.setStyle({ fillColor:col, weight: id === selectedId ? 3.5 : 1.5,
                    color: id === selectedId ? '#fbbf24' : '#ffffff' });
+      if (p.label) pinLabels.addLayer(L.marker([p.lat, p.lng], {
+        icon: L.divIcon({ className:'', html:'<div class="pinlabel">' + esc(p.label) + '</div>', iconSize:[0,0] }),
+        interactive:false, zIndexOffset:-300,
+      }));
       return;
     }
     // ---- ふつうのピン ----
@@ -884,7 +905,12 @@ function renderPins() {
       if (ll.lat !== p.lat || ll.lng !== p.lng) m.setLatLng([p.lat, p.lng]);
       m.setIcon(icon);
     }
+    if (p.label) pinLabels.addLayer(L.marker([p.lat, p.lng], {
+      icon: L.divIcon({ className:'', html:'<div class="pinlabel">' + esc(p.label) + '</div>', iconSize:[0,0] }),
+      interactive:false, zIndexOffset:-300,
+    }));
   });
+  updatePinLabels();
   // 消えたもの
   markers.forEach((m, id) => {
     if (!pins.has(id) || !visible(pins.get(id))) { map.removeLayer(m); markers.delete(id); }
@@ -1415,11 +1441,16 @@ function renderDayList() {
 /* ============================================================
    現在位置
    ============================================================ */
+let lastFixAt = 0;
+let geoDenied = false;   // 「許可しない」を選んだ場合は、押しても毎回エラーを出さない
+
 function startWatch() {
   if (!navigator.geolocation) { toast('この端末では位置情報が使えません'); return; }
   if (watchId !== null) return;
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
+      lastFixAt = Date.now();
+      geoDenied = false;
       const ll = [pos.coords.latitude, pos.coords.longitude];
       const acc = pos.coords.accuracy || 0;
       if (!meMarker) {
@@ -1438,12 +1469,26 @@ function startWatch() {
     },
     (err) => {
       $('btnLocate').classList.remove('locating');
-      if (err.code === 1) toast('位置情報が許可されていません（ブラウザの設定から許可してください）');
-      else toast('現在地を取得できませんでした');
+      // ここで watchId を消しておかないと、一度エラーになったきり
+      // 二度と再開できず「再読み込みしないと直らない」状態になる
+      if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+      if (err.code === 1) { geoDenied = true; toast('位置情報が許可されていません（ブラウザの設定から許可してください）'); }
+      else { toast('現在地を取得できませんでした。もう一度◎を押してください'); startWatch(); }
     },
     { enableHighAccuracy:true, maximumAge:5000, timeout:15000 }
   );
 }
+
+// スマホの画面を裏に回すとブラウザが位置追跡を止めることがある。
+// 戻ってきたときに更新が止まっていたら、黙って裏で取り直す
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || geoDenied) return;
+  const stale = Date.now() - lastFixAt > 20000;
+  if (watchId === null || stale) {
+    if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    startWatch();
+  }
+});
 
 /* ============================================================
    お店の位置を決める
@@ -1565,8 +1610,14 @@ $('btnUndo').onclick = () => {
 };
 
 $('btnLocate').onclick = () => {
-  startWatch();
-  if (meMarker) map.setView(meMarker.getLatLng(), Math.max(map.getZoom(), 18));
+  // 止まっていれば押すたびに取り直す（再読み込みしなくても復帰できるように）
+  const stale = Date.now() - lastFixAt > 20000;
+  if (watchId === null || stale) {
+    if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    geoDenied = false;
+    startWatch();
+  }
+  if (meMarker && !stale) map.setView(meMarker.getLatLng(), Math.max(map.getZoom(), 18));
   else toast('現在地を探しています…');
 };
 
@@ -1686,6 +1737,7 @@ $('nameInput').onkeydown = (e) => { if (e.key === 'Enter') $('nameOk').click(); 
 
 // シートの外側をタップしたら閉じる
 map.on('zoomend', updateAreaLabels);
+map.on('zoomend', updatePinLabels);
 
 map.on('movestart', () => { if (!pickMode) { const p = collectPinSheet(); if (p) savePin(p); } });
 
