@@ -1443,6 +1443,8 @@ function renderDayList() {
    ============================================================ */
 let lastFixAt = 0;
 let geoDenied = false;   // 「許可しない」を選んだ場合は、押しても毎回エラーを出さない
+let geoFails = 0;        // 連続で失敗した回数（やり直しの間隔を伸ばすのに使う）
+let geoRetryTimer = null;
 
 function startWatch() {
   if (!navigator.geolocation) { toast('この端末では位置情報が使えません'); return; }
@@ -1451,6 +1453,7 @@ function startWatch() {
     (pos) => {
       lastFixAt = Date.now();
       geoDenied = false;
+      geoFails = 0;
       const ll = [pos.coords.latitude, pos.coords.longitude];
       const acc = pos.coords.accuracy || 0;
       if (!meMarker) {
@@ -1472,8 +1475,13 @@ function startWatch() {
       // ここで watchId を消しておかないと、一度エラーになったきり
       // 二度と再開できず「再読み込みしないと直らない」状態になる
       if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-      if (err.code === 1) { geoDenied = true; toast('位置情報が許可されていません（ブラウザの設定から許可してください）'); }
-      else { toast('現在地を取得できませんでした。もう一度◎を押してください'); startWatch(); }
+      if (err.code === 1) { geoDenied = true; toast('位置情報が許可されていません（ブラウザの設定から許可してください）'); return; }
+      // 取れない場所（屋内・ビルの谷間など）では、すぐやり直すと失敗が止まらなくなる。
+      // 間隔を 5秒 → 10秒 → 20秒 … と伸ばし（上限60秒）、お知らせは最初の1回だけにする
+      geoFails++;
+      if (geoFails === 1) toast('現在地を取得できません。取れ次第、自動で表示します');
+      clearTimeout(geoRetryTimer);
+      geoRetryTimer = setTimeout(startWatch, Math.min(60000, 5000 * Math.pow(2, geoFails - 1)));
     },
     { enableHighAccuracy:true, maximumAge:5000, timeout:15000 }
   );
@@ -1614,7 +1622,8 @@ $('btnLocate').onclick = () => {
   const stale = Date.now() - lastFixAt > 20000;
   if (watchId === null || stale) {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-    geoDenied = false;
+    clearTimeout(geoRetryTimer);
+    geoDenied = false; geoFails = 0;
     startWatch();
   }
   if (meMarker && !stale) map.setView(meMarker.getLatLng(), Math.max(map.getZoom(), 18));
