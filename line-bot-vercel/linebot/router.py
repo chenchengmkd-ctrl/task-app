@@ -197,12 +197,10 @@ def _handle_image_message(user_id, message_id):
         # 判定に失敗しただけならレシートとして読み進める（従来どおりの動きに戻す）
         print('shift detect error:', e)
 
-    try:
-        return receipt_mod.handle_image(user_id, message_id)
-    except Exception as e:
-        # 読み取りに失敗しても黙って終わらせない（返信が無いと送れたのかが分からないため）
-        print('receipt handle_image error:', e)
-        return 'レシートの読み取りでエラーが出ました。もう一度送ってみてください。'
+    # レシートの登録は勤怠bot（line-kintai-vercel）に一本化した（2026-10-14、オーナーの要望）。
+    # ここでも登録すると、同じレシートを勤怠botにも送った時に二重計上になるため（こちらには重複チェックが無い）。
+    # receipt.py は残してある（元に戻す時はこの返信の代わりに receipt_mod.handle_image を呼ぶ）。
+    return 'レシートの登録は勤怠botに一本化しました。\n写真は勤怠botのトーク（またはスタッフのグループ）に送ってください。'
 
 
 def handle_event(ev):

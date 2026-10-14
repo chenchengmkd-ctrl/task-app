@@ -251,9 +251,17 @@ def send_finance_report(push_text, get_users):
         square_mod.sync_daily(push_text, get_users, notify=False)
     except Exception as e:
         print('finance report square sync error:', e)
+    # 22時のLINE送信は止めた（2026-10-14、オーナーの要望。毎日の収支は勤怠botが17時に送る）。
+    # 上のSquareの取り込み直し（営業後の売上を財務アプリに反映する）は必要なので、cron自体は残してある。
+    # 送信を再開する時は SEND_DAILY_FINANCE_REPORT を True にする。
+    if not SEND_DAILY_FINANCE_REPORT:
+        return
     body = build_daily_finance_report()
     for uid in get_users():
         push_text(uid, body)
+
+
+SEND_DAILY_FINANCE_REPORT = False
 
 
 # ============ ここから入力（書き込み）機能 ============
