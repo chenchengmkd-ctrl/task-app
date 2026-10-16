@@ -75,6 +75,16 @@
   .h-item{display:flex;align-items:center;gap:8px;padding:12px 2px;border-bottom:1px solid var(--border)}
   .h-item:last-child{border:none}
   .h-item .d{flex:1}.h-item small{color:var(--muted);display:block}
+  /* ---- 常連（リピーター） ---- */
+  .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+  .sheet{background:#fff;width:100%;max-width:640px;max-height:88vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+  .reg{display:block;width:100%;text-align:left;border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px;background:#fff}
+  .reg b{font-size:17px}
+  .reg small{display:block;color:var(--muted);font-size:13px;line-height:1.5}
+  .reg.new{background:#f0fdf4;border-color:#86efac;color:#166534;font-weight:700;text-align:center}
+  .reg.skip{background:#f3f4f6;text-align:center;color:var(--muted)}
+  .reg-tag{display:inline-block;background:#dcfce7;color:#166534;border-radius:999px;padding:0 8px;font-size:13px;margin-left:4px}
+  .visit{font-size:14px;padding:6px 0;border-top:1px dashed var(--border)}
   #toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:#1f2933;color:#fff;padding:12px 18px;border-radius:14px;opacity:0;transition:.25s;pointer-events:none;z-index:9;display:flex;gap:14px;align-items:center;white-space:nowrap}
   #toast.show{opacity:1;pointer-events:auto}
   #toast button{color:#93c5fd;font-weight:700}
@@ -101,6 +111,7 @@
 <header>
   <h1>📝 日報</h1>
   <button data-go="hist">履歴</button>
+  <button data-go="reg">常連</button>
   <button data-go="set">設定</button>
   <button id="btnNew">新規</button>
 </header>
@@ -165,6 +176,16 @@
 <div class="page" id="p-hist"><div class="card"><h2>過去の日報</h2><div id="histList"></div></div>
   <div class="card"><button class="chip" id="btnExport">バックアップを保存</button>
   <div class="hint">日報はこのiPadの中に自動保存されます。</div></div>
+</div>
+
+<!-- ===== 常連 ===== -->
+<div class="page" id="p-reg">
+  <div class="card">
+    <h2>常連のお客さん<span class="sub">来店のたびに「リピーター」から選ぶと、回数・注文が自動でたまります</span></h2>
+    <input type="text" id="regSearch" placeholder="あだ名・特徴で探す">
+    <button class="reg new" id="regAdd">＋ 新しく登録</button>
+    <div id="regList"></div>
+  </div>
 </div>
 
 <!-- ===== 設定 ===== -->
@@ -277,15 +298,107 @@ function renderSqBox(){
   else{const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録 ${list.length}件（Square ${SQ.orders.length}件・${SQ.at}更新）。選んでいる会計に記録されます`;box.appendChild(h)}
 }
 function record(src){
+  if(src==='リピーター')return openRegPicker(id=>doRecord(src,id));
+  doRecord(src,null);
+}
+function doRecord(src,regId){
   const o=SQ&&qOrder?SQ.orders.find(x=>x.id===qOrder):null;
   const m=o?mapItems(o.items):{ord:{},other:''};
-  const c={id:Date.now(),src,n:qN,takeout:qTake,ord:m.ord,other:m.other,label:'',comment:'',
+  const c={id:Date.now(),src,n:qN,takeout:qTake,ord:m.ord,other:m.other,label:'',comment:'',regId,
     sqId:o?o.id:null,time:o?o.time:new Date().toTimeString().slice(0,5)};
   R.customers.unshift(c);save();
   qN=1;qTake=false;qOrder=null;
   renderQuick();renderCustomers();renderSales();
-  toast(`記録しました：${src} ${c.n}名`,()=>{R.customers=R.customers.filter(x=>x!==c);save();renderQuick();renderCustomers();renderSales()});
+  const rg=regId&&regById(regId);
+  toast(`記録しました：${rg?san(rg.name):src} ${c.n}名`,()=>{R.customers=R.customers.filter(x=>x!==c);save();renderQuick();renderCustomers();renderSales()});
 }
+
+/* ---------- 常連（リピーター） ---------- */
+// {id,name:あだ名,feature:特徴,memo,created}。来店履歴は日報の記録（customers[].regId）から毎回数える
+const regs=()=>ls.get('nippo_regs',[]);
+const saveRegs=a=>ls.set('nippo_regs',a);
+const regById=id=>regs().find(r=>r.id===id);
+function regVisits(id){
+  const a=allReports();a[R.date]=R;const out=[];
+  Object.values(a).forEach(rep=>(rep.customers||[]).forEach(c=>{if(c.regId===id)out.push({date:rep.date,time:c.time||'',c})}));
+  return out.sort((x,y)=>(y.date+y.time).localeCompare(x.date+x.time));
+}
+function regStats(id){
+  const v=regVisits(id);const cnt={};
+  v.forEach(x=>MENU.forEach(m=>{if(+(x.c.ord||{})[m])cnt[m]=(cnt[m]||0)+1}));
+  const fav=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||'';
+  return {visits:v,count:v.length,last:v[0]?v[0].date:'',fav};
+}
+const san=n=>/(さん|様|ちゃん|くん)$/.test(n)?n:n+'さん';
+const md=d=>d?(+d.slice(5,7))+'/'+(+d.slice(8,10)):'';
+function regLine(r){const s=regStats(r.id);
+  return `${r.feature?esc(r.feature)+'<br>':''}来店${s.count}回${s.last?'・前回 '+md(s.last):''}${s.fav?'・よく'+s.fav:''}`}
+function newRegForm(box,onDone){
+  box.innerHTML=`<label class="t">あだ名（呼び方）</label><input type="text" id="nrName" placeholder="例：メガネの部長さん">
+    <label class="t" style="margin-top:10px">特徴</label><textarea id="nrFeat" style="min-height:70px" placeholder="例：50代男性・スーツ・いつも11時台・山椒多め"></textarea>
+    <div class="row" style="margin-top:10px"><button class="del-btn" id="nrCancel">やめる</button><button class="done-btn" id="nrOk">登録</button></div>`;
+  box.querySelector('#nrName').focus();
+  box.querySelector('#nrCancel').onclick=()=>onDone(null);
+  box.querySelector('#nrOk').onclick=()=>{const name=box.querySelector('#nrName').value.trim();if(!name){alert('あだ名を入れてください');return}
+    const r={id:'r'+Date.now(),name,feature:box.querySelector('#nrFeat').value.trim(),memo:'',created:todayStr()};
+    const a=regs();a.push(r);saveRegs(a);onDone(r.id)};
+}
+// リピーターを選ぶシート。onPick(regId または null)
+function openRegPicker(onPick){
+  const bg=document.createElement('div');bg.className='sheet-bg';
+  const sh=document.createElement('div');sh.className='sheet';bg.appendChild(sh);
+  const close=()=>bg.remove();
+  bg.onclick=e=>{if(e.target===bg)close()};
+  sh.innerHTML=`<h2>どの常連さん？<button class="small-btn r" id="rpClose">閉じる</button></h2>
+    <input type="text" id="rpQ" placeholder="あだ名・特徴で探す"><div id="rpBody"></div>`;
+  document.body.appendChild(bg);
+  sh.querySelector('#rpClose').onclick=close;
+  const body=sh.querySelector('#rpBody');
+  function list(){
+    const q=sh.querySelector('#rpQ').value.trim();
+    body.innerHTML='';
+    const nb=document.createElement('button');nb.className='reg new';nb.textContent='＋ 新しい常連さんとして登録';
+    nb.onclick=()=>newRegForm(body,id=>{if(id){close();onPick(id)}else list()});body.appendChild(nb);
+    regs().filter(r=>!q||(r.name+r.feature+r.memo).includes(q))
+      .map(r=>({r,last:regStats(r.id).last})).sort((a,b)=>b.last.localeCompare(a.last))
+      .forEach(({r})=>{const b=document.createElement('button');b.className='reg';
+        b.innerHTML=`<b>${esc(r.name)}</b><small>${regLine(r)}</small>`;b.onclick=()=>{close();onPick(r.id)};body.appendChild(b)});
+    const sk=document.createElement('button');sk.className='reg skip';sk.textContent='登録しない（リピーターとだけ記録）';
+    sk.onclick=()=>{close();onPick(null)};body.appendChild(sk);
+  }
+  sh.querySelector('#rpQ').oninput=list;list();
+}
+let regOpen=null;
+function renderRegs(){
+  const q=$('regSearch').value.trim();const box=$('regList');box.innerHTML='';
+  const all=regs().filter(r=>!q||(r.name+r.feature+r.memo).includes(q))
+    .map(r=>({r,s:regStats(r.id)})).sort((a,b)=>b.s.last.localeCompare(a.s.last));
+  if(!all.length)box.innerHTML='<div class="hint" style="margin-top:10px">まだ登録がありません。会計のとき「リピーター」を押すと登録できます</div>';
+  all.forEach(({r,s})=>{
+    const d=document.createElement('div');d.className='cust'+(regOpen===r.id?' open':'');
+    d.innerHTML=`<div class="sum"><div class="tx"><b>${esc(r.name)}</b><span class="reg-tag">${s.count}回</span><small>${esc(r.feature||'特徴未入力')}</small></div></div>`;
+    if(regOpen!==r.id){const b=document.createElement('button');b.className='small-btn';b.textContent='詳しく';
+      b.onclick=()=>{regOpen=r.id;renderRegs()};d.querySelector('.sum').appendChild(b);box.appendChild(d);return}
+    const e=document.createElement('div');e.className='ed';
+    const upd=(k,v)=>{const a=regs();const x=a.find(y=>y.id===r.id);x[k]=v;saveRegs(a)};
+    e.innerHTML=`<div><label class="t">あだ名</label><input type="text" data-k="name"></div>
+      <div><label class="t">特徴</label><textarea data-k="feature" style="min-height:70px"></textarea></div>
+      <div><label class="t">メモ（好み・話したこと・家族など）</label><textarea data-k="memo" style="min-height:70px"></textarea></div>
+      <div class="hint">来店${s.count}回${s.last?'・前回 '+md(s.last):''}${s.fav?'・よく頼む：'+s.fav:''}</div>`;
+    e.querySelectorAll('[data-k]').forEach(i=>{i.value=r[i.dataset.k]||'';i.oninput=()=>upd(i.dataset.k,i.value.trim())});
+    const h=document.createElement('div');
+    h.innerHTML='<label class="t">来店履歴</label>'+(s.visits.length?s.visits.map(v=>
+      `<div class="visit"><b>${md(v.date)}</b> ${esc(v.time)}　${esc(ordText(v.c)||'')}${v.c.comment?'<br>💬'+esc(v.c.comment):''}</div>`).join(''):'<div class="hint">まだ来店記録がありません</div>');
+    e.appendChild(h);
+    const btns=document.createElement('div');btns.className='row';
+    const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
+    del.onclick=()=>{if(confirm(`${r.name}を常連リストから削除しますか？（日報の記録は残ります）`)){saveRegs(regs().filter(x=>x.id!==r.id));regOpen=null;renderRegs()}};
+    const ok=document.createElement('button');ok.className='done-btn';ok.textContent='閉じる';ok.onclick=()=>{regOpen=null;renderRegs()};
+    btns.append(del,ok);e.appendChild(btns);d.appendChild(e);box.appendChild(d);
+  });
+}
+$('regSearch').oninput=renderRegs;
+$('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;renderRegs()})};
 
 /* ---------- Square ---------- */
 let sqBusy=false,sqErr='';
@@ -326,6 +439,7 @@ function custTitle(c){
   const type=c.src==='リピーター'?'リピーター':'新規';
   const parts=[];
   if(c.src&&c.src!=='リピーター')parts.push(c.src+(['声かけ','通りがかり','その他'].includes(c.src)?'':'経由'));
+  const rg=c.regId&&regById(c.regId);if(rg)parts.push(san(rg.name));
   if(+c.n>1)parts.push(c.n+'名');
   if(c.takeout)parts.push('テイクアウト');
   if(c.label)parts.push(c.label);
@@ -362,6 +476,11 @@ function editor(c){
   SOURCES.forEach(x=>{const b=document.createElement('button');b.className='chip'+(c.src===x?' on':'');b.textContent=x;
     b.onclick=()=>{c.src=x;save();sc.querySelectorAll('.chip').forEach(y=>y.classList.toggle('on',y===b));renderCounts()};sc.appendChild(b)});
   s.appendChild(sc);e.appendChild(s);
+  // 常連カードとの紐付け（新規のお客さんも、ここで登録しておけば次回から選べる）
+  const rgBox=document.createElement('div');const rg=c.regId&&regById(c.regId);
+  rgBox.innerHTML=`<label class="t">常連カード</label>${rg?`<div class="hint" style="margin:0 0 6px"><b>${esc(rg.name)}</b>　${esc(rg.feature||'')}</div>`:''}`;
+  const rb=document.createElement('button');rb.className='chip';rb.textContent=rg?'別の人に変える':(c.src==='リピーター'?'誰か選ぶ':'次回のために常連登録');
+  rb.onclick=()=>openRegPicker(id=>{c.regId=id;save();renderCustomers()});rgBox.appendChild(rb);e.appendChild(rgBox);
   const r=document.createElement('div');r.className='row';
   const n=document.createElement('div');n.innerHTML='<label class="t">人数</label>';
   const ns=document.createElement('div');ns.className='step';n.appendChild(ns);
@@ -417,13 +536,14 @@ function reportText(){
 /* ---------- 画面切替 ---------- */
 let page='form';
 function go(p){
-  page=p;['form','prev','hist','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  page=p;['form','prev','hist','reg','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('btnPrev').textContent=p==='prev'?'入力に戻る':'プレビュー';
-  document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':(b.dataset.go==='hist'?'履歴':'設定'));
+  document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':({hist:'履歴',reg:'常連',set:'設定'}[b.dataset.go]));
   if(p==='prev')$('prevText').textContent=reportText();
   if(p==='hist')renderHist();
   if(p==='set')renderSettings();
+  if(p==='reg'){regOpen=null;renderRegs()}
   if(p==='form'){renderQuick();fetchSquare(false)}
   scrollTo(0,0);
 }
