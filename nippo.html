@@ -156,21 +156,6 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>全体総数（在庫）</h2>
-    <div class="row">
-      <div><label class="t">鰻ストッカー（尾）</label><input type="number" inputmode="numeric" id="stocker"></div>
-      <div><label class="t">残り鰻（尾）</label><input type="number" inputmode="numeric" id="eelLeft"></div>
-      <div><label class="t">スタート（尾）</label><input type="number" inputmode="numeric" id="eelStart"></div>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <div><label class="t">米袋（g）</label><input type="number" inputmode="numeric" id="riceBag"></div>
-      <div><label class="t">米冷蔵庫（g）</label><input type="number" inputmode="numeric" id="riceFridge"></div>
-      <div><label class="t">米冷凍庫（g）</label><input type="number" inputmode="numeric" id="riceFreezer"></div>
-    </div>
-    <label class="t" style="margin-top:10px">その他報告（焦がし・ロスなど）</label>
-    <textarea id="stockNote" style="min-height:60px"></textarea>
-  </div>
 </div>
 
 <!-- ===== プレビュー ===== -->
@@ -216,7 +201,7 @@ const REPORT_SOURCES=['リピーター','インスタ','スレッズ','X','看�
 const toReportSrc=s=>REPORT_SOURCES.includes(s)?s:'その他';
 const MENU=['特上','上','並'];
 const WEATHERS=['晴','曇','雨','雪','晴のち雨','雨のち晴'];
-const TEXT=['date','who','sales','cum','handover','inbound','stocker','eelLeft','eelStart','riceBag','riceFridge','riceFreezer','stockNote'];
+const TEXT=['date','who','sales','cum','handover','inbound'];
 const yen=n=>'¥'+Number(n||0).toLocaleString();
 const todayStr=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -233,8 +218,7 @@ let SQ=null;        // Squareから取った今日のデータ {total,count,orde
 let autoToday=true; // 履歴から過去の日報を開いたときは日付を勝手に変えない
 
 function blank(date){
-  const last=latestBefore(date||todayStr());
-  return {date:date||todayStr(),who:ls.get('nippo_who',''),weather:'',customers:[],talked:0,review:0,eelStart:last&&last.eelStart||'20'};
+  return {date:date||todayStr(),who:ls.get('nippo_who',''),weather:'',customers:[],talked:0,review:0};
 }
 function allReports(){return ls.get('nippo_all',{})}
 function latestBefore(date){const a=allReports();const k=Object.keys(a).filter(x=>x<date).sort().pop();return k?a[k]:null}
@@ -427,11 +411,6 @@ function reportText(){
   if((R.handover||'').trim())L.push('','申し送り',R.handover.trim());
   L.push('','▼インバウンド');if((R.inbound||'').trim())L.push(R.inbound.trim());
   L.push('',`話せた方：${+R.talked||0}人`,`口コミ依頼できた人数：${+R.review||0}人`);
-  L.push(SEP,'全体総数',`鰻ストッカー：${R.stocker||0}尾`,'',
-    `残り鰻：${R.eelLeft||0}尾（スタート：${R.eelStart||0}尾）`,
-    `米袋：約${Number(R.riceBag||0).toLocaleString()}g`,`米冷蔵庫：約${Number(R.riceFridge||0).toLocaleString()}g`,
-    `米冷凍庫：${Number(R.riceFreezer||0).toLocaleString()}g`);
-  if((R.stockNote||'').trim())L.push('',R.stockNote.trim());
   return L.join('\n');
 }
 
