@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1f2933">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="日報">
+<title>日報</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%9D%3C/text%3E%3C/svg%3E">
+<style>
+  :root{--bg:#f4f5f7;--card:#fff;--text:#1f2933;--muted:#7b8794;--border:#e4e7eb;--accent:#3b82f6;--ok:#16a34a}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:"Hiragino Sans","Segoe UI","Meiryo",sans-serif;background:var(--bg);color:var(--text);font-size:17px;line-height:1.6;padding-bottom:120px}
+  button,input,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;border:none;background:none}
+  header{position:sticky;top:0;z-index:5;background:#1f2933;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px}
+  header h1{font-size:19px;flex:1}
+  header button{color:#fff;background:rgba(255,255,255,.15);padding:8px 14px;border-radius:10px;font-size:15px}
+  main{max-width:760px;margin:0 auto;padding:14px}
+  .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  label.t{display:block;font-weight:700;margin-bottom:6px;font-size:16px}
+  .row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+  input[type=text],input[type=number],input[type=date],textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;background:#fff;font-size:17px}
+  textarea{min-height:110px;resize:vertical}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .chip{padding:9px 14px;border-radius:999px;border:1.5px solid var(--border);background:#fff;font-size:15px}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chip.add{background:#eef2ff;border-color:#c7d2fe;color:#3730a3}
+  .hint{color:var(--muted);font-size:13px;margin-top:4px}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--border);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;z-index:6}
+  .bar button{flex:1;padding:14px;border-radius:12px;font-weight:700;font-size:17px}
+  .b1{background:var(--accent);color:#fff}.b2{background:#e5e7eb}
+  .b3{background:var(--ok);color:#fff}
+  #hist{display:none}
+  .h-item{display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--border)}
+  .h-item:last-child{border:none}
+  .h-item .d{flex:1}.h-item small{color:var(--muted);display:block}
+  .h-item button{padding:8px 14px;border-radius:10px;background:#e5e7eb;font-size:15px}
+  #toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#1f2933;color:#fff;padding:10px 18px;border-radius:999px;opacity:0;transition:.25s;pointer-events:none;z-index:9}
+  #toast.show{opacity:1}
+  pre#prev{white-space:pre-wrap;word-break:break-word;font-family:inherit;background:#f9fafb;border-radius:10px;padding:12px;font-size:16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📝 日報</h1>
+  <button id="btnHist">履歴</button>
+  <button id="btnNew">新規</button>
+</header>
+
+<main>
+<div id="form">
+  <div class="card">
+    <div class="row">
+      <div><label class="t">日付</label><input type="date" id="date"></div>
+      <div><label class="t">記入者</label><input type="text" id="who" placeholder="名前"></div>
+    </div>
+    <label class="t" style="margin-top:12px">天気</label>
+    <div class="chips" id="weather"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div><label class="t">売上（円）</label><input type="number" inputmode="numeric" id="sales" placeholder="0"></div>
+      <div><label class="t">客数（人）</label><input type="number" inputmode="numeric" id="guests" placeholder="0"></div>
+    </div>
+    <div class="hint" id="unit"></div>
+  </div>
+
+  <div class="card">
+    <label class="t">今日やったこと</label>
+    <textarea id="did" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea>
+    <div class="chips" id="quick"></div>
+    <div class="hint">よく使う言葉をタップで追加。「＋登録」で自分用に増やせます。</div>
+  </div>
+
+  <div class="card"><label class="t">うまくいったこと</label><textarea id="good"></textarea></div>
+  <div class="card"><label class="t">問題・気づき・反省</label><textarea id="issue"></textarea></div>
+  <div class="card"><label class="t">明日やること</label><textarea id="next"></textarea></div>
+  <div class="card"><label class="t">連絡事項・メモ</label><textarea id="memo"></textarea></div>
+</div>
+
+<div id="hist" class="card"><div id="histList"></div>
+  <div class="chips"><button class="chip" id="btnExport">バックアップを保存</button></div>
+  <div class="hint">日報はこのiPadの中に自動保存されます。</div>
+</div>
+</main>
+
+<div class="bar" id="bar">
+  <button class="b2" id="btnPrev">プレビュー</button>
+  <button class="b1" id="btnCopy">コピー</button>
+  <button class="b3" id="btnShare">送る</button>
+</div>
+<div id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const FIELDS=['date','who','sales','guests','did','good','issue','next','memo'];
+const WEATHERS=['☀️晴れ','☁️くもり','🌧️雨','❄️雪'];
+const DEFAULT_QUICK=['仕込み','開店準備','接客','清掃','発注','在庫確認','会計','閉店作業','ミーティング'];
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+          set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let weather='';
+
+const todayStr=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};
+const toast=m=>{const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800)};
+
+function renderWeather(){
+  $('weather').innerHTML='';
+  WEATHERS.forEach(w=>{const b=document.createElement('button');b.className='chip'+(weather===w?' on':'');b.textContent=w;
+    b.onclick=()=>{weather=weather===w?'':w;renderWeather();saveDraft()};$('weather').appendChild(b)});
+}
+function renderQuick(){
+  const list=DEFAULT_QUICK.concat(ls.get('nippo_quick',[]));
+  $('quick').innerHTML='';
+  list.forEach(w=>{const b=document.createElement('button');b.className='chip';b.textContent=w;
+    b.onclick=()=>{const t=$('did');t.value+=(t.value&&!t.value.endsWith('\n')?'\n':'')+'・'+w+' ';t.focus();saveDraft()};
+    $('quick').appendChild(b)});
+  const a=document.createElement('button');a.className='chip add';a.textContent='＋登録';
+  a.onclick=()=>{const w=prompt('追加する言葉');if(w&&w.trim()){const q=ls.get('nippo_quick',[]);q.push(w.trim());ls.set('nippo_quick',q);renderQuick()}};
+  $('quick').appendChild(a);
+}
+function collect(){const o={weather};FIELDS.forEach(f=>o[f]=$(f).value);return o}
+function fill(o){FIELDS.forEach(f=>$(f).value=o[f]||'');weather=o.weather||'';renderWeather();updUnit()}
+function updUnit(){const s=+$('sales').value,g=+$('guests').value;$('unit').textContent=(s&&g)?`客単価 約 ${Math.round(s/g).toLocaleString()} 円`:''}
+function saveDraft(){ls.set('nippo_draft',collect());ls.set('nippo_who',$('who').value)}
+
+function text(o){
+  const d=o.date?o.date.replace(/-/g,'/'):'';
+  const L=[`【日報】${d}${o.who?'　'+o.who:''}${o.weather?'　'+o.weather:''}`];
+  const s=+o.sales,g=+o.guests;
+  if(s||g)L.push(`売上：${s?s.toLocaleString()+'円':'-'}　客数：${g?g+'人':'-'}${s&&g?`（客単価${Math.round(s/g).toLocaleString()}円）`:''}`);
+  [['did','今日やったこと'],['good','うまくいったこと'],['issue','問題・気づき・反省'],['next','明日やること'],['memo','連絡事項・メモ']]
+    .forEach(([k,t])=>{if(o[k]&&o[k].trim())L.push('',`■${t}`,o[k].trim())});
+  return L.join('\n');
+}
+function save(){
+  const o=collect();if(!o.date)return;
+  const all=ls.get('nippo_all',{});all[o.date]=o;ls.set('nippo_all',all);
+}
+function renderHist(){
+  const all=ls.get('nippo_all',{});const keys=Object.keys(all).sort().reverse();
+  $('histList').innerHTML=keys.length?'':'<div class="hint">まだ保存された日報はありません</div>';
+  keys.forEach(k=>{const o=all[k];const r=document.createElement('div');r.className='h-item';
+    const first=(o.did||'').split('\n')[0].slice(0,24);
+    r.innerHTML=`<div class="d"><b>${k.replace(/-/g,'/')}</b> ${o.weather||''}<small>${first||'(内容なし)'}</small></div>`;
+    const b=document.createElement('button');b.textContent='開く';b.onclick=()=>{fill(o);showForm();saveDraft()};
+    const c=document.createElement('button');c.textContent='コピー';c.onclick=()=>copy(text(o));
+    r.appendChild(b);r.appendChild(c);$('histList').appendChild(r)});
+}
+function showForm(){$('form').style.display='';$('hist').style.display='none';$('bar').style.display='';$('btnHist').textContent='履歴'}
+async function copy(t){
+  try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}
+  toast('コピーしました');
+}
+
+$('btnCopy').onclick=()=>{save();copy(text(collect()))};
+$('btnShare').onclick=async()=>{save();const t=text(collect());
+  if(navigator.share){try{await navigator.share({text:t})}catch(e){}}else copy(t)};
+$('btnPrev').onclick=()=>{
+  const p=$('prevCard');if(p){p.remove();return}
+  const c=document.createElement('div');c.className='card';c.id='prevCard';
+  c.innerHTML='<label class="t">プレビュー（もう一度押すと閉じます）</label><pre id="prev"></pre>';
+  $('form').prepend(c);$('prev').textContent=text(collect());scrollTo(0,0)};
+$('btnHist').onclick=()=>{
+  if($('hist').style.display==='block'){showForm();return}
+  save();renderHist();$('form').style.display='none';$('hist').style.display='block';$('bar').style.display='none';$('btnHist').textContent='戻る'};
+$('btnNew').onclick=()=>{save();const who=$('who').value;fill({date:todayStr(),who});saveDraft();showForm();scrollTo(0,0);toast('新しい日報')};
+$('btnExport').onclick=()=>{
+  const blob=new Blob([JSON.stringify(ls.get('nippo_all',{}),null,1)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nippo-backup.json';a.click()};
+
+FIELDS.forEach(f=>$(f).addEventListener('input',()=>{saveDraft();updUnit()}));
+$('date').addEventListener('change',()=>{ // 日付を変えたとき、その日の保存済みがあれば読み込む
+  const o=ls.get('nippo_all',{})[$('date').value];if(o)fill(o)});
+
+// 起動時：下書きを復元。日付が昨日以前なら新しい日報にする
+const dr=ls.get('nippo_draft',null);
+if(dr&&dr.date===todayStr())fill(dr);
+else{ if(dr&&dr.date){const a=ls.get('nippo_all',{});a[dr.date]=dr;ls.set('nippo_all',a)} const o=ls.get('nippo_all',{})[todayStr()]; fill(o||{date:todayStr(),who:ls.get('nippo_who','')}) }
+renderQuick();
+</script>
+</body>
+</html>
