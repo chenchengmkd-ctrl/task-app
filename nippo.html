@@ -29,6 +29,9 @@
   input:focus,textarea:focus{outline:none;border-color:var(--accent)}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chip{padding:9px 14px;border-radius:999px;border:1.5px solid var(--border);background:#fff;font-size:15px}
+  .chips.kw{margin-top:8px;gap:6px}
+  .chips.kw .chip{padding:6px 11px;font-size:14px;background:#f8fafc}
+  .chip.add{background:#eef2ff!important;border-color:#c7d2fe;color:#3730a3}
   .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
   .hint{color:var(--muted);font-size:13px;margin-top:5px}
   .big{font-size:22px;font-weight:700}
@@ -156,7 +159,7 @@
     <div class="chips" id="weather"></div>
   </div>
 
-  <div class="card"><h2>申し送り</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea></div>
+  <div class="card"><h2>申し送り</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>
 
   <div class="card">
     <h2>▼インバウンド</h2>
@@ -222,6 +225,36 @@ const REPORT_SOURCES=['リピーター','インスタ','スレッズ','X','看�
 const toReportSrc=s=>REPORT_SOURCES.includes(s)?s:'その他';
 const MENU=['特上','上','並'];
 const WEATHERS=['晴','曇','雨','雪','晴のち雨','雨のち晴'];
+// よく使う言葉（2026年5〜10月の日報116件から多かった表現を拾ったもの）。[ボタン名, 入る文]
+const KW_REACT=[
+  ['美味しい','「美味しい」とのお言葉。'],['ふわふわ','「ふわふわで美味しい」とのお声。'],['ふっくら','「ふっくらして美味しい」とのお声。'],
+  ['この値段でこの味','「この値段でこの味はすごい」とのお声。'],['安くて美味しい','「安くて美味しい」とのお声。'],
+  ['一口目から','一口目から「美味しい」と言っていただきました。'],['また来ます','「また来ます」とのお言葉。'],
+  ['山椒が良い','「山椒がいい香り」とのお声。'],['関西風','「関西風で美味しい」とのお声。'],['香ばしい','「香ばしくて美味しい」とのお声。'],
+  ['臭みがない','「臭みがなく食べやすい」とのお声。'],['小骨が少ない','「小骨が少なくて食べやすい」とのお声。'],
+  ['ボリューム','ボリュームに満足していただきました。'],['胃もたれしない','「胃もたれしない」とのお声。'],
+  ['やっぱり美味しい','「やっぱり美味しいね」とのお言葉。'],['友達を連れてくる','「今度は友達を連れてきます」とのこと。'],
+  ['口コミ書いてくれた','口コミを書いていただきました。'],['お吸い物が欲しい','ご意見：お吸い物が欲しい。'],
+];
+const KW_WHO=['出張の方','観光の方','近隣の会社','近所にお住まい','仕事で神田に来られる方','サラリーマン','女性','男性','カップル','ご夫婦','家族連れ','鰻好きの方','海外の方','久しぶりのご来店','以前から気になっていた'];
+const KW_HAND=[
+  ['人通り多い','人通りが多かったです。'],['人通り少ない','人通りが少なかったです。'],['雨','雨で人通りが少なかったです。'],
+  ['11時台に集中','11時台に来店が集中しました。'],['12時台が弱い','12時台は来店が少なかったです。'],
+  ['ご飯完売','ご飯が完売しました。'],['鰻完売','鰻が完売しました。'],['お断りあり','◯名お断りしました。'],
+  ['吉野家でご飯購入','ご飯が足りず吉野家で購入しました。'],['おにぎり完売','おにぎり完売しました。'],
+  ['出張の方が多い','出張の方が多かったです。'],['看板で来店多い','看板を見てご来店の方が多かったです。'],
+  ['備品切れ','◯◯がもうないです。'],
+];
+// 文章欄の末尾に言葉を足す（前の文と改行でつなぐ）
+function addText(el,t){const v=el.value.replace(/\s+$/,'');el.value=v?(v.endsWith('。')||v.endsWith('」')?v+t:v+'。'+t):t;el.dispatchEvent(new Event('input'))}
+function kwChips(defs,onTap,customKey){
+  const box=document.createElement('div');box.className='chips kw';
+  const all=defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(customKey,[]).map(x=>[x,x]));
+  all.forEach(([lab,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=lab;b.onclick=()=>onTap(t,b);box.appendChild(b)});
+  const a=document.createElement('button');a.className='chip add';a.textContent='＋';
+  a.onclick=()=>{const w=prompt('よく使う言葉を追加');if(w&&w.trim()){const q=ls.get(customKey,[]);q.push(w.trim());ls.set(customKey,q);box.replaceWith(kwChips(defs,onTap,customKey))}};
+  box.appendChild(a);return box;
+}
 const TEXT=['date','who','sales','cum','handover','inbound'];
 const yen=n=>'¥'+Number(n||0).toLocaleString();
 const todayStr=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};
@@ -467,10 +500,15 @@ function editor(c){
   const e=document.createElement('div');e.className='ed';
   const k=document.createElement('div');k.innerHTML='<label class="t">お客様の反応（マイク🎤で話して入力できます）</label>';
   const ki=document.createElement('textarea');ki.style.minHeight='80px';ki.value=c.comment||'';
-  ki.oninput=()=>{c.comment=ki.value;save()};k.appendChild(ki);e.appendChild(k);
+  ki.oninput=()=>{c.comment=ki.value;save()};k.appendChild(ki);
+  k.appendChild(kwChips(KW_REACT,t=>addText(ki,t),'nippo_kw_react'));e.appendChild(k);
   const l=document.createElement('div');l.innerHTML='<label class="t">見出しに足す一言（任意）</label>';
   const li=document.createElement('input');li.type='text';li.placeholder='例：名古屋からの出張の方々';li.value=c.label||'';
-  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);e.appendChild(l);
+  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);
+  // 見出しの言葉は「・」区切りで足す／もう一度押すと外す
+  l.appendChild(kwChips(KW_WHO,t=>{const p=li.value.split('・').map(s=>s.trim()).filter(Boolean);
+    const i=p.indexOf(t);if(i>=0)p.splice(i,1);else p.push(t);li.value=p.join('・');li.dispatchEvent(new Event('input'))},'nippo_kw_who'));
+  e.appendChild(l);
   const s=document.createElement('div');s.innerHTML='<label class="t">来店経緯</label>';
   const sc=document.createElement('div');sc.className='chips';
   SOURCES.forEach(x=>{const b=document.createElement('button');b.className='chip'+(c.src===x?' on':'');b.textContent=x;
@@ -620,6 +658,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&page==='f
   fetchSquare(false)}});
 setInterval(()=>{if(!document.hidden&&page==='form')fetchSquare(false)},60000);
 
+$('handKw').appendChild(kwChips(KW_HAND,t=>addText($('handover'),t),'nippo_kw_hand'));
 load(allReports()[todayStr()]||blank());
 go('form');
 </script>
