@@ -432,9 +432,35 @@ def _handle_meeting_mentor_backfill(environ, start_response):
     return _respond(start_response, '200 OK', out, cors=True)
 
 
+def _handle_nippo_sales(environ, start_response):
+    """日報アプリ（nippo.html）用。その日のSquare売上と会計ごとの明細を返す。"""
+    if not config.NIPPO_TOKEN:
+        return _respond(start_response, '503 Service Unavailable',
+                        {'error': 'NIPPO_TOKEN が未設定です。Vercelの環境変数に追加してRedeployしてください。'},
+                        cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います'}, cors=True)
+    body = _read_json_body(environ)
+    if not body or not body.get('date'):
+        return _respond(start_response, '400 Bad Request', {'error': 'date がありません'}, cors=True)
+    from linebot import nippo as nippo_mod
+    try:
+        result = nippo_mod.day_sales(body['date'])
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    status = '200 OK' if result.get('ok') else '502 Bad Gateway'
+    return _respond(start_response, status, result, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
+
+    if path == '/api/nippo_sales':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_nippo_sales(environ, start_response)
 
     if path == '/api/meeting_ingest':
         if method == 'OPTIONS':

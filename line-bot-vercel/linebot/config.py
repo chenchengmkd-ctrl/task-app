@@ -49,6 +49,9 @@ MENTOR_GEMINI_MODEL = _env('MENTOR_GEMINI_MODEL') or GEMINI_MODEL
 # PCから会議の文字起こしを送りつける口なので、こちらは MENTOR_APP_TOKEN と違い必須にしている。
 # 未設定だと /api/meeting_ingest は動かない（誰でも書き込める口を開けたままにしないため）。
 MEETING_TOKEN = _env('MEETING_TOKEN')
+
+# 日報アプリ（nippo.html）用。売上を返す口なので必須。iPadの日報アプリの「設定」に同じ文字を入れる。
+NIPPO_TOKEN = _env('NIPPO_TOKEN')
 # MEETING_GEMINI_MODEL … 議事録の生成に使うモデル。未設定なら通常の GEMINI_MODEL。
 #   既定の gemini-3.1-flash-lite は LINE の短い応答用に選んだ軽いモデルで、
 #   1時間の会議を深く読み解くには力不足（議題を3つにまとめてしまう等）。
