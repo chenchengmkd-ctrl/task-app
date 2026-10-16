@@ -60,10 +60,15 @@
   .scroll-row .chip{flex:0 0 auto}
   .src-btns{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
   .src-btns button{height:54px;border-radius:12px;border:1.5px solid #ff9a6a;background:#fffaf6;color:#c2410c;font-size:15px;font-weight:700;line-height:1.2}
-  .src-btns button.rep{background:var(--g-green);color:#fff;border-color:transparent}
+  .src-btns button.rep{background:#f3fbf7;color:#047857;border-color:#34a37a}
+  .src-btns button.sel{background:var(--g);color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(255,94,98,.35)}
+  .src-btns button.rep.sel{background:var(--g-green);box-shadow:0 4px 12px rgba(5,150,105,.35)}
+  .src-btns button small{display:block;font-weight:500;font-size:11px;opacity:.9}
+  .commit{width:100%;margin-top:16px;height:56px;border-radius:14px;background:var(--g);color:#fff;font-size:17px;font-weight:700;box-shadow:0 6px 16px rgba(255,94,98,.35)}
+  .commit.off{background:var(--soft);color:var(--muted);box-shadow:none}
+  .commit:active{transform:scale(.98)}
   .src-btns button.oth{border-color:var(--line);color:var(--muted)}
-  .src-btns button:active{transform:scale(.96);background:var(--g);color:#fff}
-  .src-btns button.rep:active{filter:brightness(.92);background:var(--g-green)}
+  .src-btns button:active{transform:scale(.96)}
   .gap{margin-top:8px;padding:8px 12px;border-radius:10px;background:#fbf3e4;color:var(--warn);font-size:13px}
   .stat{display:flex;justify-content:space-between;align-items:center;padding:10px 0 6px}
   .src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:2px 14px;font-size:14px}
@@ -126,7 +131,7 @@
 <div class="page" id="p-form">
 
   <div class="card quick">
-    <h2>会計を記録<span class="sub">上から選んで、最後に来店経緯を押すと記録されます</span>
+    <h2>会計を記録<span class="sub">1組ぶん選んで、いちばん下の「記録する」を押すと完了です</span>
       <button class="link r" id="btnSq">Square更新</button></h2>
     <div id="sqBox"></div>
     <div class="q-label">人数</div>
@@ -138,12 +143,13 @@
     <div class="scroll-row" id="whoRow"></div>
     <div class="q-label">反応（任意）</div>
     <div class="scroll-row" id="reactRow"></div>
-    <div class="q-label">来店経緯 ― 押すと記録</div>
+    <div class="q-label">来店経緯</div>
     <div class="src-btns" id="srcBtns"></div>
+    <button class="commit off" id="btnCommit">来店経緯を選んでください</button>
   </div>
 
   <div class="card">
-    <h2>記録したお客さん<span class="sub">反応を書いた組だけ営業報告に載ります</span>
+    <h2>記録済み <span id="custCount" class="sub"></span><span class="sub">反応を書いた組だけ営業報告に載ります</span>
       <button class="small-btn r" id="addCust">＋手で追加</button></h2>
     <div id="custList"></div>
   </div>
@@ -276,6 +282,7 @@ let R;              // 編集中の日報
 let openId=null;    // 開いているお客さんカード
 let cumTouched=false;
 let qN=1,qTake=false,qOrder=null;
+let qSrc='',qReg=null;
 let qOrd={},qOther='';const qWho=[],qReact=[]; // 記録パネルで選んだ「食べたもの・お客さん・反応」 // 会計記録パネルの選択
 let SQ=null;        // Squareから取った今日のデータ {total,count,orders,at}
 let autoToday=true; // 履歴から過去の日報を開いたときは日付を勝手に変えない
@@ -318,12 +325,27 @@ function renderQuick(){
   renderOrdRow();
   panelChips($('whoRow'),KW_WHO,'nippo_kw_who',qWho);
   panelChips($('reactRow'),KW_REACT,'nippo_kw_react',qReact);
-  $('srcBtns').innerHTML='';
-  SOURCES.forEach(s=>{const b=document.createElement('button');b.textContent=s;
-    if(s==='リピーター')b.className='rep';if(s==='その他')b.className='oth';
-    b.onclick=()=>record(s);$('srcBtns').appendChild(b)});
+  renderSrc();
   renderSqBox();
 }
+// 来店経緯は「選ぶだけ」。記録は下の「この会計を記録する」で確定
+function renderSrc(){
+  $('srcBtns').innerHTML='';
+  SOURCES.forEach(s=>{const b=document.createElement('button');
+    const on=qSrc===s;const rg=on&&s==='リピーター'&&qReg?regById(qReg):null;
+    b.className=[s==='リピーター'?'rep':'',s==='その他'?'oth':'',on?'sel':''].join(' ').trim();
+    b.innerHTML=esc(s)+(rg?'<small>'+esc(rg.name)+'</small>':'');
+    b.onclick=()=>{
+      if(s==='リピーター'){openRegPicker(id=>{qSrc='リピーター';qReg=id;renderSrc()});return}
+      qSrc=on?'':s;qReg=null;renderSrc()};
+    $('srcBtns').appendChild(b)});
+  const bc=$('btnCommit');bc.classList.toggle('off',!qSrc);
+  bc.textContent=qSrc?`この会計を記録する（${qN}名・${qSrc}）`:'来店経緯を選んでください';
+}
+$('btnCommit').onclick=()=>{
+  if(!qSrc){toast('来店経緯を選んでください');return}
+  doRecord(qSrc,qReg);scrollTo({top:0,behavior:'smooth'});
+};
 function renderOrdRow(){
   const el=$('ordRow');el.innerHTML='';
   MENU.forEach(m=>{const b=document.createElement('button');b.className=qOrd[m]?'on':'';
@@ -378,7 +400,7 @@ function doRecord(src,regId){
   const c={id:Date.now(),src,n:qN,takeout:qTake,ord:Object.assign({},qOrd),other:qOther,label:qWho.join('・'),comment:qReact.join(''),regId,
     sqId:o?o.id:null,time:o?o.time:new Date().toTimeString().slice(0,5)};
   R.customers.unshift(c);save();
-  qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;
+  qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrc='';qReg=null;
   renderQuick();renderCustomers();renderSales();
   const rg=regId&&regById(regId);
   toast(`記録しました：${rg?san(rg.name):src} ${c.n}名`,()=>{R.customers=R.customers.filter(x=>x!==c);save();renderQuick();renderCustomers();renderSales()});
@@ -531,7 +553,7 @@ function renderCustomers(){
   });
   renderCounts();
 }
-function renderCounts(){
+function renderCounts(){$('custCount').textContent=R.customers.length?R.customers.length+'組':'';
   $('guestTotal').textContent=guestTotal()+'人';const sc=srcCounts();
   $('srcSum').innerHTML=REPORT_SOURCES.map(s=>`<span class="${sc[s]?'':'z'}">${s}：${sc[s]}人</span>`).join('');
 }
