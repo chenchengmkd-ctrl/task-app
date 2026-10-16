@@ -40,6 +40,10 @@
   .big{font-size:22px;font-weight:700}
   .small-btn{padding:7px 12px;border-radius:9px;background:var(--g-soft);color:#c2410c;font-size:13px;font-weight:700}
   .link{color:var(--accent);font-size:12px;font-weight:600;padding:2px 6px;text-decoration:underline;text-underline-offset:3px}
+  .sumline{width:100%;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid rgba(255,140,90,.15);border-radius:14px;padding:11px 14px;margin-bottom:12px;font-weight:700;font-size:15px;text-align:left;box-shadow:0 6px 20px rgba(255,110,70,.08)}
+  .sumline span{color:var(--muted);font-weight:600;font-size:12px;margin-left:auto}
+  .chips.names .chip{padding:10px 18px;font-size:16px}
+  .chip.del{border-color:#fca5a5;color:#b91c1c}
   .quick{padding:16px 16px 18px}
   .q-label{font-weight:700;font-size:12px;color:#c2410c;margin:14px 0 6px;display:flex;align-items:center;letter-spacing:.04em}
   .q-label .link{margin-left:auto}
@@ -130,6 +134,8 @@
 <!-- ===== 入力 ===== -->
 <div class="page" id="p-form">
 
+  <button class="sumline" id="btnStart"></button>
+
   <div class="card quick">
     <h2>会計を記録<span class="sub">1組ぶん選んで、いちばん下の「記録する」を押すと完了です</span>
       <button class="link r" id="btnSq">Square更新</button></h2>
@@ -154,15 +160,6 @@
     <div id="custList"></div>
   </div>
 
-  <div class="card">
-    <div class="row">
-      <div><label class="t">日付</label><input type="date" id="date"></div>
-      <div><label class="t">記入者</label><input type="text" id="who" placeholder="名前"></div>
-    </div>
-    <label class="t" style="margin-top:12px">天気</label>
-    <div class="chips" id="weather"></div>
-  </div>
-
   <div class="card"><h2>申し送り</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>
 
   <div class="card">
@@ -184,6 +181,21 @@
     <div class="src-grid" id="srcSum"></div>
   </div>
 
+</div>
+
+<!-- ===== はじめの設定（日付・記入者・天気）===== -->
+<div class="page" id="p-start">
+  <div class="card start">
+    <h2 style="font-size:20px">今日の日報</h2>
+    <div class="hint" style="margin:-6px 0 14px">最初に1回だけ入れます。入れたあとは、この画面は出ません。</div>
+    <label class="t">日付</label><input type="date" id="date">
+    <input type="hidden" id="who">
+    <div class="q-label" style="margin-top:18px">記入者<button class="link" id="nameDel">名前を整理</button></div>
+    <div class="chips" id="nameChips"></div>
+    <div class="q-label" style="margin-top:18px">天気</div>
+    <div class="chips" id="weather"></div>
+    <button class="commit off" id="btnBegin" style="margin-top:22px">記入者と天気を選んでください</button>
+  </div>
 </div>
 
 <!-- ===== プレビュー ===== -->
@@ -512,11 +524,42 @@ async function fetchSquare(manual){
 }
 
 /* ---------- 画面描画 ---------- */
-function renderAll(){$('hDate').textContent=(+R.date.slice(5,7))+'/'+(+R.date.slice(8,10));TEXT.forEach(f=>$(f).value=R[f]||'');renderWeather();renderQuick();renderCustomers();renderSteppers();renderSales()}
+const NAMES_DEFAULT=['江夏','工藤','向井','都丸'];
+const getNames=()=>ls.get('nippo_names',NAMES_DEFAULT);
+let nameDel=false;
+function renderNames(){
+  const box=$('nameChips');box.className='chips names';box.innerHTML='';
+  getNames().forEach(n=>{const b=document.createElement('button');
+    b.className='chip'+(nameDel?' del':(R.who===n?' on':''));b.textContent=nameDel?'× '+n:n;
+    b.onclick=()=>{
+      if(nameDel){if(confirm(n+'を名前の一覧から消しますか？')){ls.set('nippo_names',getNames().filter(x=>x!==n));renderNames()}return}
+      R.who=n;$('who').value=n;ls.set('nippo_who',n);save();renderNames();updBegin()};
+    box.appendChild(b)});
+  const a=document.createElement('button');a.className='chip add';a.textContent='＋ 名前を追加';
+  a.onclick=()=>{const w=prompt('追加する名前');if(w&&w.trim()){const q=getNames();if(!q.includes(w.trim()))q.push(w.trim());ls.set('nippo_names',q);renderNames()}};
+  box.appendChild(a);
+  $('nameDel').textContent=nameDel?'完了':'名前を整理';
+}
+function updBegin(){
+  const ok=!!(R.who&&R.weather),b=$('btnBegin');
+  b.classList.toggle('off',!ok);
+  b.textContent=ok?`${R.started?'決定':'はじめる'}（${R.who}・${R.weather}）`:(!R.who?'記入者を選んでください':'天気を選んでください');
+}
+function renderStart(){renderNames();renderWeather();updBegin()}
+function renderSummary(){
+  const d=new Date(R.date+'T00:00');
+  $('btnStart').innerHTML=`${d.getMonth()+1}/${d.getDate()}（${'日月火水木金土'[d.getDay()]}）　${esc(R.weather||'―')}　${esc(R.who||'―')}<span>変更 ›</span>`;
+}
+$('nameDel').onclick=()=>{nameDel=!nameDel;renderNames()};
+$('btnBegin').onclick=()=>{
+  if(!(R.who&&R.weather)){toast(!R.who?'記入者を選んでください':'天気を選んでください');return}
+  R.started=true;save();renderSummary();go('form')};
+$('btnStart').onclick=()=>go('start');
+function renderAll(){renderSummary();$('hDate').textContent=(+R.date.slice(5,7))+'/'+(+R.date.slice(8,10));TEXT.forEach(f=>$(f).value=R[f]||'');renderWeather();renderQuick();renderCustomers();renderSteppers();renderSales()}
 function renderWeather(){
   $('weather').innerHTML='';
   WEATHERS.forEach(w=>{const b=document.createElement('button');b.className='chip'+(R.weather===w?' on':'');b.textContent=w;
-    b.onclick=()=>{R.weather=R.weather===w?'':w;renderWeather();save()};$('weather').appendChild(b)});
+    b.onclick=()=>{R.weather=R.weather===w?'':w;renderWeather();save();updBegin();renderSummary()};$('weather').appendChild(b)});
 }
 function stepper(el,get,set,min=0){
   el.innerHTML='';
@@ -635,13 +678,14 @@ function reportText(){
 /* ---------- 画面切替 ---------- */
 let page='form';
 function go(p){
-  page=p;['form','prev','hist','reg','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  page=p;['form','start','prev','hist','reg','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('btnPrev').textContent=p==='prev'?'入力に戻る':'プレビュー';
   document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':({hist:'履歴',reg:'常連',set:'設定'}[b.dataset.go]));
   if(p==='prev')$('prevText').textContent=reportText();
   if(p==='hist')renderHist();
   if(p==='set')renderSettings();
+  if(p==='start')renderStart();
   if(p==='reg'){regOpen=null;renderRegs()}
   if(p==='form'){renderQuick();fetchSquare(false)}
   scrollTo(0,0);
@@ -686,7 +730,7 @@ $('addCust').onclick=()=>{
 $('btnSq').onclick=()=>fetchSquare(true);
 $('btnNew').onclick=()=>{
   if(!confirm('今日の日報を開きますか？（今の内容は保存済みです）'))return;
-  SQ=null;autoToday=true;load(allReports()[todayStr()]||blank());go('form');
+  SQ=null;autoToday=true;load(allReports()[todayStr()]||blank());go(R.started?'form':'start');
 };
 async function copy(t){
   try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}
@@ -709,19 +753,19 @@ $('btnExport').onclick=()=>{
   const blob=new Blob([JSON.stringify(allReports(),null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nippo-backup.json';a.click()};
 
-function load(o){R=JSON.parse(JSON.stringify(o));R.customers=R.customers||[];openId=null;cumTouched=false;
+function load(o){R=JSON.parse(JSON.stringify(o));R.customers=R.customers||[];if(R.who&&R.weather)R.started=true;openId=null;cumTouched=false;
   const pc=prevCum();if(R.cum!==''&&R.cum!=null&&pc!=null&&+R.cum!==pc+(+R.sales||0))cumTouched=true;
   renderAll();save()}
 
 // アプリを開き直したとき・1分ごとにSquareを読み直す（会計直後に開けば最新の会計が出る）
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&page==='form'){
-  if(autoToday&&R.date<todayStr()){/* 開きっぱなしで日をまたいだら今日の日報へ */SQ=null;load(allReports()[todayStr()]||blank())}
+  if(autoToday&&R.date<todayStr()){/* 開きっぱなしで日をまたいだら今日の日報へ */SQ=null;load(allReports()[todayStr()]||blank());if(!R.started)go('start')}
   fetchSquare(false)}});
 setInterval(()=>{if(!document.hidden&&page==='form')fetchSquare(false)},60000);
 
 $('handKw').appendChild(kwChips(KW_HAND,t=>addText($('handover'),t),'nippo_kw_hand'));
 load(allReports()[todayStr()]||blank());
-go('form');
+go(R.started?'form':'start');
 </script>
 </body>
 </html>
