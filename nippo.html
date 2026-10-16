@@ -9,49 +9,73 @@
 <title>日報</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%9D%3C/text%3E%3C/svg%3E">
 <style>
-  :root{--bg:#f4f5f7;--card:#fff;--text:#1f2933;--muted:#7b8794;--border:#e4e7eb;--accent:#3b82f6;--ok:#16a34a}
+  :root{--bg:#f4f5f7;--card:#fff;--text:#1f2933;--muted:#7b8794;--border:#e4e7eb;--accent:#3b82f6;--ok:#06c755;--warn:#b45309}
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  body{font-family:"Hiragino Sans","Segoe UI","Meiryo",sans-serif;background:var(--bg);color:var(--text);font-size:17px;line-height:1.6;padding-bottom:120px}
+  body{font-family:"Hiragino Sans","Segoe UI","Meiryo",sans-serif;background:var(--bg);color:var(--text);font-size:17px;line-height:1.6;padding-bottom:110px}
   button,input,textarea{font:inherit;color:inherit}
   button{cursor:pointer;border:none;background:none}
-  header{position:sticky;top:0;z-index:5;background:#1f2933;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px}
+  header{position:sticky;top:0;z-index:5;background:#1f2933;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:8px}
   header h1{font-size:19px;flex:1}
-  header button{color:#fff;background:rgba(255,255,255,.15);padding:8px 14px;border-radius:10px;font-size:15px}
-  main{max-width:760px;margin:0 auto;padding:14px}
+  header button{color:#fff;background:rgba(255,255,255,.15);padding:8px 13px;border-radius:10px;font-size:15px}
+  main{max-width:780px;margin:0 auto;padding:14px}
   .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
-  label.t{display:block;font-weight:700;margin-bottom:6px;font-size:16px}
-  .row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
-  input[type=text],input[type=number],input[type=date],textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;background:#fff;font-size:17px}
-  textarea{min-height:110px;resize:vertical}
+  h2{font-size:17px;margin-bottom:10px}
+  h2 .sub{font-weight:400;color:var(--muted);font-size:14px;margin-left:6px}
+  label.t{display:block;font-weight:700;margin-bottom:5px;font-size:15px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:140px}
+  input[type=text],input[type=number],input[type=date],textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;background:#fff;font-size:17px}
+  textarea{min-height:90px;resize:vertical}
   input:focus,textarea:focus{outline:none;border-color:var(--accent)}
-  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chip{padding:9px 14px;border-radius:999px;border:1.5px solid var(--border);background:#fff;font-size:15px}
   .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
-  .chip.add{background:#eef2ff;border-color:#c7d2fe;color:#3730a3}
-  .hint{color:var(--muted);font-size:13px;margin-top:4px}
+  .hint{color:var(--muted);font-size:13px;margin-top:5px}
+  .big{font-size:22px;font-weight:700}
+  .stat{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+  .stat:last-child{border:none}
+  .src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 14px;margin-top:6px;font-size:15px}
+  .src-grid span.z{color:#b8c0cc}
+  .linkbtn{color:var(--accent);font-size:14px;padding:4px 0}
+  /* 人数・注文のステッパー */
+  .step{display:flex;align-items:center;gap:6px}
+  .step b{min-width:34px;text-align:center;font-size:19px}
+  .step button{width:40px;height:40px;border-radius:10px;background:#e5e7eb;font-size:20px;font-weight:700}
+  .step .nm{min-width:44px;font-size:15px}
+  /* お客さんリスト */
+  .add-btn{width:100%;padding:14px;border-radius:12px;background:#eef2ff;color:#3730a3;font-weight:700;font-size:17px;border:1.5px dashed #a5b4fc}
+  .cust{border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:10px}
+  .cust.open{border-color:var(--accent);background:#f8faff}
+  .cust .sum{display:flex;align-items:center;gap:8px}
+  .cust .sum .tx{flex:1;min-width:0}
+  .cust .sum small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cust .sum button{padding:7px 12px;border-radius:9px;background:#e5e7eb;font-size:14px}
+  .cust .ed{margin-top:10px;display:grid;gap:12px}
+  .done-btn{padding:11px;border-radius:10px;background:var(--accent);color:#fff;font-weight:700}
+  .del-btn{padding:11px;border-radius:10px;background:#fee2e2;color:#b91c1c}
   .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--border);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;z-index:6}
   .bar button{flex:1;padding:14px;border-radius:12px;font-weight:700;font-size:17px}
-  .b1{background:var(--accent);color:#fff}.b2{background:#e5e7eb}
-  .b3{background:var(--ok);color:#fff}
-  #hist{display:none}
-  .h-item{display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--border)}
+  .b1{background:#e5e7eb}.b2{background:var(--accent);color:#fff}.b3{background:var(--ok);color:#fff}
+  .page{display:none}
+  .h-item{display:flex;align-items:center;gap:8px;padding:12px 2px;border-bottom:1px solid var(--border)}
   .h-item:last-child{border:none}
   .h-item .d{flex:1}.h-item small{color:var(--muted);display:block}
-  .h-item button{padding:8px 14px;border-radius:10px;background:#e5e7eb;font-size:15px}
-  #toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#1f2933;color:#fff;padding:10px 18px;border-radius:999px;opacity:0;transition:.25s;pointer-events:none;z-index:9}
+  .h-item button{padding:8px 13px;border-radius:10px;background:#e5e7eb;font-size:15px}
+  #toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:#1f2933;color:#fff;padding:10px 18px;border-radius:999px;opacity:0;transition:.25s;pointer-events:none;z-index:9}
   #toast.show{opacity:1}
-  pre#prev{white-space:pre-wrap;word-break:break-word;font-family:inherit;background:#f9fafb;border-radius:10px;padding:12px;font-size:16px}
+  pre.prev{white-space:pre-wrap;word-break:break-word;font-family:inherit;background:#f9fafb;border-radius:10px;padding:12px;font-size:15px}
 </style>
 </head>
 <body>
 <header>
   <h1>📝 日報</h1>
-  <button id="btnHist">履歴</button>
+  <button data-go="hist">履歴</button>
+  <button data-go="set">設定</button>
   <button id="btnNew">新規</button>
 </header>
 
 <main>
-<div id="form">
+<!-- ===== 入力 ===== -->
+<div class="page" id="p-form">
   <div class="card">
     <div class="row">
       <div><label class="t">日付</label><input type="date" id="date"></div>
@@ -62,125 +86,331 @@
   </div>
 
   <div class="card">
-    <div class="row">
-      <div><label class="t">売上（円）</label><input type="number" inputmode="numeric" id="sales" placeholder="0"></div>
-      <div><label class="t">客数（人）</label><input type="number" inputmode="numeric" id="guests" placeholder="0"></div>
-    </div>
-    <div class="hint" id="unit"></div>
+    <h2>▼来店したお客さん<span class="sub">来店ごとにその場で追加 → 客数・来店経緯は自動で集計</span></h2>
+    <button class="add-btn" id="addCust">＋ お客さんを追加</button>
+    <div id="custList"></div>
+    <div class="stat" style="margin-top:10px"><span>客数（自動）</span><span class="big" id="guestTotal">0人</span></div>
+    <div class="src-grid" id="srcSum"></div>
   </div>
 
   <div class="card">
-    <label class="t">今日やったこと</label>
-    <textarea id="did" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea>
-    <div class="chips" id="quick"></div>
-    <div class="hint">よく使う言葉をタップで追加。「＋登録」で自分用に増やせます。</div>
+    <h2>▼実績</h2>
+    <label class="t">① 本日売上（円）</label>
+    <input type="number" inputmode="numeric" id="sales" placeholder="レジの金額">
+    <div class="hint" id="salesCalc"></div>
+    <label class="t" style="margin-top:12px">② 累計売上（円）</label>
+    <input type="number" inputmode="numeric" id="cum">
+    <div class="hint" id="cumHint"></div>
   </div>
 
-  <div class="card"><label class="t">うまくいったこと</label><textarea id="good"></textarea></div>
-  <div class="card"><label class="t">問題・気づき・反省</label><textarea id="issue"></textarea></div>
-  <div class="card"><label class="t">明日やること</label><textarea id="next"></textarea></div>
-  <div class="card"><label class="t">連絡事項・メモ</label><textarea id="memo"></textarea></div>
+  <div class="card"><h2>申し送り</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea></div>
+
+  <div class="card">
+    <h2>▼インバウンド</h2>
+    <textarea id="inbound" style="min-height:60px"></textarea>
+    <div class="row" style="margin-top:10px">
+      <div><label class="t">話せた方</label><div class="step" data-num="talked"></div></div>
+      <div><label class="t">口コミ依頼できた人数</label><div class="step" data-num="review"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>全体総数（在庫）</h2>
+    <div class="row">
+      <div><label class="t">鰻ストッカー（尾）</label><input type="number" inputmode="numeric" id="stocker"></div>
+      <div><label class="t">残り鰻（尾）</label><input type="number" inputmode="numeric" id="eelLeft"></div>
+      <div><label class="t">スタート（尾）</label><input type="number" inputmode="numeric" id="eelStart"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div><label class="t">米袋（g）</label><input type="number" inputmode="numeric" id="riceBag"></div>
+      <div><label class="t">米冷蔵庫（g）</label><input type="number" inputmode="numeric" id="riceFridge"></div>
+      <div><label class="t">米冷凍庫（g）</label><input type="number" inputmode="numeric" id="riceFreezer"></div>
+    </div>
+    <label class="t" style="margin-top:10px">その他報告（焦がし・ロスなど）</label>
+    <textarea id="stockNote" style="min-height:60px"></textarea>
+  </div>
 </div>
 
-<div id="hist" class="card"><div id="histList"></div>
-  <div class="chips"><button class="chip" id="btnExport">バックアップを保存</button></div>
-  <div class="hint">日報はこのiPadの中に自動保存されます。</div>
+<!-- ===== プレビュー ===== -->
+<div class="page" id="p-prev"><div class="card"><pre class="prev" id="prevText"></pre></div></div>
+
+<!-- ===== 履歴 ===== -->
+<div class="page" id="p-hist"><div class="card"><h2>過去の日報</h2><div id="histList"></div></div>
+  <div class="card"><button class="chip" id="btnExport">バックアップを保存</button>
+  <div class="hint">日報はこのiPadの中に自動保存されます。</div></div>
+</div>
+
+<!-- ===== 設定 ===== -->
+<div class="page" id="p-set">
+  <div class="card">
+    <h2>メニューの値段<span class="sub">入れておくと、注文から売上を自動計算します</span></h2>
+    <div id="priceList" class="row"></div>
+  </div>
+  <div class="card">
+    <h2>累計売上</h2>
+    <div class="chips" id="cumMode"></div>
+    <div class="hint">「月ごと」は毎月1日に0から数え直します。</div>
+  </div>
 </div>
 </main>
 
 <div class="bar" id="bar">
-  <button class="b2" id="btnPrev">プレビュー</button>
-  <button class="b1" id="btnCopy">コピー</button>
-  <button class="b3" id="btnShare">送る</button>
+  <button class="b1" id="btnPrev">プレビュー</button>
+  <button class="b2" id="btnCopy">コピー</button>
+  <button class="b3" id="btnShare">LINEで送る</button>
 </div>
 <div id="toast"></div>
 
 <script>
 const $=id=>document.getElementById(id);
-const FIELDS=['date','who','sales','guests','did','good','issue','next','memo'];
-const WEATHERS=['☀️晴れ','☁️くもり','🌧️雨','❄️雪'];
-const DEFAULT_QUICK=['仕込み','開店準備','接客','清掃','発注','在庫確認','会計','閉店作業','ミーティング'];
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-let weather='';
-
+const SOURCES=['リピーター','インスタ','スレッズ','X','看板','グーグル','チラシ','紹介','インフルエンサー','出前','声かけ','通りがかり','その他'];
+// 日報の「来店経緯」欄に出す項目（声かけ・通りがかりは「その他」に合算）
+const REPORT_SOURCES=['リピーター','インスタ','スレッズ','X','看板','グーグル','チラシ','紹介','インフルエンサー','出前','その他'];
+const toReportSrc=s=>REPORT_SOURCES.includes(s)?s:'その他';
+const MENU=['特上','上','並'];
+const WEATHERS=['晴','曇','雨','雪','晴のち雨','雨のち晴'];
+const TEXT=['date','who','sales','cum','handover','inbound','stocker','eelLeft','eelStart','riceBag','riceFridge','riceFreezer','stockNote'];
+const yen=n=>'¥'+Number(n||0).toLocaleString();
 const todayStr=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};
 const toast=m=>{const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800)};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+let R;           // 編集中の日報
+let openId=null; // 開いているお客さんカード
+let cumTouched=false;
+
+function blank(date){
+  const last=latestBefore(date||todayStr());
+  return {date:date||todayStr(),who:ls.get('nippo_who',''),weather:'',customers:[],talked:0,review:0,
+          eelStart:last&&last.eelStart||'20'};
+}
+function allReports(){return ls.get('nippo_all',{})}
+function latestBefore(date){const a=allReports();const k=Object.keys(a).filter(x=>x<date).sort().pop();return k?a[k]:null}
+function save(){if(!R.date)return;const a=allReports();a[R.date]=R;ls.set('nippo_all',a);ls.set('nippo_draft',R);ls.set('nippo_who',R.who||'')}
+
+/* ---------- 集計 ---------- */
+function guestTotal(){return R.customers.reduce((s,c)=>s+(+c.n||0),0)}
+function srcCounts(){const o={};REPORT_SOURCES.forEach(s=>o[s]=0);R.customers.forEach(c=>o[toReportSrc(c.src)]+=(+c.n||0));return o}
+function orderSales(){const p=ls.get('nippo_prices',{});let s=0,miss=false;
+  R.customers.forEach(c=>MENU.forEach(m=>{const q=+(c.ord||{})[m]||0;if(q){if(+p[m])s+=q*p[m];else miss=true}}));return {s,miss}}
+function prevCum(){
+  const p=latestBefore(R.date);if(!p||p.cum===''||p.cum==null)return null;
+  if(ls.get('nippo_cummode','month')==='month'&&p.date.slice(0,7)!==R.date.slice(0,7))return 0;
+  return +p.cum;
+}
+function autoCum(){const pc=prevCum();if(pc==null||cumTouched)return;R.cum=String(pc+(+R.sales||0));$('cum').value=R.cum}
+
+/* ---------- 画面描画 ---------- */
+function renderAll(){
+  TEXT.forEach(f=>$(f).value=R[f]||'');
+  renderWeather();renderCustomers();renderSteppers();renderSales();
+}
 function renderWeather(){
   $('weather').innerHTML='';
-  WEATHERS.forEach(w=>{const b=document.createElement('button');b.className='chip'+(weather===w?' on':'');b.textContent=w;
-    b.onclick=()=>{weather=weather===w?'':w;renderWeather();saveDraft()};$('weather').appendChild(b)});
+  WEATHERS.forEach(w=>{const b=document.createElement('button');b.className='chip'+(R.weather===w?' on':'');b.textContent=w;
+    b.onclick=()=>{R.weather=R.weather===w?'':w;renderWeather();save()};$('weather').appendChild(b)});
 }
-function renderQuick(){
-  const list=DEFAULT_QUICK.concat(ls.get('nippo_quick',[]));
-  $('quick').innerHTML='';
-  list.forEach(w=>{const b=document.createElement('button');b.className='chip';b.textContent=w;
-    b.onclick=()=>{const t=$('did');t.value+=(t.value&&!t.value.endsWith('\n')?'\n':'')+'・'+w+' ';t.focus();saveDraft()};
-    $('quick').appendChild(b)});
-  const a=document.createElement('button');a.className='chip add';a.textContent='＋登録';
-  a.onclick=()=>{const w=prompt('追加する言葉');if(w&&w.trim()){const q=ls.get('nippo_quick',[]);q.push(w.trim());ls.set('nippo_quick',q);renderQuick()}};
-  $('quick').appendChild(a);
+function stepper(el,get,set,min=0){
+  el.innerHTML='';
+  const m=document.createElement('button');m.textContent='−';
+  const v=document.createElement('b');v.textContent=get();
+  const p=document.createElement('button');p.textContent='＋';
+  m.onclick=()=>{set(Math.max(min,get()-1));v.textContent=get()};
+  p.onclick=()=>{set(get()+1);v.textContent=get()};
+  el.append(m,v,p);
 }
-function collect(){const o={weather};FIELDS.forEach(f=>o[f]=$(f).value);return o}
-function fill(o){FIELDS.forEach(f=>$(f).value=o[f]||'');weather=o.weather||'';renderWeather();updUnit()}
-function updUnit(){const s=+$('sales').value,g=+$('guests').value;$('unit').textContent=(s&&g)?`客単価 約 ${Math.round(s/g).toLocaleString()} 円`:''}
-function saveDraft(){ls.set('nippo_draft',collect());ls.set('nippo_who',$('who').value)}
+function renderSteppers(){
+  document.querySelectorAll('[data-num]').forEach(el=>{const k=el.dataset.num;
+    stepper(el,()=>+R[k]||0,v=>{R[k]=v;save()})});
+}
+function custTitle(c){
+  const type=c.src==='リピーター'?'リピーター':'新規';
+  const parts=[c.src==='リピーター'?'':(c.src+(['声かけ','通りがかり','その他'].includes(c.src)?'':'経由'))];
+  if(+c.n>1)parts.push(c.n+'名');
+  if(c.takeout)parts.push('テイクアウト');
+  if(c.label)parts.push(c.label);
+  return type+'｜'+parts.filter(Boolean).join('・');
+}
+function ordText(c){return MENU.filter(m=>+(c.ord||{})[m]).map(m=>m+'×'+c.ord[m]).join(' ')}
+function renderCustomers(){
+  const box=$('custList');box.innerHTML='';
+  R.customers.forEach((c,i)=>{
+    const d=document.createElement('div');d.className='cust'+(openId===c.id?' open':'');
+    const no=R.customers.length-i;
+    d.innerHTML=`<div class="sum"><div class="tx"><b>${no}. ${esc(custTitle(c))}</b><small>${esc(ordText(c)||'注文未入力')}${c.comment?'　'+esc(c.comment):''}</small></div></div>`;
+    if(openId!==c.id){
+      const b=document.createElement('button');b.textContent='編集';b.onclick=()=>{openId=c.id;renderCustomers()};
+      d.querySelector('.sum').appendChild(b);
+    }else d.appendChild(editor(c));
+    box.appendChild(d);
+  });
+  const t=guestTotal();$('guestTotal').textContent=t+'人';
+  const sc=srcCounts();
+  $('srcSum').innerHTML=REPORT_SOURCES.map(s=>`<span class="${sc[s]?'':'z'}">${s}：${sc[s]}人</span>`).join('');
+  renderSales();
+}
+function editor(c){
+  const e=document.createElement('div');e.className='ed';
+  // 来店経緯
+  const s=document.createElement('div');s.innerHTML='<label class="t">来店経緯</label>';
+  const sc=document.createElement('div');sc.className='chips';
+  SOURCES.forEach(x=>{const b=document.createElement('button');b.className='chip'+(c.src===x?' on':'');b.textContent=x;
+    b.onclick=()=>{c.src=x;save();renderCustomers()};sc.appendChild(b)});
+  s.appendChild(sc);e.appendChild(s);
+  // 人数・テイクアウト
+  const r=document.createElement('div');r.className='row';
+  const n=document.createElement('div');n.innerHTML='<label class="t">人数</label>';
+  const ns=document.createElement('div');ns.className='step';n.appendChild(ns);
+  stepper(ns,()=>+c.n||1,v=>{c.n=v;save();renderCounts()},1);
+  const tk=document.createElement('div');tk.innerHTML='<label class="t">形態</label>';
+  const tb=document.createElement('button');tb.className='chip'+(c.takeout?' on':'');tb.textContent='テイクアウト';
+  tb.onclick=()=>{c.takeout=!c.takeout;tb.classList.toggle('on',c.takeout);save()};tk.appendChild(tb);
+  r.append(n,tk);e.appendChild(r);
+  // 注文
+  const o=document.createElement('div');o.innerHTML='<label class="t">注文</label>';
+  const or=document.createElement('div');or.className='row';
+  c.ord=c.ord||{};
+  MENU.forEach(m=>{const w=document.createElement('div');w.className='step';
+    const nm=document.createElement('span');nm.className='nm';nm.textContent=m;w.appendChild(nm);
+    const st=document.createElement('div');st.className='step';w.appendChild(st);
+    stepper(st,()=>+c.ord[m]||0,v=>{c.ord[m]=v;save();renderSales()});or.appendChild(w)});
+  o.appendChild(or);e.appendChild(o);
+  // ひとこと・反応
+  const l=document.createElement('div');l.innerHTML='<label class="t">見出しに足す一言（任意）</label>';
+  const li=document.createElement('input');li.type='text';li.placeholder='例：名古屋からの出張の方々';li.value=c.label||'';
+  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);e.appendChild(l);
+  const k=document.createElement('div');k.innerHTML='<label class="t">お客様の反応（書いた人だけ営業報告に載ります）</label>';
+  const ki=document.createElement('textarea');ki.style.minHeight='70px';ki.placeholder='マイク🎤で話して入力できます';ki.value=c.comment||'';
+  ki.oninput=()=>{c.comment=ki.value;save()};k.appendChild(ki);e.appendChild(k);
+  // ボタン
+  const btns=document.createElement('div');btns.className='row';
+  const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
+  del.onclick=()=>{if(confirm('このお客さんを削除しますか？')){R.customers=R.customers.filter(x=>x!==c);openId=null;save();renderCustomers()}};
+  const ok=document.createElement('button');ok.className='done-btn';ok.textContent='完了';
+  ok.onclick=()=>{openId=null;renderCustomers()};
+  btns.append(del,ok);e.appendChild(btns);
+  return e;
+}
+function renderCounts(){ // 人数変更時、開いている編集欄を閉じずに集計だけ更新
+  $('guestTotal').textContent=guestTotal()+'人';const sc=srcCounts();
+  $('srcSum').innerHTML=REPORT_SOURCES.map(s=>`<span class="${sc[s]?'':'z'}">${s}：${sc[s]}人</span>`).join('');
+}
+function renderSales(){
+  const {s,miss}=orderSales();
+  const h=$('salesCalc');h.innerHTML='';
+  if(s){h.innerHTML=`注文からの計算：<b>${yen(s)}</b>${miss?'（値段未設定のメニューあり）':''} `;
+    const b=document.createElement('button');b.className='linkbtn';b.textContent='→ 売上に入れる';
+    b.onclick=()=>{R.sales=String(s);$('sales').value=R.sales;autoCum();save();toast('売上に入れました')};h.appendChild(b)}
+  else if(R.customers.some(c=>ordText(c)))h.textContent='設定でメニューの値段を入れると、注文から売上を自動計算します';
+  const pc=prevCum();
+  $('cumHint').textContent=pc==null?'前回の日報がないので、今回だけ手入力してください（次回から自動）'
+    :`前回の累計 ${yen(pc)} ＋ 本日売上 で自動計算`+(cumTouched?'（手入力中）':'');
+}
 
-function text(o){
-  const d=o.date?o.date.replace(/-/g,'/'):'';
-  const L=[`【日報】${d}${o.who?'　'+o.who:''}${o.weather?'　'+o.weather:''}`];
-  const s=+o.sales,g=+o.guests;
-  if(s||g)L.push(`売上：${s?s.toLocaleString()+'円':'-'}　客数：${g?g+'人':'-'}${s&&g?`（客単価${Math.round(s/g).toLocaleString()}円）`:''}`);
-  [['did','今日やったこと'],['good','うまくいったこと'],['issue','問題・気づき・反省'],['next','明日やること'],['memo','連絡事項・メモ']]
-    .forEach(([k,t])=>{if(o[k]&&o[k].trim())L.push('',`■${t}`,o[k].trim())});
+/* ---------- 日報の文章 ---------- */
+function reportText(){
+  const SEP='＝＝＝＝＝＝＝＝＝＝＝＝＝';
+  const d=new Date(R.date+'T00:00');const wd='日月火水木金土'[d.getDay()];
+  const L=['【日報】',`日付：${d.getMonth()+1}月${d.getDate()}日（${wd}）`,`天気：${R.weather||''}`,`記入者：${R.who||''}`,SEP,
+    '▼実績',`① 本日売上：${yen(R.sales)}`,`② 累計売上：${yen(R.cum)}`,`③ 客数：${guestTotal()}人`,SEP,'▼来店経緯'];
+  const sc=srcCounts();REPORT_SOURCES.forEach(s=>L.push(`${s}：${sc[s]}人`));
+  L.push(SEP,'▼営業報告（お客様の反応）');
+  R.customers.slice().reverse().filter(c=>(c.comment||'').trim()||c.label).forEach(c=>{
+    const o=ordText(c);L.push('',custTitle(c),((c.comment||'').trim()+(o?`（${o}）`:'')).trim())});
+  if((R.handover||'').trim())L.push('','申し送り',R.handover.trim());
+  L.push('','▼インバウンド');if((R.inbound||'').trim())L.push(R.inbound.trim());
+  L.push('',`話せた方：${+R.talked||0}人`,`口コミ依頼できた人数：${+R.review||0}人`);
+  L.push(SEP,'全体総数',`鰻ストッカー：${R.stocker||0}尾`,'',
+    `残り鰻：${R.eelLeft||0}尾（スタート：${R.eelStart||0}尾）`,
+    `米袋：約${Number(R.riceBag||0).toLocaleString()}g`,`米冷蔵庫：約${Number(R.riceFridge||0).toLocaleString()}g`,
+    `米冷凍庫：${Number(R.riceFreezer||0).toLocaleString()}g`);
+  if((R.stockNote||'').trim())L.push('',R.stockNote.trim());
   return L.join('\n');
 }
-function save(){
-  const o=collect();if(!o.date)return;
-  const all=ls.get('nippo_all',{});all[o.date]=o;ls.set('nippo_all',all);
+
+/* ---------- 画面切替 ---------- */
+let page='form';
+function go(p){
+  page=p;['form','prev','hist','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
+  $('btnPrev').textContent=p==='prev'?'入力に戻る':'プレビュー';
+  document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':(b.dataset.go==='hist'?'履歴':'設定'));
+  if(p==='prev')$('prevText').textContent=reportText();
+  if(p==='hist')renderHist();
+  if(p==='set')renderSettings();
+  scrollTo(0,0);
 }
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(page===b.dataset.go?'form':b.dataset.go));
+$('btnPrev').onclick=()=>go(page==='prev'?'form':'prev');
+
 function renderHist(){
-  const all=ls.get('nippo_all',{});const keys=Object.keys(all).sort().reverse();
+  const a=allReports();const keys=Object.keys(a).sort().reverse();
   $('histList').innerHTML=keys.length?'':'<div class="hint">まだ保存された日報はありません</div>';
-  keys.forEach(k=>{const o=all[k];const r=document.createElement('div');r.className='h-item';
-    const first=(o.did||'').split('\n')[0].slice(0,24);
-    r.innerHTML=`<div class="d"><b>${k.replace(/-/g,'/')}</b> ${o.weather||''}<small>${first||'(内容なし)'}</small></div>`;
-    const b=document.createElement('button');b.textContent='開く';b.onclick=()=>{fill(o);showForm();saveDraft()};
-    const c=document.createElement('button');c.textContent='コピー';c.onclick=()=>copy(text(o));
-    r.appendChild(b);r.appendChild(c);$('histList').appendChild(r)});
+  keys.forEach(k=>{const o=a[k];const r=document.createElement('div');r.className='h-item';
+    const n=(o.customers||[]).reduce((s,c)=>s+(+c.n||0),0);
+    r.innerHTML=`<div class="d"><b>${k.replace(/-/g,'/')}</b> ${esc(o.weather||'')}<small>売上 ${yen(o.sales)}・${n}人・${esc(o.who||'')}</small></div>`;
+    const b=document.createElement('button');b.textContent='開く';b.onclick=()=>{load(o);go('form')};
+    r.appendChild(b);$('histList').appendChild(r)});
 }
-function showForm(){$('form').style.display='';$('hist').style.display='none';$('bar').style.display='';$('btnHist').textContent='履歴'}
+function renderSettings(){
+  const p=ls.get('nippo_prices',{});$('priceList').innerHTML='';
+  MENU.forEach(m=>{const w=document.createElement('div');w.innerHTML=`<label class="t">${m}（円）</label>`;
+    const i=document.createElement('input');i.type='number';i.inputMode='numeric';i.value=p[m]||'';
+    i.oninput=()=>{const q=ls.get('nippo_prices',{});q[m]=+i.value||0;ls.set('nippo_prices',q)};w.appendChild(i);$('priceList').appendChild(w)});
+  const mode=ls.get('nippo_cummode','month');$('cumMode').innerHTML='';
+  [['month','月ごと'],['all','ずっと足し続ける']].forEach(([v,t])=>{const b=document.createElement('button');b.className='chip'+(mode===v?' on':'');b.textContent=t;
+    b.onclick=()=>{ls.set('nippo_cummode',v);renderSettings()};$('cumMode').appendChild(b)});
+}
+
+/* ---------- 入力イベント ---------- */
+TEXT.forEach(f=>$(f).addEventListener('input',()=>{
+  R[f]=$(f).value;
+  if(f==='cum')cumTouched=true;
+  if(f==='sales')autoCum();
+  if(f==='who')ls.set('nippo_who',R.who);
+  save();if(f==='sales'||f==='cum')renderSales();
+}));
+$('date').addEventListener('change',()=>{ // その日の保存済みがあれば開く
+  const o=allReports()[$('date').value];
+  if(o)load(o);else{const old=R;R=Object.assign(blank($('date').value),{who:old.who});cumTouched=false;renderAll();autoCum();save()}
+});
+$('addCust').onclick=()=>{
+  const c={id:Date.now(),src:'',n:1,takeout:false,ord:{},label:'',comment:''};
+  R.customers.unshift(c);openId=c.id;save();renderCustomers();
+};
+$('btnNew').onclick=()=>{
+  if(!confirm('今日の新しい日報を開きますか？（今の内容は保存済みです）'))return;
+  const o=allReports()[todayStr()];load(o||blank());go('form');
+};
 async function copy(t){
   try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}
-  toast('コピーしました');
+  toast('コピーしました。LINEに貼り付けてください');
 }
-
-$('btnCopy').onclick=()=>{save();copy(text(collect()))};
-$('btnShare').onclick=async()=>{save();const t=text(collect());
-  if(navigator.share){try{await navigator.share({text:t})}catch(e){}}else copy(t)};
-$('btnPrev').onclick=()=>{
-  const p=$('prevCard');if(p){p.remove();return}
-  const c=document.createElement('div');c.className='card';c.id='prevCard';
-  c.innerHTML='<label class="t">プレビュー（もう一度押すと閉じます）</label><pre id="prev"></pre>';
-  $('form').prepend(c);$('prev').textContent=text(collect());scrollTo(0,0)};
-$('btnHist').onclick=()=>{
-  if($('hist').style.display==='block'){showForm();return}
-  save();renderHist();$('form').style.display='none';$('hist').style.display='block';$('bar').style.display='none';$('btnHist').textContent='戻る'};
-$('btnNew').onclick=()=>{save();const who=$('who').value;fill({date:todayStr(),who});saveDraft();showForm();scrollTo(0,0);toast('新しい日報')};
+function check(){
+  const miss=R.customers.filter(c=>!c.src).length;
+  if(miss&&!confirm(`来店経緯が未選択のお客さんが${miss}組います（「その他」に入ります）。このまま進めますか？`))return false;
+  return true;
+}
+$('btnCopy').onclick=()=>{if(check())copy(reportText())};
+$('btnShare').onclick=async()=>{
+  if(!check())return;const t=reportText();
+  if(navigator.share){try{await navigator.share({text:t})}catch(e){}}
+  else location.href='https://line.me/R/share?text='+encodeURIComponent(t);
+};
 $('btnExport').onclick=()=>{
-  const blob=new Blob([JSON.stringify(ls.get('nippo_all',{}),null,1)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify(allReports(),null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nippo-backup.json';a.click()};
 
-FIELDS.forEach(f=>$(f).addEventListener('input',()=>{saveDraft();updUnit()}));
-$('date').addEventListener('change',()=>{ // 日付を変えたとき、その日の保存済みがあれば読み込む
-  const o=ls.get('nippo_all',{})[$('date').value];if(o)fill(o)});
+function load(o){R=JSON.parse(JSON.stringify(o));R.customers=R.customers||[];openId=null;cumTouched=false;
+  // 累計が前回＋本日と違えば手入力扱い
+  const pc=prevCum();if(R.cum!==''&&R.cum!=null&&pc!=null&&+R.cum!==pc+(+R.sales||0))cumTouched=true;
+  renderAll();save()}
 
-// 起動時：下書きを復元。日付が昨日以前なら新しい日報にする
-const dr=ls.get('nippo_draft',null);
-if(dr&&dr.date===todayStr())fill(dr);
-else{ if(dr&&dr.date){const a=ls.get('nippo_all',{});a[dr.date]=dr;ls.set('nippo_all',a)} const o=ls.get('nippo_all',{})[todayStr()]; fill(o||{date:todayStr(),who:ls.get('nippo_who','')}) }
-renderQuick();
+// 起動：今日の日報があれば続きから、なければ新規
+load(allReports()[todayStr()]||blank());
+go('form');
 </script>
 </body>
 </html>
