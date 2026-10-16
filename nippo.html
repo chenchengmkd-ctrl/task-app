@@ -78,6 +78,22 @@
   #toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:#1f2933;color:#fff;padding:12px 18px;border-radius:14px;opacity:0;transition:.25s;pointer-events:none;z-index:9;display:flex;gap:14px;align-items:center;white-space:nowrap}
   #toast.show{opacity:1;pointer-events:auto}
   #toast button{color:#93c5fd;font-weight:700}
+  /* スマホ幅：ボタンを詰めて、来店経緯を1画面に収める */
+  @media (max-width:600px){
+    main{padding:10px}
+    .card{padding:12px}
+    header{padding:10px 12px}
+    header button{padding:7px 10px;font-size:14px}
+    h2{flex-wrap:wrap;row-gap:2px}
+    h2 .sub{order:3;flex-basis:100%}
+    .n-row{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+    .n-row button{min-width:0;height:46px;font-size:17px}
+    .n-row .tk{grid-column:1/-1;margin-left:0;height:42px}
+    .src-btns{grid-template-columns:repeat(3,1fr);gap:6px}
+    .src-btns button{height:52px;font-size:15px}
+    .bar{gap:6px;padding-left:10px;padding-right:10px}
+    .bar button{padding:13px 4px;font-size:15px;white-space:nowrap}
+  }
   pre.prev{white-space:pre-wrap;word-break:break-word;font-family:inherit;background:#f9fafb;border-radius:10px;padding:12px;font-size:15px}
 </style>
 </head>
@@ -261,7 +277,7 @@ function unassigned(){if(!SQ)return[];const used=new Set(R.customers.map(c=>c.sq
 function renderSqBox(){
   const box=$('sqBox');box.innerHTML='';
   if(!ls.get('nippo_sqkey','')){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">設定で合言葉を入れると、Squareの会計がここに並びます</div>';return}
-  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">Squareを読み込み中…</div>';return}
+  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">'+(sqErr?'⚠️ Squareを読めませんでした（'+esc(sqErr)+'）。合言葉を確認してください。会計なしでも記録はできます':'Squareを読み込み中…')+'</div>';return}
   const list=unassigned();
   if(qOrder&&!list.some(o=>o.id===qOrder))qOrder=null;
   if(qOrder===null&&list.length)qOrder=list[0].id;
@@ -288,7 +304,7 @@ function record(src){
 }
 
 /* ---------- Square ---------- */
-let sqBusy=false;
+let sqBusy=false,sqErr='';
 async function fetchSquare(manual){
   const key=ls.get('nippo_sqkey','');if(!key||sqBusy)return;
   if(R.date!==todayStr()&&!manual)return;
@@ -299,8 +315,8 @@ async function fetchSquare(manual){
     if(!res.ok||!j.ok)throw new Error(j.error||res.status);
     SQ={total:j.total,count:j.count,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};
     R.sales=String(j.total);$('sales').value=R.sales;autoCum();save();
-    if(manual)toast('Squareから更新しました');
-  }catch(e){if(manual)toast('Squareを読めませんでした：'+e.message);if(!SQ)SQ=null}
+    sqErr='';if(manual)toast('Squareから更新しました');
+  }catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Squareを読めませんでした：'+sqErr)}
   sqBusy=false;$('btnSq').textContent='Square更新';
   renderSqBox();renderSales();
 }
@@ -450,7 +466,7 @@ function renderSettings(){
   [['month','月ごと'],['all','ずっと足し続ける']].forEach(([v,t])=>{const b=document.createElement('button');b.className='chip'+(mode===v?' on':'');b.textContent=t;
     b.onclick=()=>{ls.set('nippo_cummode',v);renderSettings()};$('cumMode').appendChild(b)});
 }
-$('sqKey').oninput=()=>{ls.set('nippo_sqkey',$('sqKey').value.trim());SQ=null};
+$('sqKey').oninput=()=>{ls.set('nippo_sqkey',$('sqKey').value.trim());SQ=null;sqErr=''};
 
 /* ---------- 入力イベント ---------- */
 TEXT.forEach(f=>$(f).addEventListener('input',()=>{
