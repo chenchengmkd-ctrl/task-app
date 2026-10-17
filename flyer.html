@@ -693,7 +693,6 @@ let addMode = false;
 let pickMode = null;                            // 'store' のとき位置決め中
 let areaCircle = null, storeMarker = null, meMarker = null, meCircle = null;
 let areaLayer = null, areaLabels = null;
-let pinLabels = null;
 // 建物の塗りは数が増えるので、1枚のキャンバスにまとめて描く（スマホでも軽い）
 const bldRenderer = L.canvas({ padding:0.3 });
 let watchId = null, firstFix = true;
@@ -801,7 +800,6 @@ function updateAreaLabels() {
 }
 
 function updatePinLabels() {
-  if (!pinLabels) return;
   const show = map.getZoom() >= 17;   // 建物名は区域名より引いたら消してよい
   if (show && !map.hasLayer(pinLabels)) pinLabels.addTo(map);
   if (!show && map.hasLayer(pinLabels)) map.removeLayer(pinLabels);
@@ -866,20 +864,53 @@ function pinIcon(status, selected) {
 
 function visible(p) { return !p.deleted && filter.has(p.status); }
 
+// 地図の描き直しは、短い間に何度呼ばれても1回にまとめる。
+// 他の人が100件を一括で変えると通知が100回届くが、以前は100回とも全部を描き直していたため、
+// スマホが数秒固まっていた。
+// requestAnimationFrame は、画面が裏に回っていたり別のウィンドウが前にあると止まり、
+// 予約が溜まったまま動かなくなる。確実に動く setTimeout を使う(30ms待てば同じ効果)
+let renderQueued = false;
 function renderPins() {
-  // 建物の記録は形のまま塗り、それ以外はピンを立てる
-  if (pinLabels) map.removeLayer(pinLabels);
-  pinLabels = L.layerGroup();
+  if (renderQueued) return;
+  renderQueued = true;
+  setTimeout(() => { renderQueued = false; renderPinsNow(); }, 30);
+}
+
+// 建物名のラベルは、記録ごとに1つずつ持つ(全部作り直さない)
+const pinLabels = L.layerGroup();
+const labelMarkers = new Map();   // id -> L.Marker
+// いま描いている内容の指紋。同じなら触らない
+const rendered = new Map();       // id -> string
+
+function setLabel(id, p, show) {
+  const old = labelMarkers.get(id);
+  if (old) { pinLabels.removeLayer(old); labelMarkers.delete(id); }
+  if (!show || !p.label) return;
+  const m = L.marker([p.lat, p.lng], {
+    icon: L.divIcon({ className:'', html:'<div class="pinlabel">' + esc(p.label) + '</div>', iconSize:[0,0] }),
+    interactive:false, zIndexOffset:-300,
+  });
+  pinLabels.addLayer(m);
+  labelMarkers.set(id, m);
+}
+
+function renderPinsNow() {
   pins.forEach((p, id) => {
-    const bi = BLD_INDEX.has(id) ? BLD_INDEX.get(id) : -1;
-    if (!visible(p)) {
-      if (markers.has(id)) { map.removeLayer(markers.get(id)); markers.delete(id); }
+    const vis = visible(p);
+    // 描画に関係する項目だけで指紋を作る。同じ指紋なら何もしない
+    const sig = vis ? [p.status, id === selectedId ? 1 : 0, p.lat, p.lng, p.label || ''].join('|') : 'hidden';
+    if (rendered.get(id) === sig) return;
+    rendered.set(id, sig);
+
+    let m = markers.get(id);
+    if (!vis) {
+      if (m) { map.removeLayer(m); markers.delete(id); }
+      setLabel(id, p, false);
       return;
     }
-    let m = markers.get(id);
+    const bi = BLD_INDEX.has(id) ? BLD_INDEX.get(id) : -1;
     if (bi >= 0) {
       // ---- 建物を塗る ----
-      const col = STATUS[p.status].color;
       if (!m || !m.setStyle) {
         if (m) map.removeLayer(m);
         m = L.polygon(BUILDINGS[bi][1], { renderer: bldRenderer, fillOpacity:.62, opacity:.95 });
@@ -887,37 +918,30 @@ function renderPins() {
         m.addTo(map);
         markers.set(id, m);
       }
-      m.setStyle({ fillColor:col, weight: id === selectedId ? 3.5 : 1.5,
+      m.setStyle({ fillColor: STATUS[p.status].color, weight: id === selectedId ? 3.5 : 1.5,
                    color: id === selectedId ? '#fbbf24' : '#ffffff' });
-      if (p.label) pinLabels.addLayer(L.marker([p.lat, p.lng], {
-        icon: L.divIcon({ className:'', html:'<div class="pinlabel">' + esc(p.label) + '</div>', iconSize:[0,0] }),
-        interactive:false, zIndexOffset:-300,
-      }));
-      return;
-    }
-    // ---- ふつうのピン ----
-    const icon = pinIcon(p.status, id === selectedId);
-    if (!m || m.setStyle) {
-      if (m) map.removeLayer(m);
-      m = L.marker([p.lat, p.lng], { icon, keyboard:false });
-      m.on('click', (e) => { L.DomEvent.stop(e); openPin(id); });
-      m.addTo(map);
-      markers.set(id, m);
     } else {
-      const ll = m.getLatLng();
-      if (ll.lat !== p.lat || ll.lng !== p.lng) m.setLatLng([p.lat, p.lng]);
-      m.setIcon(icon);
+      // ---- ふつうのピン ----
+      const icon = pinIcon(p.status, id === selectedId);
+      if (!m || m.setStyle) {
+        if (m) map.removeLayer(m);
+        m = L.marker([p.lat, p.lng], { icon, keyboard:false });
+        m.on('click', (e) => { L.DomEvent.stop(e); openPin(id); });
+        m.addTo(map);
+        markers.set(id, m);
+      } else {
+        const ll = m.getLatLng();
+        if (ll.lat !== p.lat || ll.lng !== p.lng) m.setLatLng([p.lat, p.lng]);
+        m.setIcon(icon);
+      }
     }
-    if (p.label) pinLabels.addLayer(L.marker([p.lat, p.lng], {
-      icon: L.divIcon({ className:'', html:'<div class="pinlabel">' + esc(p.label) + '</div>', iconSize:[0,0] }),
-      interactive:false, zIndexOffset:-300,
-    }));
+    setLabel(id, p, true);
+  });
+  // 記録そのものが無くなったもの
+  markers.forEach((m, id) => {
+    if (!pins.has(id)) { map.removeLayer(m); markers.delete(id); rendered.delete(id); setLabel(id, null, false); }
   });
   updatePinLabels();
-  // 消えたもの
-  markers.forEach((m, id) => {
-    if (!pins.has(id) || !visible(pins.get(id))) { map.removeLayer(m); markers.delete(id); }
-  });
   renderProgress();
   if ($('listSheet').classList.contains('open')) renderList();
 }
@@ -969,9 +993,20 @@ function renderProgress() {
 /* ============================================================
    保存（オフラインでも消えないようにキューに積む）
    ============================================================ */
-function cacheLocal() {
+// 全記録をJSONにして端末に書く処理は重い(スマホで数十ms)。変更のたびに毎回やると
+// 一括変更のときに何十回も走るので、少し待ってまとめて1回にする
+let cacheTimer = null;
+function cacheLocalNow() {
+  clearTimeout(cacheTimer); cacheTimer = null;
   lsSet(LS.cache, { pins:[...pins.values()], settings });
 }
+function cacheLocal() {
+  if (cacheTimer) return;
+  cacheTimer = setTimeout(cacheLocalNow, 500);
+}
+// 画面を閉じる・裏に回すときは、待たずに保存する
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && cacheTimer) cacheLocalNow(); });
+window.addEventListener('pagehide', () => { if (cacheTimer) cacheLocalNow(); });
 
 function setSync(state, text) {
   const d = $('syncDot');
@@ -1050,25 +1085,44 @@ function mergePin(row) {
   pins.set(row.id, row);
 }
 
-async function loadAll(quiet) {
+// 取得ずみの記録の updated_at の最大値。定期取得ではこれより新しいものだけを取る
+// (以前は12秒ごとに全記録とお店の設定を取り直していた)
+let lastPinSync = '';
+let lastFullAt = 0;
+let pollCount = 0;
+
+function notePinSync(row) {
+  if (row && row.updated_at && (!lastPinSync || Date.parse(row.updated_at) > Date.parse(lastPinSync))) lastPinSync = row.updated_at;
+}
+
+async function loadPins(full) {
+  let q = db.from('flyer_pins').select('*');
+  // 差分のとき：最後に見た時刻の少し前から。時刻が同じ記録の取りこぼしを避ける(重複は mergePin が無害に捨てる)
+  if (!full && lastPinSync) q = q.gt('updated_at', new Date(Date.parse(lastPinSync) - 5000).toISOString());
+  const res = await q;
+  if (res.error) throw res.error;
+  (res.data || []).forEach((r) => { mergePin(r); notePinSync(r); });
+  // ローカルの未送信ぶんが上書きされないようにする
+  queue.forEach((q2) => pins.set(q2.id, q2));
+}
+
+async function loadSettings() {
+  const res = await db.from('flyer_settings').select('*').eq('id', 'map').maybeSingle();
+  if (res && res.data && res.data.data) {
+    const hadCenter = !!(settings.center);
+    const before = JSON.stringify(settings);
+    settings = Object.assign({ center:null, radius:800, areaMode:'areas', showAreas:true }, res.data.data);
+    // 本当に変わったときだけ描き直す
+    if (JSON.stringify(settings) !== before) applyArea(!hadCenter && !!settings.center);
+  }
+}
+
+// full=true：全部取り直す(起動時・5分ごと・画面に戻ったとき)。false：変わった記録だけ
+async function loadAll(quiet, full) {
+  if (full === undefined) full = true;
   try {
-    const [pinRes, setRes] = await Promise.all([
-      db.from('flyer_pins').select('*'),
-      db.from('flyer_settings').select('*').eq('id', 'map').maybeSingle(),
-    ]);
-    if (pinRes.error) throw pinRes.error;
-
-    // ローカルの未送信ぶんが上書きされないようにマージする
-    (pinRes.data || []).forEach(mergePin);
-    queue.forEach((q) => pins.set(q.id, q));
-
-    if (setRes && setRes.data && setRes.data.data) {
-      const hadCenter = !!(settings.center);
-      const before = JSON.stringify(settings);
-      settings = Object.assign({ center:null, radius:800, areaMode:'areas', showAreas:true }, setRes.data.data);
-      // 12秒ごとの取り直しで地図がちらつかないよう、本当に変わったときだけ描き直す
-      if (JSON.stringify(settings) !== before) applyArea(!hadCenter && !!settings.center);
-    }
+    if (full) { await Promise.all([loadPins(true), loadSettings()]); lastFullAt = Date.now(); }
+    else await loadPins(false);
     cacheLocal();
     renderPins();
     setSync(queue.length ? 'warn' : 'ok', queue.length ? ('未送信 ' + queue.length + '件') : '同期中');
@@ -1091,11 +1145,12 @@ function subscribeRealtime() {
       if (!row || !row.id) return;
       if (queue.some((q) => q.id === row.id)) return; // 自分の未送信ぶんが優先
       mergePin(row);
+      notePinSync(row);
       cacheLocal();
       renderPins();
       if (selectedId === row.id && !sheetDirty) fillPinSheet(row);
     })
-    .on('postgres_changes', { event:'*', schema:'public', table:'flyer_settings' }, () => loadAll(true))
+    .on('postgres_changes', { event:'*', schema:'public', table:'flyer_settings' }, () => loadSettings().catch(() => {}))
     .subscribe();
 }
 
@@ -1493,6 +1548,7 @@ function startWatch() {
 // スマホの画面を裏に回すとブラウザが位置追跡を止めることがある。
 // 戻ってきたときに更新が止まっていたら、黙って裏で取り直す
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Date.now() - lastFullAt > 60000) loadAll(true, true);
   if (document.visibilityState !== 'visible' || geoDenied) return;
   const stale = Date.now() - lastFixAt > 20000;
   if (watchId === null || stale) {
@@ -1786,7 +1842,7 @@ window.addEventListener('online', () => { flushQueue(); loadAll(true); });
   startWatch();
 
   // 念のため定期的に取り直す（リアルタイムが届かないときの保険）
-  setInterval(() => { flushQueue(); loadAll(true); }, 12000);
+  setInterval(() => { flushQueue(); pollCount++; loadAll(true, pollCount % 25 === 0); }, 12000);
 })();
 </script>
 </body>
