@@ -748,7 +748,10 @@ function reportText(){
   const d=new Date(R.date+'T00:00');const wd='日月火水木金土'[d.getDay()];
   const L=['【日報】',`日付：${d.getMonth()+1}月${d.getDate()}日（${wd}）`,`天気：${R.weather||''}`,`記入者：${R.who||''}`,SEP,
     '▼実績',`① 本日売上：${yen(R.sales)}`,`② 累計売上：${yen(R.cum)}`,`③ 客数：${guestTotal()}人`,SEP,'▼来店経緯'];
-  const sc=srcCounts();REPORT_SOURCES.forEach(s=>L.push(`${s}：${sc[s]}人`));
+  const sc=srcCounts();
+  // 「：」の位置をそろえるため、名前を全角スペースで同じ幅（8文字）にそろえる（Xだけは全角のＸにする）
+  const W=Math.max(...REPORT_SOURCES.map(x=>[...x].length));
+  REPORT_SOURCES.forEach(s=>{const name=s==='X'?'Ｘ':s;L.push(name+'　'.repeat(W-[...name].length)+`：${sc[s]}人`)});
   L.push(SEP,'▼営業報告（お客様の反応）');
   R.customers.slice().reverse().filter(c=>(c.comment||'').trim()||c.label).forEach(c=>{
     const o=MENU.filter(m=>+(c.ord||{})[m]).map(m=>m+'×'+c.ord[m]).join(' ');
