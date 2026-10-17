@@ -61,8 +61,8 @@
   .o-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
   .o-row button{height:50px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:14px;font-weight:600;line-height:1.2}
   .o-row button.on{background:var(--g);color:#fff;border-color:transparent}
-  .addrow{margin-bottom:6px}
-  .addrow .chip{padding:5px 12px;font-size:12px}
+  .free{margin-top:8px}
+  textarea.free{min-height:64px}
   .scroll-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
   .scroll-row::-webkit-scrollbar{display:none}
   .scroll-row .chip{flex:0 0 auto}
@@ -77,6 +77,7 @@
   .commit:active{transform:scale(.98)}
   .src-btns button.oth{border-color:var(--line);color:var(--muted)}
   .src-btns button:active{transform:scale(.96)}
+  .hint.warn{color:var(--warn);font-weight:600}
   .gap{margin-top:8px;padding:8px 12px;border-radius:10px;background:#fbf3e4;color:var(--warn);font-size:13px}
   .stat{display:flex;justify-content:space-between;align-items:center;padding:10px 0 6px}
   .src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:2px 14px;font-size:14px}
@@ -151,10 +152,13 @@
     <div class="hint" id="ordOther"></div>
     <div class="q-label">どんなお客さん（任意）</div>
     <div class="scroll-row" id="whoRow"></div>
+    <input type="text" id="whoText" class="free" placeholder="今回のお客さんを書く（例：名古屋からの出張の方々）">
     <div class="q-label">反応（任意）</div>
     <div class="scroll-row" id="reactRow"></div>
+    <textarea id="reactText" class="free" placeholder="今回の反応を具体的に書く（マイク🎤も使えます）"></textarea>
     <div class="q-label">来店経緯</div>
     <div class="src-btns" id="srcBtns"></div>
+    <div class="hint" id="srcNote"></div>
     <button class="commit off" id="btnCommit">来店経緯を選んでください</button>
   </div>
 
@@ -288,13 +292,10 @@ const KW_HAND=[
 function addText(el,t){const v=el.value.replace(/\s+$/,'');el.value=v?(v.endsWith('。')||v.endsWith('」')?v+t:v+'。'+t):t;el.dispatchEvent(new Event('input'))}
 function kwChips(defs,onTap,customKey){
   const box=document.createElement('div');box.className='chips kw';
-  const a=document.createElement('button');a.className='chip add';a.textContent='＋ 言葉を追加';
-  a.onclick=()=>{const w=prompt('よく使う言葉を追加');if(w&&w.trim()){const q=ls.get(customKey,[]);q.push(w.trim());ls.set(customKey,q);box.replaceWith(kwChips(defs,onTap,customKey))}};
-  box.appendChild(a);
-  const br=document.createElement('span');br.style.cssText='flex-basis:100%;height:0';box.appendChild(br);
-  const all=ls.get(customKey,[]).map(x=>[x,x]).concat(defs.map(d=>Array.isArray(d)?d:[d,d]));
-  all.forEach(([lab,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=lab;b.onclick=()=>onTap(t,b);box.appendChild(b)});
-  return box;
+  defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(customKey,[]).map(x=>[x,x])).forEach(([lab,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=lab;b.onclick=()=>onTap(t,b);box.appendChild(b)});
+  const a=document.createElement('button');a.className='chip add';a.textContent='＋追加';
+  a.onclick=()=>{const w=prompt('いつも使う言葉を、ボタンとして追加します');if(w&&w.trim()){const q=ls.get(customKey,[]);q.push(w.trim());ls.set(customKey,q);box.replaceWith(kwChips(defs,onTap,customKey))}};
+  box.appendChild(a);return box;
 }
 const TEXT=['date','who','sales','cum','handover','inbound'];
 const yen=n=>'¥'+Number(n||0).toLocaleString();
@@ -309,7 +310,8 @@ let R;              // 編集中の日報
 let openId=null;    // 開いているお客さんカード
 let cumTouched=false;
 let qN=1,qTake=false,qOrder=null;
-let qSrc='',qReg=null;
+let qWhoText='',qReactText='';
+let qSrcs={},qReg=null; // qSrcs: 来店経緯ごとの人数 {インスタ:1, 看板:2}
 let qOrd={},qOther='';const qWho=[],qReact=[]; // 記録パネルで選んだ「食べたもの・お客さん・反応」 // 会計記録パネルの選択
 let SQ=null;        // Squareから取った今日のデータ {total,count,orders,at}
 let autoToday=true; // 履歴から過去の日報を開いたときは日付を勝手に変えない
@@ -323,7 +325,7 @@ function save(){if(!R.date)return;const a=allReports();a[R.date]=R;ls.set('nippo
 
 /* ---------- 集計 ---------- */
 const guestTotal=()=>R.customers.reduce((s,c)=>s+(+c.n||0),0);
-function srcCounts(){const o={};REPORT_SOURCES.forEach(s=>o[s]=0);R.customers.forEach(c=>{if(c.src)o[toReportSrc(c.src)]+=(+c.n||0)});return o}
+function srcCounts(){const o={};REPORT_SOURCES.forEach(s=>o[s]=0);R.customers.forEach(c=>{if(c.srcs)Object.entries(c.srcs).forEach(([k,v])=>{o[toReportSrc(k)]+=(+v||0)});else if(c.src)o[toReportSrc(c.src)]+=(+c.n||0)});return o}
 function prevCum(){
   const p=latestBefore(R.date);if(!p||p.cum===''||p.cum==null)return null;
   if(ls.get('nippo_cummode','month')==='month'&&p.date.slice(0,7)!==R.date.slice(0,7))return 0;
@@ -343,26 +345,60 @@ function mapItems(items){
 
 /* ---------- 元に戻す／やり直す ---------- */
 let UNDO=[],REDO=[];
-const panelState=()=>({qN,qTake,qOrder,qSrc,qReg,qOrd:Object.assign({},qOrd),qOther,qWho:qWho.slice(),qReact:qReact.slice()});
-function setPanel(x){qN=x.qN;qTake=x.qTake;qOrder=x.qOrder;qSrc=x.qSrc;qReg=x.qReg;qOrd=Object.assign({},x.qOrd);qOther=x.qOther;qWho.length=0;qWho.push(...x.qWho);qReact.length=0;qReact.push(...x.qReact)}
+const panelState=()=>({qN,qTake,qOrder,qSrcs:Object.assign({},qSrcs),qReg,qOrd:Object.assign({},qOrd),qOther,qWho:qWho.slice(),qReact:qReact.slice(),qWhoText,qReactText});
+function setPanel(x){qN=x.qN;qTake=x.qTake;qOrder=x.qOrder;qSrcs=Object.assign({},x.qSrcs);qReg=x.qReg;qOrd=Object.assign({},x.qOrd);qOther=x.qOther;qWho.length=0;qWho.push(...x.qWho);qReact.length=0;qReact.push(...x.qReact);qWhoText=x.qWhoText||'';qReactText=x.qReactText||''}
 const snapNow=()=>({r:JSON.stringify(R),q:panelState()});
 function updUndo(){$('btnUndo').disabled=!UNDO.length;$('btnRedo').disabled=!REDO.length}
 function pushUndo(){UNDO.push(snapNow());if(UNDO.length>40)UNDO.shift();REDO=[];updUndo()}
 function applySnap(e){R=JSON.parse(e.r);openId=null;setPanel(e.q);renderAll();save();updUndo()}
 function undo(){if(!UNDO.length){toast('戻せる操作はありません');return}REDO.push(snapNow());applySnap(UNDO.pop());toast('元に戻しました')}
 function redo(){if(!REDO.length){toast('やり直せる操作はありません');return}UNDO.push(snapNow());applySnap(REDO.pop());toast('やり直しました')}
+$('whoText').oninput=()=>{qWhoText=$('whoText').value};$('reactText').oninput=()=>{qReactText=$('reactText').value};
 $('btnUndo').onclick=undo;$('btnRedo').onclick=redo;
-$('panelReset').onclick=()=>{qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrc='';qReg=null;renderQuick();toast('選び直せます')};
+$('panelReset').onclick=()=>{qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrcs={};qReg=null;qWhoText='';qReactText='';renderQuick();toast('選び直せます')};
+
+/* ---------- 来店経緯の人数わけ（1組の中で人ごとに違うとき）---------- */
+const srcSum=m=>Object.values(m).reduce((a,b)=>a+b,0);
+const mainSrc=m=>Object.keys(m).sort((a,b)=>m[b]-m[a])[0]||'';
+// ボタンを押したときの動き。m を直接書き換え、うまくいかないときは理由を返す
+function tapSrc(m,total,src){
+  if(src in m){
+    if(Object.keys(m).length===1){delete m[src];return''}   // 1つだけ選んでいるとき：もう一度押すと外す
+    if(srcSum(m)<total){m[src]++;return''}                   // 足りないぶんがあれば、そこに足す
+    const o=Object.keys(m).filter(k=>k!==src).sort((a,b)=>m[b]-m[a])[0];  // 足りなければ、他から1人もらう
+    m[o]--;if(!m[o])delete m[o];m[src]++;return''
+  }
+  if(!Object.keys(m).length){m[src]=total;return''}
+  if(srcSum(m)<total){m[src]=total-srcSum(m);return''}
+  const big=Object.keys(m).filter(k=>m[k]>1).sort((a,b)=>m[b]-m[a])[0];
+  if(!big)return'人数を増やしてください（今の人数は全員ぶん選ばれています）';
+  m[big]--;m[src]=1;return'';
+}
+// 人数が変わったときに合計を合わせる
+function fitMap(m,total,force){
+  const k=Object.keys(m);if(!k.length)return;
+  if(k.length===1){m[k[0]]=total;return}
+  while(srcSum(m)>total){const b=mainSrc(m);if(m[b]>1)m[b]--;else{delete m[b]}}
+  if(force&&srcSum(m)<total)m[mainSrc(m)]+=total-srcSum(m);
+}
+function storeSrc(c,m){
+  const k=Object.keys(m);
+  if(!k.length){c.src='';c.srcs=null}
+  else if(k.length===1){c.src=k[0];c.srcs=null}
+  else{c.src=mainSrc(m);c.srcs=Object.assign({},m)}
+}
+const srcMapOf=c=>c.srcs?Object.assign({},c.srcs):(c.src?{[c.src]:+c.n||1}:{});
 
 /* ---------- 会計記録パネル ---------- */
 function renderQuick(){
   $('nRow').innerHTML='';
   [1,2,3,4,5,6].forEach(n=>{const b=document.createElement('button');b.textContent=n===6?'6+':n;b.className=qN===n?'on':'';
-    b.onclick=()=>{qN=n===6?(+prompt('人数',6)||6):n;renderQuick()};$('nRow').appendChild(b)});
+    b.onclick=()=>{qN=n===6?(+prompt('人数',6)||6):n;fitMap(qSrcs,qN);renderQuick()};$('nRow').appendChild(b)});
   if(qN>6){$('nRow').children[5].textContent=qN;$('nRow').children[5].className='on'}
   const tk=document.createElement('button');tk.className='tk'+(qTake?' on':'');tk.textContent='テイクアウト';
   tk.onclick=()=>{qTake=!qTake;renderQuick()};$('nRow').appendChild(tk);
   renderOrdRow();
+  $('whoText').value=qWhoText;$('reactText').value=qReactText;
   panelChips($('whoRow'),KW_WHO,'nippo_kw_who',qWho);
   panelChips($('reactRow'),KW_REACT,'nippo_kw_react',qReact);
   renderSrc();
@@ -371,20 +407,34 @@ function renderQuick(){
 // 来店経緯は「選ぶだけ」。記録は下の「この会計を記録する」で確定
 function renderSrc(){
   $('srcBtns').innerHTML='';
-  SOURCES.forEach(s=>{const b=document.createElement('button');
-    const on=qSrc===s;const rg=on&&s==='リピーター'&&qReg?regById(qReg):null;
-    b.className=[s==='リピーター'?'rep':'',s==='その他'?'oth':'',on?'sel':''].join(' ').trim();
-    b.innerHTML=esc(s)+(rg?'<small>'+esc(rg.name)+'</small>':'');
+  const multi=Object.keys(qSrcs).length>1;
+  SOURCES.forEach(src=>{const b=document.createElement('button');
+    const on=src in qSrcs;const rg=on&&src==='リピーター'&&qReg?regById(qReg):null;
+    b.className=[src==='リピーター'?'rep':'',src==='その他'?'oth':'',on?'sel':''].join(' ').trim();
+    const sub=[rg?rg.name:'',multi&&on?'×'+qSrcs[src]:''].filter(Boolean).join(' ');
+    b.innerHTML=esc(src)+(sub?'<small>'+esc(sub)+'</small>':'');
     b.onclick=()=>{
-      if(s==='リピーター'){openRegPicker(id=>{qSrc='リピーター';qReg=id;renderSrc()});return}
-      qSrc=on?'':s;qReg=null;renderSrc()};
+      if(on){const single=Object.keys(qSrcs).length===1;tapSrc(qSrcs,qN,src);if(single&&src==='リピーター')qReg=null;renderSrc();return}
+      if(src==='リピーター'){openRegPicker(id=>{const m=tapSrc(qSrcs,qN,src);if(m){toast(m);return}qReg=id;renderSrc()});return}
+      const m=tapSrc(qSrcs,qN,src);if(m)toast(m);renderSrc()};
     $('srcBtns').appendChild(b)});
-  const bc=$('btnCommit');bc.classList.toggle('off',!qSrc);
-  bc.textContent=qSrc?`この会計を記録する（${qN}名・${qSrc}）`:'来店経緯を選んでください';
+  const sum=srcSum(qSrcs),keys=Object.keys(qSrcs);
+  const note=$('srcNote');
+  note.className='hint'+(sum&&sum!==qN?' warn':'');
+  note.textContent=!keys.length?'人ごとに来店経緯が違うときは、別のボタンも押します。同じボタンをもう一度押すと、その人数が1人増えます（例：3名で インスタ1・看板2）'
+    :sum<qN?`あと${qN-sum}人ぶん、別の来店経緯を押してください（内訳：${keys.map(k=>k+qSrcs[k]).join('・')}）`
+    :sum>qN?`${sum-qN}人多くなっています。人数を増やすか、来店経緯を外してください`
+    :keys.length>1?`内訳：${keys.map(k=>k+qSrcs[k]+'名').join('・')}（同じボタンを押すと、その人数が1人増えます）`:'';
+  const ok=keys.length>0&&sum===qN;
+  const bc=$('btnCommit');bc.classList.toggle('off',!ok);
+  bc.textContent=!keys.length?'来店経緯を選んでください':!ok?(sum<qN?`あと${qN-sum}人ぶん選んでください`:'人数と内訳が合いません')
+    :`この会計を記録する（${qN}名・${keys.length>1?keys.map(k=>k+qSrcs[k]).join('・'):keys[0]}）`;
 }
 $('btnCommit').onclick=()=>{
-  if(!qSrc){toast('来店経緯を選んでください');return}
-  doRecord(qSrc,qReg);scrollTo({top:0,behavior:'smooth'});
+  const keys=Object.keys(qSrcs);
+  if(!keys.length){toast('来店経緯を選んでください');return}
+  if(srcSum(qSrcs)!==qN){toast(srcSum(qSrcs)<qN?`あと${qN-srcSum(qSrcs)}人ぶん、来店経緯を選んでください`:'人数と内訳が合いません');return}
+  doRecord(Object.assign({},qSrcs),qReg);scrollTo({top:0,behavior:'smooth'});
 };
 function renderOrdRow(){
   const el=$('ordRow');el.innerHTML='';
@@ -397,15 +447,12 @@ $('ordClear').onclick=()=>{qOrd={};qOther='';renderOrdRow()};
 // 押すたびに選択／解除できる言葉ボタン（記録パネル用）
 function panelChips(el,defs,key,sel){
   el.innerHTML='';
-  ls.get(key,[]).map(x=>[x,x]).concat(defs.map(d=>Array.isArray(d)?d:[d,d])).forEach(([lab,t])=>{
+  defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(key,[]).map(x=>[x,x])).forEach(([lab,t])=>{
     const b=document.createElement('button');b.className='chip'+(sel.includes(t)?' on':'');b.textContent=lab;
     b.onclick=()=>{const i=sel.indexOf(t);if(i>=0)sel.splice(i,1);else sel.push(t);b.classList.toggle('on',i<0)};el.appendChild(b)});
-  let ar=el.previousElementSibling;
-  if(!ar||!ar.classList.contains('addrow')){ar=document.createElement('div');ar.className='addrow';el.parentNode.insertBefore(ar,el)}
-  ar.innerHTML='';
-  const a=document.createElement('button');a.className='chip add';a.textContent='＋ 言葉を追加';
-  a.onclick=()=>{const w=prompt('よく使う言葉を追加');if(w&&w.trim()){const q=ls.get(key,[]);q.push(w.trim());ls.set(key,q);panelChips(el,defs,key,sel)}};
-  ar.appendChild(a);
+  const a=document.createElement('button');a.className='chip add';a.textContent='＋追加';
+  a.onclick=()=>{const w=prompt('いつも使う言葉を、ボタンとして追加します');if(w&&w.trim()){const q=ls.get(key,[]);q.push(w.trim());ls.set(key,q);panelChips(el,defs,key,sel)}};
+  el.appendChild(a);
 }
 function selectOrder(id,auto){
   qOrder=id;
@@ -434,20 +481,17 @@ function renderSqBox(){
   if(!list.length){const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録の会計はありません（Square ${SQ.orders.length}件・${SQ.at}更新）`;box.appendChild(h)}
   else{const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録 ${list.length}件（Square ${SQ.orders.length}件・${SQ.at}更新）。選んでいる会計に記録されます`;box.appendChild(h)}
 }
-function record(src){
-  if(src==='リピーター')return openRegPicker(id=>doRecord(src,id));
-  doRecord(src,null);
-}
-function doRecord(src,regId){
+function doRecord(map,regId){
   pushUndo();
   const o=SQ&&qOrder?SQ.orders.find(x=>x.id===qOrder):null;
-  const c={id:Date.now(),src,n:qN,takeout:qTake,ord:Object.assign({},qOrd),other:qOther,label:qWho.join('・'),comment:qReact.join(''),regId,
+  const keys=Object.keys(map);
+  const c={id:Date.now(),src:mainSrc(map),srcs:keys.length>1?Object.assign({},map):null,n:qN,takeout:qTake,ord:Object.assign({},qOrd),other:qOther,label:qWho.concat(qWhoText.trim()?[qWhoText.trim()]:[]).join('・'),comment:qReact.join('')+qReactText.trim(),regId,
     sqId:o?o.id:null,time:o?o.time:new Date().toTimeString().slice(0,5)};
   R.customers.unshift(c);save();
-  qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrc='';qReg=null;
+  qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrcs={};qReg=null;qWhoText='';qReactText='';
   renderQuick();renderCustomers();renderSales();
   const rg=regId&&regById(regId);
-  toast(`記録しました：${rg?san(rg.name):src} ${c.n}名`,undo);
+  toast(`記録しました：${rg&&keys.length===1?san(rg.name):keys.length>1?keys.map(k=>k+map[k]).join('・'):keys[0]} ${c.n}名`,undo);
 }
 
 /* ---------- 常連（リピーター） ---------- */
@@ -608,11 +652,13 @@ function stepper(el,get,set,min=0){
 }
 function renderSteppers(){document.querySelectorAll('[data-num]').forEach(el=>{const k=el.dataset.num;stepper(el,()=>+R[k]||0,v=>{R[k]=v;save()})})}
 function custTitle(c){
-  const type=c.src==='リピーター'?'リピーター':'新規';
+  const allRep=c.srcs?Object.keys(c.srcs).every(k=>k==='リピーター'):c.src==='リピーター';
+  const type=allRep?'リピーター':'新規';
   const parts=[];
-  if(c.src&&c.src!=='リピーター')parts.push(c.src+(['声かけ','通りがかり','その他'].includes(c.src)?'':'経由'));
+  if(c.srcs)parts.push(Object.keys(c.srcs).map(k=>k+c.srcs[k]+'名').join('／'));
+  else if(c.src&&c.src!=='リピーター')parts.push(c.src+(['声かけ','通りがかり','その他'].includes(c.src)?'':'経由'));
   const rg=c.regId&&regById(c.regId);if(rg)parts.push(san(rg.name));
-  if(+c.n>1)parts.push(c.n+'名');
+  if(+c.n>1&&!c.srcs)parts.push(c.n+'名');
   if(c.takeout)parts.push('テイクアウト');
   if(c.label)parts.push(c.label);
   return type+'｜'+parts.join('・');
@@ -649,10 +695,12 @@ function editor(c){
   l.appendChild(kwChips(KW_WHO,t=>{const p=li.value.split('・').map(s=>s.trim()).filter(Boolean);
     const i=p.indexOf(t);if(i>=0)p.splice(i,1);else p.push(t);li.value=p.join('・');li.dispatchEvent(new Event('input'))},'nippo_kw_who'));
   e.appendChild(l);
-  const s=document.createElement('div');s.innerHTML='<label class="t">来店経緯</label>';
+  const s=document.createElement('div');s.innerHTML='<label class="t">来店経緯（人ごとに違うときは、別のボタンも押します。同じボタンをもう一度押すと人数が増えます）</label>';
   const sc=document.createElement('div');sc.className='chips';
-  SOURCES.forEach(x=>{const b=document.createElement('button');b.className='chip'+(c.src===x?' on':'');b.textContent=x;
-    b.onclick=()=>{c.src=x;save();sc.querySelectorAll('.chip').forEach(y=>y.classList.toggle('on',y===b));renderCounts()};sc.appendChild(b)});
+  const drawSrc=()=>{sc.innerHTML='';const m=srcMapOf(c);const multi=Object.keys(m).length>1;
+    SOURCES.forEach(x=>{const b=document.createElement('button');b.className='chip'+(x in m?' on':'');b.textContent=x+(multi&&x in m?' ×'+m[x]:'');
+      b.onclick=()=>{const mm=srcMapOf(c);const msg=tapSrc(mm,+c.n||1,x);fitMap(mm,+c.n||1,true);storeSrc(c,mm);save();drawSrc();renderCounts();if(msg)toast(msg)};sc.appendChild(b)})};
+  drawSrc();
   s.appendChild(sc);e.appendChild(s);
   // 常連カードとの紐付け（新規のお客さんも、ここで登録しておけば次回から選べる）
   const rgBox=document.createElement('div');const rg=c.regId&&regById(c.regId);
@@ -662,7 +710,7 @@ function editor(c){
   const r=document.createElement('div');r.className='row';
   const n=document.createElement('div');n.innerHTML='<label class="t">人数</label>';
   const ns=document.createElement('div');ns.className='step';n.appendChild(ns);
-  stepper(ns,()=>+c.n||1,v=>{c.n=v;save();renderCounts()},1);
+  stepper(ns,()=>+c.n||1,v=>{c.n=v;if(c.srcs){const mm=srcMapOf(c);fitMap(mm,v,true);storeSrc(c,mm)}save();renderCounts();drawSrc()},1);
   const tk=document.createElement('div');tk.innerHTML='<label class="t">形態</label>';
   const tb=document.createElement('button');tb.className='chip'+(c.takeout?' on':'');tb.textContent='テイクアウト';
   tb.onclick=()=>{c.takeout=!c.takeout;tb.classList.toggle('on',c.takeout);save()};tk.appendChild(tb);
