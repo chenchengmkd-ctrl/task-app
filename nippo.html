@@ -61,6 +61,8 @@
   .o-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
   .o-row button{height:50px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:14px;font-weight:600;line-height:1.2}
   .o-row button.on{background:var(--g);color:#fff;border-color:transparent}
+  .addrow{margin-bottom:6px}
+  .addrow .chip{padding:5px 12px;font-size:12px}
   .scroll-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
   .scroll-row::-webkit-scrollbar{display:none}
   .scroll-row .chip{flex:0 0 auto}
@@ -286,11 +288,13 @@ const KW_HAND=[
 function addText(el,t){const v=el.value.replace(/\s+$/,'');el.value=v?(v.endsWith('。')||v.endsWith('」')?v+t:v+'。'+t):t;el.dispatchEvent(new Event('input'))}
 function kwChips(defs,onTap,customKey){
   const box=document.createElement('div');box.className='chips kw';
-  const all=defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(customKey,[]).map(x=>[x,x]));
-  all.forEach(([lab,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=lab;b.onclick=()=>onTap(t,b);box.appendChild(b)});
-  const a=document.createElement('button');a.className='chip add';a.textContent='＋';
+  const a=document.createElement('button');a.className='chip add';a.textContent='＋ 言葉を追加';
   a.onclick=()=>{const w=prompt('よく使う言葉を追加');if(w&&w.trim()){const q=ls.get(customKey,[]);q.push(w.trim());ls.set(customKey,q);box.replaceWith(kwChips(defs,onTap,customKey))}};
-  box.appendChild(a);return box;
+  box.appendChild(a);
+  const br=document.createElement('span');br.style.cssText='flex-basis:100%;height:0';box.appendChild(br);
+  const all=ls.get(customKey,[]).map(x=>[x,x]).concat(defs.map(d=>Array.isArray(d)?d:[d,d]));
+  all.forEach(([lab,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=lab;b.onclick=()=>onTap(t,b);box.appendChild(b)});
+  return box;
 }
 const TEXT=['date','who','sales','cum','handover','inbound'];
 const yen=n=>'¥'+Number(n||0).toLocaleString();
@@ -393,12 +397,15 @@ $('ordClear').onclick=()=>{qOrd={};qOther='';renderOrdRow()};
 // 押すたびに選択／解除できる言葉ボタン（記録パネル用）
 function panelChips(el,defs,key,sel){
   el.innerHTML='';
-  defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(key,[]).map(x=>[x,x])).forEach(([lab,t])=>{
+  ls.get(key,[]).map(x=>[x,x]).concat(defs.map(d=>Array.isArray(d)?d:[d,d])).forEach(([lab,t])=>{
     const b=document.createElement('button');b.className='chip'+(sel.includes(t)?' on':'');b.textContent=lab;
     b.onclick=()=>{const i=sel.indexOf(t);if(i>=0)sel.splice(i,1);else sel.push(t);b.classList.toggle('on',i<0)};el.appendChild(b)});
-  const a=document.createElement('button');a.className='chip add';a.textContent='＋';
+  let ar=el.previousElementSibling;
+  if(!ar||!ar.classList.contains('addrow')){ar=document.createElement('div');ar.className='addrow';el.parentNode.insertBefore(ar,el)}
+  ar.innerHTML='';
+  const a=document.createElement('button');a.className='chip add';a.textContent='＋ 言葉を追加';
   a.onclick=()=>{const w=prompt('よく使う言葉を追加');if(w&&w.trim()){const q=ls.get(key,[]);q.push(w.trim());ls.set(key,q);panelChips(el,defs,key,sel)}};
-  el.appendChild(a);
+  ar.appendChild(a);
 }
 function selectOrder(id,auto){
   qOrder=id;
