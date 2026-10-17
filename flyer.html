@@ -672,7 +672,7 @@ function nearbyPlaces(lat, lng, radius, limit) {
 
 /* ---------- ローカル設定 ---------- */
 const LS = {
-  me:'flyer_me', tiles:'flyer_tiles', cache:'flyer_cache', queue:'flyer_queue', filter:'flyer_filter',
+  me:'flyer_me', tiles:'flyer_tiles', cache:'flyer_cache', queue:'flyer_queue', hidden:'flyer_hidden',
   shops:'flyer_shops',
 };
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
@@ -683,7 +683,10 @@ let me       = lsGet(LS.me, '') || '';
 let pins     = new Map();                       // id -> pin
 let markers  = new Map();                       // id -> L.Marker
 let settings = { center:null, radius:800, areaMode:'areas', showAreas:true };
-let filter   = new Set(lsGet(LS.filter, STATUS_KEYS));
+// 隠している状況だけを保存する。(以前は「出す状況」を保存していたため、状況の種類を入れ替えた
+// ときに新しい状況が設定に入っておらず、その状況の建物が地図に一切描かれなくなっていた)
+const hiddenSaved = (() => { const v = lsGet(LS.hidden, []); return Array.isArray(v) ? v : []; })();
+let filter   = new Set(STATUS_KEYS.filter((k) => !hiddenSaved.includes(k)));
 let selectedId = null;
 let lastAddedId = null;
 let addMode = false;
@@ -942,7 +945,7 @@ function renderProgress() {
       const k = el.dataset.s;
       if (filter.has(k)) filter.delete(k); else filter.add(k);
       if (filter.size === 0) STATUS_KEYS.forEach((x) => filter.add(x)); // 全部消すのは不便なので戻す
-      lsSet(LS.filter, [...filter]);
+      lsSet(LS.hidden, STATUS_KEYS.filter((x) => !filter.has(x)));
       renderPins();
     };
   });
