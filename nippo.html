@@ -44,6 +44,8 @@
   .sumline span{color:var(--muted);font-weight:600;font-size:12px;margin-left:auto}
   .chips.names .chip{padding:10px 18px;font-size:16px}
   .chip.del{border-color:#fca5a5;color:#b91c1c}
+  .undo-row{display:flex;gap:8px;margin:-2px 0 6px}
+  .undo-row .small-btn:disabled{opacity:.35}
   .quick{padding:16px 16px 18px}
   .q-label{font-weight:700;font-size:12px;color:#c2410c;margin:14px 0 6px;display:flex;align-items:center;letter-spacing:.04em}
   .q-label .link{margin-left:auto}
@@ -138,7 +140,7 @@
 
   <div class="card quick">
     <h2>会計を記録<span class="sub">1組ぶん選んで、いちばん下の「記録する」を押すと完了です</span>
-      <button class="link r" id="btnSq">Square更新</button></h2>
+      <span class="r"><button class="link" id="panelReset">選び直す</button><button class="link" id="btnSq">Square更新</button></span></h2>
     <div id="sqBox"></div>
     <div class="q-label">人数</div>
     <div class="n-row" id="nRow"></div>
@@ -157,9 +159,17 @@
   <div class="card">
     <h2>記録済み <span id="custCount" class="sub"></span><span class="sub">反応を書いた組だけ営業報告に載ります</span>
       <button class="small-btn r" id="addCust">＋手で追加</button></h2>
+    <div class="undo-row"><button class="small-btn" id="btnUndo">↶ 元に戻す</button><button class="small-btn" id="btnRedo">↷ やり直す</button></div>
     <div id="custList"></div>
   </div>
 
+  <button class="commit" id="btnToEnd" style="margin-top:4px">営業おわり → 申し送り・実績へ</button>
+
+</div>
+
+<!-- ===== 最後の入力（申し送り・インバウンド・実績）===== -->
+<div class="page" id="p-end">
+  <button class="sumline" id="btnBackForm">‹ 会計の記録に戻る</button>
   <div class="card"><h2>申し送り</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>
 
   <div class="card">
@@ -181,6 +191,7 @@
     <div class="src-grid" id="srcSum"></div>
   </div>
 
+  <div class="hint" style="margin:4px 4px 14px">入力できたら下の「LINEで送る」を押します。送信したあと、明日の開始画面に進みます。</div>
 </div>
 
 <!-- ===== はじめの設定（日付・記入者・天気）===== -->
@@ -190,7 +201,7 @@
     <div class="hint" style="margin:-6px 0 14px">最初に1回だけ入れます。入れたあとは、この画面は出ません。</div>
     <label class="t">日付</label><input type="date" id="date">
     <input type="hidden" id="who">
-    <div class="q-label" style="margin-top:18px">記入者<button class="link" id="nameDel">名前を整理</button></div>
+    <div class="q-label" style="margin-top:18px">記入者（複数選べます）<button class="link" id="nameDel">名前を整理</button></div>
     <div class="chips" id="nameChips"></div>
     <div class="q-label" style="margin-top:18px">天気</div>
     <div class="chips" id="weather"></div>
@@ -204,7 +215,7 @@
 <!-- ===== 履歴 ===== -->
 <div class="page" id="p-hist"><div class="card"><h2>過去の日報</h2><div id="histList"></div></div>
   <div class="card"><button class="chip" id="btnExport">バックアップを保存</button>
-  <div class="hint">日報はこのiPadの中に自動保存されます。</div></div>
+  <div class="hint">日報はこの端末の中に自動保存されます。</div></div>
 </div>
 
 <!-- ===== 常連 ===== -->
@@ -260,14 +271,14 @@ const KW_REACT=[
   ['臭みがない','「臭みがなく食べやすい」とのお声。'],['小骨が少ない','「小骨が少なくて食べやすい」とのお声。'],
   ['ボリューム','ボリュームに満足していただきました。'],['胃もたれしない','「胃もたれしない」とのお声。'],
   ['やっぱり美味しい','「やっぱり美味しいね」とのお言葉。'],['友達を連れてくる','「今度は友達を連れてきます」とのこと。'],
-  ['口コミ書いてくれた','口コミを書いていただきました。'],['お吸い物が欲しい','ご意見：お吸い物が欲しい。'],
+  ['口コミを書いてくれた','口コミを書いていただきました。'],['お吸い物が欲しい','ご意見：お吸い物が欲しい。'],
 ];
 const KW_WHO=['出張の方','観光の方','近隣の会社','近所にお住まい','仕事で神田に来られる方','サラリーマン','女性','男性','カップル','ご夫婦','家族連れ','鰻好きの方','海外の方','久しぶりのご来店','以前から気になっていた'];
 const KW_HAND=[
   ['人通り多い','人通りが多かったです。'],['人通り少ない','人通りが少なかったです。'],['雨','雨で人通りが少なかったです。'],
   ['11時台に集中','11時台に来店が集中しました。'],['12時台が弱い','12時台は来店が少なかったです。'],
   ['ご飯完売','ご飯が完売しました。'],['鰻完売','鰻が完売しました。'],['お断りあり','◯名お断りしました。'],
-  ['吉野家でご飯購入','ご飯が足りず吉野家で購入しました。'],['おにぎり完売','おにぎり完売しました。'],
+  ['吉野家でご飯購入','ご飯が足りず吉野家で購入しました。'],['おにぎり完売','おにぎりが完売しました。'],
   ['出張の方が多い','出張の方が多かったです。'],['看板で来店多い','看板を見てご来店の方が多かったです。'],
   ['備品切れ','◯◯がもうないです。'],
 ];
@@ -300,11 +311,11 @@ let SQ=null;        // Squareから取った今日のデータ {total,count,orde
 let autoToday=true; // 履歴から過去の日報を開いたときは日付を勝手に変えない
 
 function blank(date){
-  return {date:date||todayStr(),who:ls.get('nippo_who',''),weather:'',customers:[],talked:0,review:0};
+  return {date:date||todayStr(),who:'',whos:[],weather:'',customers:[],talked:0,review:0};
 }
 function allReports(){return ls.get('nippo_all',{})}
-function latestBefore(date){const a=allReports();const k=Object.keys(a).filter(x=>x<date).sort().pop();return k?a[k]:null}
-function save(){if(!R.date)return;const a=allReports();a[R.date]=R;ls.set('nippo_all',a);ls.set('nippo_who',R.who||'')}
+function latestBefore(date){const a=allReports();const k=Object.keys(a).filter(x=>x<date&&a[x].cum!==''&&a[x].cum!=null).sort().pop();return k?a[k]:null}
+function save(){if(!R.date)return;const a=allReports();a[R.date]=R;ls.set('nippo_all',a)}
 
 /* ---------- 集計 ---------- */
 const guestTotal=()=>R.customers.reduce((s,c)=>s+(+c.n||0),0);
@@ -325,6 +336,19 @@ function mapItems(items){
     if(k)ord[k]=(ord[k]||0)+i.qty;else other.push(n+(i.qty>1?'×'+i.qty:''))});
   return {ord,other:other.join('・')};
 }
+
+/* ---------- 元に戻す／やり直す ---------- */
+let UNDO=[],REDO=[];
+const panelState=()=>({qN,qTake,qOrder,qSrc,qReg,qOrd:Object.assign({},qOrd),qOther,qWho:qWho.slice(),qReact:qReact.slice()});
+function setPanel(x){qN=x.qN;qTake=x.qTake;qOrder=x.qOrder;qSrc=x.qSrc;qReg=x.qReg;qOrd=Object.assign({},x.qOrd);qOther=x.qOther;qWho.length=0;qWho.push(...x.qWho);qReact.length=0;qReact.push(...x.qReact)}
+const snapNow=()=>({r:JSON.stringify(R),q:panelState()});
+function updUndo(){$('btnUndo').disabled=!UNDO.length;$('btnRedo').disabled=!REDO.length}
+function pushUndo(){UNDO.push(snapNow());if(UNDO.length>40)UNDO.shift();REDO=[];updUndo()}
+function applySnap(e){R=JSON.parse(e.r);openId=null;setPanel(e.q);renderAll();save();updUndo()}
+function undo(){if(!UNDO.length){toast('戻せる操作はありません');return}REDO.push(snapNow());applySnap(UNDO.pop());toast('元に戻しました')}
+function redo(){if(!REDO.length){toast('やり直せる操作はありません');return}UNDO.push(snapNow());applySnap(REDO.pop());toast('やり直しました')}
+$('btnUndo').onclick=undo;$('btnRedo').onclick=redo;
+$('panelReset').onclick=()=>{qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrc='';qReg=null;renderQuick();toast('選び直せます')};
 
 /* ---------- 会計記録パネル ---------- */
 function renderQuick(){
@@ -397,7 +421,7 @@ function renderSqBox(){
     const txt=[MENU.filter(k=>m.ord[k]).map(k=>k+'×'+m.ord[k]).join(' '),m.other].filter(Boolean).join('・')||'（明細なし）';
     b.innerHTML=`<b>${esc(o.time)}</b> ${yen(o.total)}<br>${esc(txt)}`;
     b.onclick=()=>{selectOrder(o.id);renderSqBox()};wrap.appendChild(b)});
-  const nb=document.createElement('button');nb.className='ord none'+(qOrder===''?' on':'');nb.innerHTML='<b>会計なし</b><br>Squareと紐付けない';
+  const nb=document.createElement('button');nb.className='ord none'+(qOrder===''?' on':'');nb.innerHTML='<b>会計なし</b><br>Squareと結びつけない';
   nb.onclick=()=>{selectOrder('');renderSqBox()};wrap.appendChild(nb);
   box.appendChild(wrap);
   if(!list.length){const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録の会計はありません（Square ${SQ.orders.length}件・${SQ.at}更新）`;box.appendChild(h)}
@@ -408,6 +432,7 @@ function record(src){
   doRecord(src,null);
 }
 function doRecord(src,regId){
+  pushUndo();
   const o=SQ&&qOrder?SQ.orders.find(x=>x.id===qOrder):null;
   const c={id:Date.now(),src,n:qN,takeout:qTake,ord:Object.assign({},qOrd),other:qOther,label:qWho.join('・'),comment:qReact.join(''),regId,
     sqId:o?o.id:null,time:o?o.time:new Date().toTimeString().slice(0,5)};
@@ -415,7 +440,7 @@ function doRecord(src,regId){
   qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrc='';qReg=null;
   renderQuick();renderCustomers();renderSales();
   const rg=regId&&regById(regId);
-  toast(`記録しました：${rg?san(rg.name):src} ${c.n}名`,()=>{R.customers=R.customers.filter(x=>x!==c);save();renderQuick();renderCustomers();renderSales()});
+  toast(`記録しました：${rg?san(rg.name):src} ${c.n}名`,undo);
 }
 
 /* ---------- 常連（リピーター） ---------- */
@@ -497,7 +522,7 @@ function renderRegs(){
     e.appendChild(h);
     const btns=document.createElement('div');btns.className='row';
     const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
-    del.onclick=()=>{if(confirm(`${r.name}を常連リストから削除しますか？（日報の記録は残ります）`)){saveRegs(regs().filter(x=>x.id!==r.id));regOpen=null;renderRegs()}};
+    del.onclick=()=>{if(confirm(`${r.name}を常連リストから削除しますか？（日報の記録は残ります）`)){const old=regs();saveRegs(old.filter(x=>x.id!==r.id));regOpen=null;renderRegs();toast('削除しました',()=>{saveRegs(old);renderRegs()})}};
     const ok=document.createElement('button');ok.className='done-btn';ok.textContent='閉じる';ok.onclick=()=>{regOpen=null;renderRegs()};
     btns.append(del,ok);e.appendChild(btns);d.appendChild(e);box.appendChild(d);
   });
@@ -524,16 +549,20 @@ async function fetchSquare(manual){
 }
 
 /* ---------- 画面描画 ---------- */
-const NAMES_DEFAULT=['江夏','工藤','向井','都丸'];
+const NAMES_DEFAULT=['江夏','工藤','上原','都丸'];
+// 以前に保存した一覧に「向井」が残っていたら「上原」に入れ替える
+(()=>{const q=ls.get('nippo_names',null);if(q&&q.includes('向井')){ls.set('nippo_names',q.map(n=>n==='向井'?'上原':n).filter((n,i,a)=>a.indexOf(n)===i))}})();
 const getNames=()=>ls.get('nippo_names',NAMES_DEFAULT);
+const whosOf=()=>R.whos||[];
+function setWhos(arr){R.whos=arr;R.who=arr.join('・');$('who').value=R.who}
 let nameDel=false;
 function renderNames(){
   const box=$('nameChips');box.className='chips names';box.innerHTML='';
   getNames().forEach(n=>{const b=document.createElement('button');
-    b.className='chip'+(nameDel?' del':(R.who===n?' on':''));b.textContent=nameDel?'× '+n:n;
+    b.className='chip'+(nameDel?' del':(whosOf().includes(n)?' on':''));b.textContent=nameDel?'× '+n:n;
     b.onclick=()=>{
-      if(nameDel){if(confirm(n+'を名前の一覧から消しますか？')){ls.set('nippo_names',getNames().filter(x=>x!==n));renderNames()}return}
-      R.who=n;$('who').value=n;ls.set('nippo_who',n);save();renderNames();updBegin()};
+      if(nameDel){if(confirm(n+'を名前の一覧から消しますか？')){const old=getNames();ls.set('nippo_names',old.filter(x=>x!==n));renderNames();toast(n+'を消しました',()=>{ls.set('nippo_names',old);renderNames()})}return}
+      const cur=whosOf();setWhos(cur.includes(n)?cur.filter(x=>x!==n):cur.concat(n));save();renderNames();updBegin();renderSummary()};
     box.appendChild(b)});
   const a=document.createElement('button');a.className='chip add';a.textContent='＋ 名前を追加';
   a.onclick=()=>{const w=prompt('追加する名前');if(w&&w.trim()){const q=getNames();if(!q.includes(w.trim()))q.push(w.trim());ls.set('nippo_names',q);renderNames()}};
@@ -590,7 +619,7 @@ function renderCustomers(){
     const _t=custTitle(c),_i=_t.indexOf('｜'),_ty=_t.slice(0,_i);
     d.innerHTML=`<div class="sum"><div class="tx"><b><span class="tag ${_ty==='リピーター'?'rep':''}">${_ty}</span>${esc(c.time||'')} ${esc(_t.slice(_i+1))}</b><small>${esc(ordText(c)||'注文なし')}${c.comment?'　💬'+esc(c.comment):''}</small></div></div>`;
     if(openId!==c.id){const b=document.createElement('button');b.className='small-btn';b.textContent=c.comment?'編集':'反応を書く';
-      b.onclick=()=>{openId=c.id;renderCustomers()};d.querySelector('.sum').appendChild(b)}
+      b.onclick=()=>{pushUndo();openId=c.id;renderCustomers()};d.querySelector('.sum').appendChild(b)}
     else d.appendChild(editor(c));
     box.appendChild(d);
   });
@@ -640,7 +669,7 @@ function editor(c){
   o.appendChild(or);e.appendChild(o);
   const btns=document.createElement('div');btns.className='row';
   const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
-  del.onclick=()=>{if(confirm('この記録を削除しますか？')){R.customers=R.customers.filter(x=>x!==c);openId=null;save();renderCustomers();renderSqBox();renderSales()}};
+  del.onclick=()=>{pushUndo();R.customers=R.customers.filter(x=>x!==c);openId=null;save();renderCustomers();renderSqBox();renderSales();toast('削除しました',undo)};
   const ok=document.createElement('button');ok.className='done-btn';ok.textContent='完了';
   ok.onclick=()=>{openId=null;renderCustomers()};
   btns.append(del,ok);e.appendChild(btns);
@@ -676,10 +705,11 @@ function reportText(){
 }
 
 /* ---------- 画面切替 ---------- */
-let page='form';
+let page='form',lastMain='form';
 function go(p){
-  page=p;['form','start','prev','hist','reg','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
-  $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
+  page=p;if(p==='form'||p==='end')lastMain=p;
+  ['form','end','start','prev','hist','reg','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  $('bar').style.display=(p==='form'||p==='end'||p==='prev')?'flex':'none';
   $('btnPrev').textContent=p==='prev'?'入力に戻る':'プレビュー';
   document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':({hist:'履歴',reg:'常連',set:'設定'}[b.dataset.go]));
   if(p==='prev')$('prevText').textContent=reportText();
@@ -688,19 +718,27 @@ function go(p){
   if(p==='start')renderStart();
   if(p==='reg'){regOpen=null;renderRegs()}
   if(p==='form'){renderQuick();fetchSquare(false)}
+  if(p==='end'){renderSales();renderCounts();fetchSquare(false)}
   scrollTo(0,0);
 }
-document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(page===b.dataset.go?'form':b.dataset.go));
-$('btnPrev').onclick=()=>go(page==='prev'?'form':'prev');
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(page===b.dataset.go?lastMain:b.dataset.go));
+$('btnPrev').onclick=()=>go(page==='prev'?lastMain:'prev');
+$('btnToEnd').onclick=()=>go('end');
+$('btnBackForm').onclick=()=>go('form');
 
 function renderHist(){
-  const a=allReports();const keys=Object.keys(a).sort().reverse();
+  const a=allReports();const keys=Object.keys(a).filter(k=>{const o=a[k];return o.started||(o.customers||[]).length||o.sales}).sort().reverse();
   $('histList').innerHTML=keys.length?'':'<div class="hint">まだ保存された日報はありません</div>';
   keys.forEach(k=>{const o=a[k];const r=document.createElement('div');r.className='h-item';
     const n=(o.customers||[]).reduce((s,c)=>s+(+c.n||0),0);
-    r.innerHTML=`<div class="d"><b>${k.replace(/-/g,'/')}</b> ${esc(o.weather||'')}<small>売上 ${yen(o.sales)}・${n}人・${esc(o.who||'')}</small></div>`;
+    r.innerHTML=`<div class="d"><b>${k.replace(/-/g,'/')}</b> ${esc(o.weather||'')}<small>売上 ${yen(o.sales)}・${n}人・${esc(o.who||'')}${o.sent?'・送信済み':''}</small></div>`;
     const b=document.createElement('button');b.className='small-btn';b.textContent='開く';b.onclick=()=>{autoToday=false;SQ=null;load(o);go('form')};
-    r.appendChild(b);$('histList').appendChild(r)});
+    const dl=document.createElement('button');dl.className='small-btn';dl.textContent='削除';dl.style.color='#b91c1c';
+    dl.onclick=()=>{if(!confirm(k.replace(/-/g,'/')+'の日報を削除しますか？'))return;
+      const all=allReports(),old=all[k];delete all[k];ls.set('nippo_all',all);
+      if(R.date===k)load(blank(k));
+      renderHist();toast('日報を削除しました',()=>{const x=allReports();x[k]=old;ls.set('nippo_all',x);if(R.date===k)load(old);renderHist()})};
+    r.appendChild(b);r.appendChild(dl);$('histList').appendChild(r)});
 }
 function renderSettings(){
   $('sqKey').value=ls.get('nippo_sqkey','');
@@ -715,17 +753,16 @@ TEXT.forEach(f=>$(f).addEventListener('input',()=>{
   R[f]=$(f).value;
   if(f==='cum')cumTouched=true;
   if(f==='sales')autoCum();
-  if(f==='who')ls.set('nippo_who',R.who);
   save();if(f==='sales'||f==='cum')renderSales();
 }));
 $('date').addEventListener('change',()=>{
   const o=allReports()[$('date').value];SQ=null;autoToday=$('date').value===todayStr();
-  if(o)load(o);else{const who=R.who;load(Object.assign(blank($('date').value),{who}))}
+  if(o)load(o);else{const keep={who:R.who,whos:R.whos||[],weather:R.weather};load(Object.assign(blank($('date').value),keep))}
   fetchSquare(true);
 });
 $('addCust').onclick=()=>{
   const c={id:Date.now(),src:'',n:1,takeout:false,ord:{},label:'',comment:'',time:new Date().toTimeString().slice(0,5)};
-  R.customers.unshift(c);openId=c.id;save();renderCustomers();
+  pushUndo();R.customers.unshift(c);openId=c.id;save();renderCustomers();
 };
 $('btnSq').onclick=()=>fetchSquare(true);
 $('btnNew').onclick=()=>{
@@ -744,24 +781,34 @@ function check(){
   return true;
 }
 $('btnCopy').onclick=()=>{if(check())copy(reportText())};
+function nextDay(d){const x=new Date(d+'T00:00');x.setDate(x.getDate()+1);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
+// 送信できたら、翌日の開始画面へ（間違えたときは「取り消す」で今日の日報に戻れます）
+function afterSent(){
+  const sentDate=R.date;R.sent=true;save();
+  const nd=nextDay(sentDate);SQ=null;autoToday=true;
+  load(allReports()[nd]||blank(nd));go('start');
+  toast(`送信しました。${+nd.slice(5,7)}/${+nd.slice(8,10)}の開始画面です`,()=>{SQ=null;load(allReports()[sentDate]);R.sent=false;save();go('form')});
+}
 $('btnShare').onclick=async()=>{
   if(!check())return;const t=reportText();
-  if(navigator.share){try{await navigator.share({text:t})}catch(e){}}
-  else location.href='https://line.me/R/share?text='+encodeURIComponent(t);
+  if(navigator.share){
+    let ok=false;try{await navigator.share({text:t});ok=true}catch(e){}
+    if(ok)afterSent();
+  }else{afterSent();location.href='https://line.me/R/share?text='+encodeURIComponent(t)}
 };
 $('btnExport').onclick=()=>{
   const blob=new Blob([JSON.stringify(allReports(),null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nippo-backup.json';a.click()};
 
-function load(o){R=JSON.parse(JSON.stringify(o));R.customers=R.customers||[];if(R.who&&R.weather)R.started=true;openId=null;cumTouched=false;
+function load(o){R=JSON.parse(JSON.stringify(o));R.customers=R.customers||[];if(R.who&&!R.whos)R.whos=R.who.split('・');if(R.who&&R.weather)R.started=true;openId=null;cumTouched=false;UNDO=[];REDO=[];
   const pc=prevCum();if(R.cum!==''&&R.cum!=null&&pc!=null&&+R.cum!==pc+(+R.sales||0))cumTouched=true;
   renderAll();save()}
 
 // アプリを開き直したとき・1分ごとにSquareを読み直す（会計直後に開けば最新の会計が出る）
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&page==='form'){
-  if(autoToday&&R.date<todayStr()){/* 開きっぱなしで日をまたいだら今日の日報へ */SQ=null;load(allReports()[todayStr()]||blank());if(!R.started)go('start')}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&(page==='form'||page==='end')){
+  if(autoToday&&R.date<todayStr()){/* 開きっぱなしで日をまたいだら今日の日報へ */SQ=null;load(allReports()[todayStr()]||blank());go(R.started?'form':'start')}
   fetchSquare(false)}});
-setInterval(()=>{if(!document.hidden&&page==='form')fetchSquare(false)},60000);
+setInterval(()=>{if(!document.hidden&&(page==='form'||page==='end'))fetchSquare(false)},60000);
 
 $('handKw').appendChild(kwChips(KW_HAND,t=>addText($('handover'),t),'nippo_kw_hand'));
 load(allReports()[todayStr()]||blank());
