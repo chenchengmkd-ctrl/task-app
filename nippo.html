@@ -150,6 +150,9 @@
     <div class="q-label">食べたもの<button class="link" id="ordClear">クリア</button></div>
     <div class="o-row" id="ordRow"></div>
     <div class="hint" id="ordOther"></div>
+    <div class="q-label">性別・年代（任意・複数選べます）</div>
+    <div class="scroll-row" id="sexRow"></div>
+    <div class="scroll-row" id="ageRow" style="margin-top:6px"></div>
     <div class="q-label">どんなお客さん（任意）</div>
     <div class="scroll-row" id="whoRow"></div>
     <input type="text" id="whoText" class="free" placeholder="今回のお客さんを書く（例：名古屋からの出張の方々）">
@@ -163,7 +166,7 @@
   </div>
 
   <div class="card">
-    <h2>記録済み <span id="custCount" class="sub"></span><span class="sub">反応を書いた組だけ営業報告に載ります</span>
+    <h2>記録済み <span id="custCount" class="sub"></span><span class="sub">記録した組は営業報告に載ります（設定で変えられます）</span>
       <button class="small-btn r" id="addCust">＋手で追加</button></h2>
     <div class="undo-row"><button class="small-btn" id="btnUndo">↶ 元に戻す</button><button class="small-btn" id="btnRedo">↷ やり直す</button></div>
     <div id="custList"></div>
@@ -191,7 +194,8 @@
     <h2>実績<span class="sub">最後の確認用。売上はSquareから自動で入ります</span></h2>
     <div class="row">
       <div><label class="t">本日売上（円）</label><input type="number" inputmode="numeric" id="sales"><div class="hint" id="salesHint"></div></div>
-      <div><label class="t">累計売上（円）</label><input type="number" inputmode="numeric" id="cum"><div class="hint" id="cumHint"></div></div>
+      <div><label class="t">累計売上（円）</label><input type="number" inputmode="numeric" id="cum"><div class="hint" id="cumHint"></div>
+        <div id="cumBaseBox" style="margin-top:8px"><label class="t">前日までの累計（最初の1回だけ）</label><input type="number" inputmode="numeric" id="cumBase" placeholder="例：284600"></div></div>
     </div>
     <div class="stat"><span>客数（自動）</span><span class="big" id="guestTotal">0人</span></div>
     <div class="src-grid" id="srcSum"></div>
@@ -247,6 +251,10 @@
     <div class="chips" id="cumMode"></div>
     <div class="hint">「月ごと」は毎月1日に0から数え直します。</div>
   </div>
+  <div class="card">
+    <h2>営業報告に載せる組</h2>
+    <div class="chips" id="repMode"></div>
+  </div>
 </div>
 </main>
 
@@ -262,12 +270,12 @@ const API='https://task-app-nine-liard.vercel.app/api/nippo_sales';
 const $=id=>document.getElementById(id);
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-const SOURCES=['リピーター','インスタ','看板','グーグル','チラシ','声かけ','通りがかり','紹介','スレッズ','X','インフルエンサー','出前','その他'];
+const SOURCES=['リピーター','インスタ','スレッズ','X','看板','グーグル','チラシ','紹介','インフルエンサー','出前','声かけ','通りがかり','その他'];
 // 日報の「来店経緯」欄に出す項目（声かけ・通りがかりは「その他」に合算）
-const REPORT_SOURCES=['リピーター','インスタ','スレッズ','X','看板','グーグル','チラシ','紹介','インフルエンサー','出前','その他'];
+const REPORT_SOURCES=SOURCES; // 記録ボタンと日報の来店経緯は同じ並び・同じ項目
 const toReportSrc=s=>REPORT_SOURCES.includes(s)?s:'その他';
 const MENU=['特上','上','並','おにぎり','混ぜご飯'];
-const WEATHERS=['晴','曇','雨','雪','晴のち雨','雨のち晴'];
+const WEATHERS=['快晴','晴','晴時々曇','曇時々晴','曇','曇時々雨','小雨','雨','大雨','雪','晴のち曇','晴のち雨','曇のち晴','曇のち雨','雨のち晴','雨のち曇','台風'];
 // よく使う言葉（2026年5〜10月の日報116件から多かった表現を拾ったもの）。[ボタン名, 入る文]
 const KW_REACT=[
   ['美味しい','「美味しい」とのお言葉。'],['ふわふわ','「ふわふわで美味しい」とのお声。'],['ふっくら','「ふっくらして美味しい」とのお声。'],
@@ -279,7 +287,9 @@ const KW_REACT=[
   ['やっぱり美味しい','「やっぱり美味しいね」とのお言葉。'],['友達を連れてくる','「今度は友達を連れてきます」とのこと。'],
   ['口コミを書いてくれた','口コミを書いていただきました。'],['お吸い物が欲しい','ご意見：お吸い物が欲しい。'],
 ];
-const KW_WHO=['出張の方','観光の方','近隣の会社','近所にお住まい','仕事で神田に来られる方','サラリーマン','女性','男性','カップル','ご夫婦','家族連れ','鰻好きの方','海外の方','久しぶりのご来店','以前から気になっていた'];
+const KW_WHO=['出張の方','観光の方','近隣の会社','近所にお住まい','仕事で神田に来られる方','サラリーマン','カップル','ご夫婦','家族連れ','鰻好きの方','海外の方','久しぶりのご来店','以前から気になっていた'];
+const SEXES=['男性','女性'];
+const AGES=['10代','20代','30代','40代','50代','60代','70代以上'];
 const KW_HAND=[
   ['人通り多い','人通りが多かったです。'],['人通り少ない','人通りが少なかったです。'],['雨','雨で人通りが少なかったです。'],
   ['11時台に集中','11時台に来店が集中しました。'],['12時台が弱い','12時台は来店が少なかったです。'],
@@ -309,8 +319,10 @@ function toast(m,undo){const t=$('toast');t.innerHTML='';const s=document.create
 let R;              // 編集中の日報
 let openId=null;    // 開いているお客さんカード
 let cumTouched=false;
-let qN=1,qTake=false,qOrder=null;
+let qN=1,qTake=false;
 let qWhoText='',qReactText='';
+const qSex=[],qAge=[];
+let qSqs=[],qNone=false,qAuto=true; // 選んだSquareの会計（複数可）／「会計なし」／一番新しい会計を自動で選ぶか
 let qSrcs={},qReg=null; // qSrcs: 来店経緯ごとの人数 {インスタ:1, 看板:2}
 let qOrd={},qOther='';const qWho=[],qReact=[]; // 記録パネルで選んだ「食べたもの・お客さん・反応」 // 会計記録パネルの選択
 let SQ=null;        // Squareから取った今日のデータ {total,count,orders,at}
@@ -327,7 +339,8 @@ function save(){if(!R.date)return;const a=allReports();a[R.date]=R;ls.set('nippo
 const guestTotal=()=>R.customers.reduce((s,c)=>s+(+c.n||0),0);
 function srcCounts(){const o={};REPORT_SOURCES.forEach(s=>o[s]=0);R.customers.forEach(c=>{if(c.srcs)Object.entries(c.srcs).forEach(([k,v])=>{o[toReportSrc(k)]+=(+v||0)});else if(c.src)o[toReportSrc(c.src)]+=(+c.n||0)});return o}
 function prevCum(){
-  const p=latestBefore(R.date);if(!p||p.cum===''||p.cum==null)return null;
+  const p=latestBefore(R.date);
+  if(!p)return(R.cumBase===''||R.cumBase==null)?null:+R.cumBase; // 前の日報がない日は「前日までの累計」を使う
   if(ls.get('nippo_cummode','month')==='month'&&p.date.slice(0,7)!==R.date.slice(0,7))return 0;
   return +p.cum;
 }
@@ -345,8 +358,8 @@ function mapItems(items){
 
 /* ---------- 元に戻す／やり直す ---------- */
 let UNDO=[],REDO=[];
-const panelState=()=>({qN,qTake,qOrder,qSrcs:Object.assign({},qSrcs),qReg,qOrd:Object.assign({},qOrd),qOther,qWho:qWho.slice(),qReact:qReact.slice(),qWhoText,qReactText});
-function setPanel(x){qN=x.qN;qTake=x.qTake;qOrder=x.qOrder;qSrcs=Object.assign({},x.qSrcs);qReg=x.qReg;qOrd=Object.assign({},x.qOrd);qOther=x.qOther;qWho.length=0;qWho.push(...x.qWho);qReact.length=0;qReact.push(...x.qReact);qWhoText=x.qWhoText||'';qReactText=x.qReactText||''}
+const panelState=()=>({qN,qTake,qSqs:qSqs.slice(),qNone,qAuto,qSex:qSex.slice(),qAge:qAge.slice(),qSrcs:Object.assign({},qSrcs),qReg,qOrd:Object.assign({},qOrd),qOther,qWho:qWho.slice(),qReact:qReact.slice(),qWhoText,qReactText});
+function setPanel(x){qN=x.qN;qTake=x.qTake;qSqs=(x.qSqs||[]).slice();qNone=!!x.qNone;qAuto=!!x.qAuto;qSex.length=0;qSex.push(...(x.qSex||[]));qAge.length=0;qAge.push(...(x.qAge||[]));qSrcs=Object.assign({},x.qSrcs);qReg=x.qReg;qOrd=Object.assign({},x.qOrd);qOther=x.qOther;qWho.length=0;qWho.push(...x.qWho);qReact.length=0;qReact.push(...x.qReact);qWhoText=x.qWhoText||'';qReactText=x.qReactText||''}
 const snapNow=()=>({r:JSON.stringify(R),q:panelState()});
 function updUndo(){$('btnUndo').disabled=!UNDO.length;$('btnRedo').disabled=!REDO.length}
 function pushUndo(){UNDO.push(snapNow());if(UNDO.length>40)UNDO.shift();REDO=[];updUndo()}
@@ -355,7 +368,8 @@ function undo(){if(!UNDO.length){toast('戻せる操作はありません');retu
 function redo(){if(!REDO.length){toast('やり直せる操作はありません');return}UNDO.push(snapNow());applySnap(REDO.pop());toast('やり直しました')}
 $('whoText').oninput=()=>{qWhoText=$('whoText').value};$('reactText').oninput=()=>{qReactText=$('reactText').value};
 $('btnUndo').onclick=undo;$('btnRedo').onclick=redo;
-$('panelReset').onclick=()=>{qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrcs={};qReg=null;qWhoText='';qReactText='';renderQuick();toast('選び直せます')};
+function resetPanel(){qN=1;qTake=false;qSqs=[];qNone=false;qAuto=true;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSex.length=0;qAge.length=0;qSrcs={};qReg=null;qWhoText='';qReactText=''}
+$('panelReset').onclick=()=>{resetPanel();renderQuick();toast('選び直せます')};
 
 /* ---------- 来店経緯の人数わけ（1組の中で人ごとに違うとき）---------- */
 const srcSum=m=>Object.values(m).reduce((a,b)=>a+b,0);
@@ -399,6 +413,7 @@ function renderQuick(){
   tk.onclick=()=>{qTake=!qTake;renderQuick()};$('nRow').appendChild(tk);
   renderOrdRow();
   $('whoText').value=qWhoText;$('reactText').value=qReactText;
+  toggleChips($('sexRow'),SEXES,qSex);toggleChips($('ageRow'),AGES,qAge);
   panelChips($('whoRow'),KW_WHO,'nippo_kw_who',qWho);
   panelChips($('reactRow'),KW_REACT,'nippo_kw_react',qReact);
   renderSrc();
@@ -454,41 +469,50 @@ function panelChips(el,defs,key,sel){
   a.onclick=()=>{const w=prompt('いつも使う言葉を、ボタンとして追加します');if(w&&w.trim()){const q=ls.get(key,[]);q.push(w.trim());ls.set(key,q);panelChips(el,defs,key,sel)}};
   el.appendChild(a);
 }
-function selectOrder(id,auto){
-  qOrder=id;
-  if(auto&&Object.keys(qOrd).length)return; // 手で選んだ分は消さない
-  const o=SQ&&id?SQ.orders.find(x=>x.id===id):null;
-  const m=o?mapItems(o.items):{ord:{},other:''};
-  qOrd=Object.assign({},m.ord);qOther=m.other;renderOrdRow();
+// 押すたびに選択／解除（追加ボタンなし）
+function toggleChips(el,list,sel){
+  el.innerHTML='';
+  list.forEach(t=>{const b=document.createElement('button');b.className='chip'+(sel.includes(t)?' on':'');b.textContent=t;
+    b.onclick=()=>{const i=sel.indexOf(t);if(i>=0)sel.splice(i,1);else sel.push(t);b.classList.toggle('on',i<0)};el.appendChild(b)});
 }
-function unassigned(){if(!SQ)return[];const used=new Set(R.customers.map(c=>c.sqId).filter(Boolean));
+// 選んだ会計（複数可）の中身を「食べたもの」に入れる
+function applySq(){
+  const ord={},other=[];
+  qSqs.forEach(id=>{const o=SQ&&SQ.orders.find(x=>x.id===id);if(!o)return;const m=mapItems(o.items);
+    Object.keys(m.ord).forEach(k=>ord[k]=(ord[k]||0)+m.ord[k]);if(m.other)other.push(m.other)});
+  qOrd=ord;qOther=other.join('・');renderOrdRow();
+}
+function toggleSq(id){qAuto=false;qNone=false;const i=qSqs.indexOf(id);if(i>=0)qSqs.splice(i,1);else qSqs.push(id);applySq();renderSqBox()}
+function unassigned(){if(!SQ)return[];const used=new Set();R.customers.forEach(c=>{(c.sqIds||[]).concat(c.sqId?[c.sqId]:[]).forEach(id=>used.add(id))});
   return SQ.orders.filter(o=>!used.has(o.id)).slice().reverse()} // 新しい順
 function renderSqBox(){
   const box=$('sqBox');box.innerHTML='';
   if(!ls.get('nippo_sqkey','')){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">設定で合言葉を入れると、Squareの会計がここに並びます</div>';return}
   if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">'+(sqErr?'⚠️ Squareを読めませんでした（'+esc(sqErr)+'）。合言葉を確認してください。会計なしでも記録はできます':'Squareを読み込み中…')+'</div>';return}
   const list=unassigned();
-  if(qOrder&&!list.some(o=>o.id===qOrder))qOrder=null;
-  if(qOrder===null&&list.length)selectOrder(list[0].id,true);
+  qSqs=qSqs.filter(id=>list.some(o=>o.id===id));
+  if(qAuto&&!qNone&&!qSqs.length&&list.length&&!Object.keys(qOrd).length){qSqs=[list[0].id];applySq()}
+  qAuto=false;
   const wrap=document.createElement('div');wrap.className='orders';
-  list.forEach(o=>{const m=mapItems(o.items);const b=document.createElement('button');b.className='ord'+(qOrder===o.id?' on':'');
+  list.forEach(o=>{const m=mapItems(o.items);const b=document.createElement('button');b.className='ord'+(qSqs.includes(o.id)?' on':'');
     const txt=[MENU.filter(k=>m.ord[k]).map(k=>k+'×'+m.ord[k]).join(' '),m.other].filter(Boolean).join('・')||'（明細なし）';
     b.innerHTML=`<b>${esc(o.time)}</b> ${yen(o.total)}<br>${esc(txt)}`;
-    b.onclick=()=>{selectOrder(o.id);renderSqBox()};wrap.appendChild(b)});
-  const nb=document.createElement('button');nb.className='ord none'+(qOrder===''?' on':'');nb.innerHTML='<b>会計なし</b><br>Squareと結びつけない';
-  nb.onclick=()=>{selectOrder('');renderSqBox()};wrap.appendChild(nb);
+    b.onclick=()=>toggleSq(o.id);wrap.appendChild(b)});
+  const nb=document.createElement('button');nb.className='ord none'+(qNone?' on':'');nb.innerHTML='<b>会計なし</b><br>Squareと結びつけない';
+  nb.onclick=()=>{qAuto=false;qNone=!qNone;if(qNone){qSqs=[];qOrd={};qOther='';renderOrdRow()}renderSqBox()};wrap.appendChild(nb);
   box.appendChild(wrap);
   if(!list.length){const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録の会計はありません（Square ${SQ.orders.length}件・${SQ.at}更新）`;box.appendChild(h)}
-  else{const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録 ${list.length}件（Square ${SQ.orders.length}件・${SQ.at}更新）。選んでいる会計に記録されます`;box.appendChild(h)}
+  else{const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録 ${list.length}件（Square ${SQ.orders.length}件・${SQ.at}更新）。1組で別々に会計したときは、両方押して選べます`;box.appendChild(h)}
 }
 function doRecord(map,regId){
   pushUndo();
-  const o=SQ&&qOrder?SQ.orders.find(x=>x.id===qOrder):null;
+  const sel=qSqs.map(id=>SQ&&SQ.orders.find(x=>x.id===id)).filter(Boolean);
   const keys=Object.keys(map);
   const c={id:Date.now(),src:mainSrc(map),srcs:keys.length>1?Object.assign({},map):null,n:qN,takeout:qTake,ord:Object.assign({},qOrd),other:qOther,label:qWho.concat(qWhoText.trim()?[qWhoText.trim()]:[]).join('・'),comment:qReact.join('')+qReactText.trim(),regId,
-    sqId:o?o.id:null,time:o?o.time:new Date().toTimeString().slice(0,5)};
+    sex:qSex.slice(),age:qAge.slice(),
+    sqIds:sel.map(o=>o.id),time:sel.length?sel.map(o=>o.time).sort()[0]:new Date().toTimeString().slice(0,5)};
   R.customers.unshift(c);save();
-  qN=1;qTake=false;qOrder=null;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSrcs={};qReg=null;qWhoText='';qReactText='';
+  resetPanel();
   renderQuick();renderCustomers();renderSales();
   const rg=regId&&regById(regId);
   toast(`記録しました：${rg&&keys.length===1?san(rg.name):keys.length>1?keys.map(k=>k+map[k]).join('・'):keys[0]} ${c.n}名`,undo);
@@ -658,19 +682,21 @@ function custTitle(c){
   if(c.srcs)parts.push(Object.keys(c.srcs).map(k=>k+c.srcs[k]+'名').join('／'));
   else if(c.src&&c.src!=='リピーター')parts.push(c.src+(['声かけ','通りがかり','その他'].includes(c.src)?'':'経由'));
   const rg=c.regId&&regById(c.regId);if(rg)parts.push(san(rg.name));
-  if(+c.n>1&&!c.srcs)parts.push(c.n+'名');
-  if(c.takeout)parts.push('テイクアウト');
+  if(!c.srcs)parts.push((+c.n||1)+'名');
+  (c.sex||[]).concat(c.age||[]).forEach(x=>parts.push(x));
   if(c.label)parts.push(c.label);
   return type+'｜'+parts.join('・');
 }
 const ordText=c=>[MENU.filter(m=>+(c.ord||{})[m]).map(m=>m+'×'+c.ord[m]).join(' '),c.other].filter(Boolean).join('・');
+// TO（テイクアウト）は注文の頭に付ける
+const ordLine=c=>c.takeout?('TO'+(ordText(c)?' '+ordText(c):'')):ordText(c);
 function renderCustomers(){
   const box=$('custList');box.innerHTML='';
   if(!R.customers.length)box.innerHTML='<div class="hint">まだ記録がありません</div>';
   R.customers.forEach(c=>{
     const d=document.createElement('div');d.className='cust'+(openId===c.id?' open':'');
     const _t=custTitle(c),_i=_t.indexOf('｜'),_ty=_t.slice(0,_i);
-    d.innerHTML=`<div class="sum"><div class="tx"><b><span class="tag ${_ty==='リピーター'?'rep':''}">${_ty}</span>${esc(c.time||'')} ${esc(_t.slice(_i+1))}</b><small>${esc(ordText(c)||'注文なし')}${c.comment?'　💬'+esc(c.comment):''}</small></div></div>`;
+    d.innerHTML=`<div class="sum"><div class="tx"><b><span class="tag ${_ty==='リピーター'?'rep':''}">${_ty}</span>${esc(c.time||'')} ${esc(_t.slice(_i+1))}</b><small>${esc(ordLine(c)||'注文なし')}${c.comment?'　💬'+esc(c.comment):''}</small></div></div>`;
     if(openId!==c.id){const b=document.createElement('button');b.className='small-btn';b.textContent=c.comment?'編集':'反応を書く';
       b.onclick=()=>{pushUndo();openId=c.id;renderCustomers()};d.querySelector('.sum').appendChild(b)}
     else d.appendChild(editor(c));
@@ -702,6 +728,12 @@ function editor(c){
       b.onclick=()=>{const mm=srcMapOf(c);const msg=tapSrc(mm,+c.n||1,x);fitMap(mm,+c.n||1,true);storeSrc(c,mm);save();drawSrc();renderCounts();if(msg)toast(msg)};sc.appendChild(b)})};
   drawSrc();
   s.appendChild(sc);e.appendChild(s);
+  const sa=document.createElement('div');sa.innerHTML='<label class="t">性別・年代</label>';
+  c.sex=c.sex||[];c.age=c.age||[];
+  const sr=document.createElement('div');sr.className='chips';const ar=document.createElement('div');ar.className='chips';ar.style.marginTop='6px';
+  const tog=(el,list,arr)=>list.forEach(t=>{const b=document.createElement('button');b.className='chip'+(arr.includes(t)?' on':'');b.textContent=t;
+    b.onclick=()=>{const i=arr.indexOf(t);if(i>=0)arr.splice(i,1);else arr.push(t);b.classList.toggle('on',i<0);save()};el.appendChild(b)});
+  tog(sr,SEXES,c.sex);tog(ar,AGES,c.age);sa.append(sr,ar);e.appendChild(sa);
   // 常連カードとの紐付け（新規のお客さんも、ここで登録しておけば次回から選べる）
   const rgBox=document.createElement('div');const rg=c.regId&&regById(c.regId);
   rgBox.innerHTML=`<label class="t">常連カード</label>${rg?`<div class="hint" style="margin:0 0 6px"><b>${esc(rg.name)}</b>　${esc(rg.feature||'')}</div>`:''}`;
@@ -737,9 +769,12 @@ function renderSales(){
     h.textContent=`Squareから自動（${SQ.at}更新・会計${SQ.count}件）`;
     h.innerHTML=esc(h.textContent)+(left?`<div class="gap">来店経緯が未記録の会計が ${left}件 あります</div>`:'');
   }else h.textContent=ls.get('nippo_sqkey','')?'':'設定で合言葉を入れるとSquareから自動で入ります';
-  const pc=prevCum();
-  $('cumHint').textContent=pc==null?'前回の日報がないので、今回だけ手入力してください（次回から自動）'
-    :`前回の累計 ${yen(pc)} ＋ 本日売上 で自動計算`+(cumTouched?'（手入力中）':'');
+  autoCum();
+  const pc=prevCum(),first=!latestBefore(R.date);
+  $('cumBaseBox').style.display=first?'':'none';
+  if(first)$('cumBase').value=R.cumBase||'';
+  $('cumHint').textContent=pc==null?'下の「前日までの累計」を入れると、本日売上と足して自動で出ます'
+    :`${first?'前日までの累計':'前回の累計'} ${yen(pc)} ＋ 本日売上 で自動計算`+(cumTouched?'（手入力中）':'');
 }
 
 /* ---------- 日報の文章 ---------- */
@@ -753,9 +788,10 @@ function reportText(){
   const W=Math.max(...REPORT_SOURCES.map(x=>[...x].length));
   REPORT_SOURCES.forEach(s=>{const name=s==='X'?'Ｘ':s;L.push(name+'　'.repeat(W-[...name].length)+`：${sc[s]}人`)});
   L.push(SEP,'▼営業報告（お客様の反応）');
-  R.customers.slice().reverse().filter(c=>(c.comment||'').trim()||c.label).forEach(c=>{
-    const o=MENU.filter(m=>+(c.ord||{})[m]).map(m=>m+'×'+c.ord[m]).join(' ');
-    L.push('',custTitle(c),((c.comment||'').trim()+(o?`（${o}）`:'')).trim())});
+  const only=ls.get('nippo_repmode','all')==='detail';
+  R.customers.slice().reverse()
+    .filter(c=>!only||(c.comment||'').trim()||c.label||(c.sex||[]).length||(c.age||[]).length||c.regId)
+    .forEach(c=>{const o=ordLine(c);L.push('',custTitle(c),((c.comment||'').trim()+(o?`（${o}）`:'')).trim())});
   if((R.handover||'').trim())L.push('','申し送り',R.handover.trim());
   L.push('','▼インバウンド');if((R.inbound||'').trim())L.push(R.inbound.trim());
   L.push('',`話せた方：${+R.talked||0}人`,`口コミ依頼できた人数：${+R.review||0}人`);
@@ -803,16 +839,20 @@ function renderSettings(){
   const mode=ls.get('nippo_cummode','month');$('cumMode').innerHTML='';
   [['month','月ごと'],['all','ずっと足し続ける']].forEach(([v,t])=>{const b=document.createElement('button');b.className='chip'+(mode===v?' on':'');b.textContent=t;
     b.onclick=()=>{ls.set('nippo_cummode',v);renderSettings()};$('cumMode').appendChild(b)});
+  const rm=ls.get('nippo_repmode','all');$('repMode').innerHTML='';
+  [['all','記録した組すべて'],['detail','反応・お客さん情報を入れた組だけ']].forEach(([v,t])=>{const b=document.createElement('button');b.className='chip'+(rm===v?' on':'');b.textContent=t;
+    b.onclick=()=>{ls.set('nippo_repmode',v);renderSettings()};$('repMode').appendChild(b)});
 }
 $('sqKey').oninput=()=>{ls.set('nippo_sqkey',$('sqKey').value.trim());SQ=null;sqErr=''};
 
 /* ---------- 入力イベント ---------- */
 TEXT.forEach(f=>$(f).addEventListener('input',()=>{
   R[f]=$(f).value;
-  if(f==='cum')cumTouched=true;
+  if(f==='cum')cumTouched=$('cum').value!=='';
   if(f==='sales')autoCum();
   save();if(f==='sales'||f==='cum')renderSales();
 }));
+$('cumBase').addEventListener('input',()=>{R.cumBase=$('cumBase').value;cumTouched=false;save();renderSales()});
 $('date').addEventListener('change',()=>{
   const o=allReports()[$('date').value];SQ=null;autoToday=$('date').value===todayStr();
   if(o)load(o);else{const keep={who:R.who,whos:R.whos||[],weather:R.weather};load(Object.assign(blank($('date').value),keep))}
