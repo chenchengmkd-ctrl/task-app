@@ -61,6 +61,10 @@
   .bar button{flex:1;padding:13px 4px;border-radius:12px;font-weight:700;font-size:15px;white-space:nowrap}
   .b1,.b2{background:var(--g-soft);color:var(--accent)}.b3{background:var(--g);color:#fff;flex:1.4!important;box-shadow:0 4px 12px rgba(14,124,134,.35)}
   .page{display:none}
+  .commit2{flex:1;padding:13px 4px;border-radius:12px;font-weight:700;font-size:15px}
+  .srow input[type=checkbox]{width:20px;height:20px;flex:0 0 20px}
+  .srow .lbl{flex:1;font-size:14px;font-weight:600}
+  .srow .val{flex:0 0 120px;text-align:right;font-weight:700;padding-right:6px}
   .h-item{display:flex;align-items:center;gap:8px;padding:12px 2px;border-bottom:1px solid var(--line)}
   .h-item:last-child{border:none}
   .h-item .d{flex:1}.h-item small{color:var(--muted);display:block;font-size:12px}
@@ -74,6 +78,7 @@
 <body>
 <header>
   <h1>定期報告<small id="hDate"></small></h1>
+  <button data-go="cf">資金繰り</button>
   <button data-go="hist">履歴</button>
   <button data-go="set">設定</button>
   <button id="btnNew">今日</button>
@@ -106,6 +111,43 @@
 
 <!-- ===== プレビュー ===== -->
 <div class="page" id="p-prev"><div class="card"><pre class="prev" id="prevText"></pre></div></div>
+
+<!-- ===== 資金繰り（支払い日前の報告）===== -->
+<div class="page" id="p-cf">
+  <div class="card">
+    <h2>支払い日<span class="sub">給与日など、大きな支払いの前に送る報告です</span></h2>
+    <input type="date" id="cfDate">
+  </div>
+  <div class="card">
+    <h2>現状の資金<span class="bal" id="cfHave"></span></h2>
+    <div class="hint" style="margin-top:-6px">チェックした行が報告に入ります。口座と現金は、定期報告の今の残高が自動で入ります。</div>
+    <div id="cfAuto"></div>
+    <div id="cfFunds"></div>
+    <button class="small-btn addrow" id="cfAddFund">＋ 行を追加</button>
+  </div>
+  <div class="card">
+    <h2>支払い予定<span class="bal" id="cfPay"></span></h2>
+    <div id="cfPays"></div>
+    <div class="chips" id="cfPlanChips"></div>
+  </div>
+  <div class="card">
+    <h2>見込み（任意）<span class="sub">当日の売上予想・レジ金など、まだ手元にないお金</span><span class="bal" id="cfExp"></span></h2>
+    <div id="cfExps"></div>
+    <div class="chips" id="cfExpChips"></div>
+  </div>
+  <div class="card">
+    <div class="total" style="margin-top:0"><span id="cfResL">差し引き</span><b id="cfRes"></b></div>
+    <div class="total" id="cfRes2Box"><span id="cfRes2L"></span><b id="cfRes2"></b></div>
+  </div>
+  <div class="card">
+    <h2>送る文章<span class="sub">送る前にここで直せます</span><button class="small-btn" id="cfReset" style="margin-left:auto">作り直す</button></h2>
+    <textarea id="cfText" style="min-height:320px;font-size:14px;line-height:1.7"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="commit2 b2" id="cfCopy">コピー</button>
+      <button class="commit2 b3" id="cfShare">LINEで送る</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===== 履歴 ===== -->
 <div class="page" id="p-hist">
@@ -309,13 +351,14 @@ function check(){
 /* ---------- 画面切替 ---------- */
 let page='form';
 function go(p){
-  page=p;['form','prev','hist','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  page=p;['form','prev','cf','hist','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('btnPrev').textContent=p==='prev'?'入力に戻る':'プレビュー';
-  document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':({hist:'履歴',set:'設定'}[b.dataset.go]));
+  document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':({cf:'資金繰り',hist:'履歴',set:'設定'}[b.dataset.go]));
   if(p==='prev')$('prevText').textContent=reportText();
   if(p==='hist')renderHist();
   if(p==='set')renderSettings();
+  if(p==='cf')renderCf();
   if(p==='form')renderAll();
   scrollTo(0,0);
 }
@@ -358,15 +401,87 @@ function renderHist(){
 function renderSettings(){const C=cfg();Object.keys(DEF_CFG).forEach(k=>$(k).value=C[k])}
 Object.keys(DEF_CFG).forEach(k=>$(k).addEventListener('input',()=>{const c=ls.get('teiki_cfg',{});c[k]=$(k).value.trim()||DEF_CFG[k];ls.set('teiki_cfg',c)}));
 $('btnExport').onclick=()=>{
-  const blob=new Blob([JSON.stringify({reports:allReports(),cfg:ls.get('teiki_cfg',{})},null,1)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({reports:allReports(),cfg:ls.get('teiki_cfg',{}),cf:ls.get('teiki_cf',{})},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='teiki-backup.json';a.click()};
 $('btnImport').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
   try{const o=JSON.parse(await f.text());if(!o.reports)throw 0;
     if(!confirm('バックアップの内容で上書きしますか？'))return;
-    putAll(o.reports);ls.set('teiki_cfg',o.cfg||{});load(allReports()[todayStr()]||blank(todayStr()));go('hist');toast('戻しました')}
+    putAll(o.reports);ls.set('teiki_cfg',o.cfg||{});if(o.cf)ls.set('teiki_cf',o.cf);load(allReports()[todayStr()]||blank(todayStr()));go('hist');toast('戻しました')}
   catch(err){alert('バックアップのファイルを読めませんでした')}
   e.target.value=''};
+
+/* ---------- 資金繰り（支払い日前の報告） ---------- */
+// 2026/10/21・10/23の「給与支払いに向けた資金状況」の報告をもとにした形
+let CF;
+function cfLoad(){CF=Object.assign({date:'',off:{},funds:[],pays:[],exps:[],text:''},ls.get('teiki_cf',{}))}
+function cfSave(){ls.set('teiki_cf',CF)}
+const cfName=n=>n.replace(/[（(].*$/,'');
+// 定期報告から自動で入る行（毎回、今の報告の数字で作り直す）
+function cfAuto(){const C=cfg();
+  const sq=R.plans.filter(p=>/スクエア/.test(p.k||'')&&(!CF.date||!p.d||p.d<=CF.date)).reduce((s,p)=>s+num(p.v),0);
+  return [{id:'corp',k:C.nm_corp,v:bal(R,'corp')},{id:'cash',k:cfName(C.nm_cash),v:bal(R,'cash')},{id:'sq',k:'スクエア入金',v:sq},{id:'pers',k:cfName(C.nm_pers),v:bal(R,'pers')}];
+}
+function cfNums(){
+  const have=cfAuto().filter(a=>!CF.off[a.id]).reduce((s,a)=>s+a.v,0)+sum(CF.funds);
+  const pay=sum(CF.pays),exp=sum(CF.exps);return {have,pay,exp,diff:have-pay,diff2:have+exp-pay}}
+function cfText(){
+  const n=cfNums(),d=CF.date?md(CF.date):'',yen=v=>fmt(v)+'円';
+  const L=[`${d?d+'の':''}支払いに向けた資金状況をご報告します。`,'','【現状の資金】'];
+  cfAuto().filter(a=>!CF.off[a.id]).forEach(a=>L.push(`${a.k}：${yen(a.v)}`));
+  CF.funds.filter(x=>(x.k||'').trim()||num(x.v)).forEach(x=>L.push(`${(x.k||'').trim()}：${yen(num(x.v))}`));
+  L.push(`合計：${yen(n.have)}`,'',`【${d}支払い予定】`);
+  CF.pays.filter(x=>(x.k||'').trim()||num(x.v)).forEach(x=>L.push(`${(x.k||'').trim()}：${yen(num(x.v))}`));
+  if(CF.pays.length>1)L.push(`合計：${yen(n.pay)}`);
+  L.push('',n.diff<0?`現状、${yen(-n.diff)}不足する見込みです。`:`現状、支払い後に${yen(n.diff)}残る見込みです。`);
+  const ex=CF.exps.filter(x=>num(x.v));
+  if(ex.length){const what=ex.map(x=>`${(x.k||'').trim()}${yen(num(x.v))}`).join('と');
+    L.push(n.diff2<0?`${what}を加味しても、${yen(-n.diff2)}の不足が残る見込みです。`:`${what}を加味すると、支払い後に${yen(n.diff2)}残る見込みです。`)}
+  return L.join('\n');
+}
+function cfList(box,list,ph,after){box.innerHTML='';
+  list.forEach((x,i)=>{const r=document.createElement('div');r.className='item';
+    const k=document.createElement('input');k.type='text';k.className='k';k.placeholder=ph;k.value=x.k||'';k.oninput=()=>{x.k=k.value;cfChanged()};
+    const a=moneyInput(x.v,'金額',v=>{x.v=v;cfChanged()});
+    const del=document.createElement('button');del.className='x';del.textContent='×';del.onclick=()=>{list.splice(i,1);cfChanged();renderCf()};
+    r.append(k,a,del);box.appendChild(r)});
+  if(after)after()}
+// 数字を変えたら文章も作り直す（手で直した文章は「作り直す」を押すまでそのまま）
+function cfChanged(){cfSave();cfNumsShow();if(!CF.edited){$('cfText').value=cfText()}}
+function cfNumsShow(){const n=cfNums();
+  $('cfHave').textContent=fmt(n.have);$('cfPay').textContent=fmt(n.pay);$('cfExp').textContent=n.exp?'＋'+fmt(n.exp):'';
+  $('cfResL').textContent=n.diff<0?'不足':'支払い後に残る';$('cfRes').textContent=fmt(Math.abs(n.diff));$('cfRes').classList.toggle('neg',n.diff<0);
+  $('cfRes2Box').style.display=n.exp?'flex':'none';
+  $('cfRes2L').textContent=n.diff2<0?'見込みを入れても不足':'見込みを入れると残る';$('cfRes2').textContent=fmt(Math.abs(n.diff2));$('cfRes2').classList.toggle('neg',n.diff2<0)}
+function renderCf(){
+  cfLoad();if(!CF.date){const p=R.plans.filter(x=>x.d&&x.d>=R.date).sort((a,b)=>a.d.localeCompare(b.d))[0];CF.date=p?p.d:R.date}
+  $('cfDate').value=CF.date;
+  const ab=$('cfAuto');ab.innerHTML='';
+  cfAuto().forEach(a=>{const r=document.createElement('label');r.className='srow';
+    r.innerHTML=`<input type="checkbox"${CF.off[a.id]?'':' checked'}><span class="lbl">${esc(a.k)}</span><span class="val${a.v<0?' neg':''}">${fmt(a.v)}</span>`;
+    r.querySelector('input').onchange=e=>{if(e.target.checked)delete CF.off[a.id];else CF.off[a.id]=1;cfChanged()};ab.appendChild(r)});
+  cfList($('cfFunds'),CF.funds,'内容（例：個人現金）');
+  cfList($('cfPays'),CF.pays,'内容（例：給与）');
+  cfList($('cfExps'),CF.exps,'内容（例：本日の現金売上（予想））');
+  // 入出金予定（スクエア入金を除く）をボタンにして、押すと支払い予定に入る
+  const pc=$('cfPlanChips');pc.innerHTML='';
+  R.plans.filter(p=>(p.k||'').trim()&&!/スクエア/.test(p.k)).forEach(p=>{const b=document.createElement('button');b.className='chip';
+    b.textContent=`${p.d?md(p.d)+' ':''}${p.k} ${p.v!==''?fmt(num(p.v)):''}`;
+    b.onclick=()=>{CF.pays.push({k:p.k.replace(/[（(]予想[)）]/,''),v:p.v});cfChanged();renderCf()};pc.appendChild(b)});
+  const plus=document.createElement('button');plus.className='chip';plus.textContent='＋ 自由に書く';
+  plus.onclick=()=>{CF.pays.push({k:'',v:''});cfChanged();renderCf();$('cfPays').lastChild.querySelector('.k').focus()};pc.appendChild(plus);
+  const ec=$('cfExpChips');ec.innerHTML='';
+  ['本日の現金売上（予想）','レジ金','スクエア入金'].concat(['＋ 自由に書く']).forEach(w=>{const b=document.createElement('button');b.className='chip';b.textContent=w;
+    b.onclick=()=>{CF.exps.push({k:w.startsWith('＋')?'':w,v:''});cfChanged();renderCf();const l=$('cfExps').lastChild;l.querySelector(w.startsWith('＋')?'.k':'.a').focus()};ec.appendChild(b)});
+  cfNumsShow();$('cfText').value=CF.edited&&CF.text?CF.text:cfText();
+}
+$('cfDate').onchange=()=>{CF.date=$('cfDate').value;cfChanged();renderCf()};
+$('cfAddFund').onclick=()=>{CF.funds.push({k:'',v:''});cfChanged();renderCf();$('cfFunds').lastChild.querySelector('.k').focus()};
+$('cfText').oninput=()=>{CF.edited=true;CF.text=$('cfText').value;cfSave()};
+$('cfReset').onclick=()=>{CF.edited=false;CF.text='';cfSave();$('cfText').value=cfText()};
+$('cfCopy').onclick=()=>copy($('cfText').value);
+$('cfShare').onclick=async()=>{const t=$('cfText').value;
+  if(navigator.share){try{await navigator.share({text:t})}catch(e){}}else location.href='https://line.me/R/share?text='+encodeURIComponent(t)};
 
 /* ---------- 入力イベント ---------- */
 $('date').addEventListener('change',()=>{const d=$('date').value;if(!d)return;load(allReports()[d]||blank(d))});

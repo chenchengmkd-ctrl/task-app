@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#5b5bd6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="タスク報告">
+<title>タスク報告</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%85%3C/text%3E%3C/svg%3E">
+<style>
+  :root{--bg:#f5f5fa;--card:#fff;--ink:#1a1a1a;--muted:#80808f;--line:#e4e4ee;--soft:#efeff7;--warn:#b45309;--neg:#b91c1c;--ok:#047857;
+    --g:linear-gradient(135deg,#7c6cf0 0%,#4f46c8 100%);--g-soft:linear-gradient(135deg,#efecff 0%,#e6e8fb 100%);--accent:#4f46c8}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:linear-gradient(180deg,#e7e4fb 0,#f1f0f9 340px,#f5f5fa 100%) fixed;font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Segoe UI","Meiryo",sans-serif;color:var(--ink);font-size:16px;line-height:1.55;padding-bottom:100px;-webkit-font-smoothing:antialiased}
+  button,input,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;border:none;background:none}
+  header{position:sticky;top:0;z-index:5;background:var(--g);color:#fff;box-shadow:0 2px 14px rgba(79,70,200,.30);padding:8px 12px 8px 16px;display:flex;align-items:center}
+  header h1{font-size:19px;font-weight:700;letter-spacing:.02em;flex:1}
+  header h1 small{font-size:13px;font-weight:600;color:rgba(255,255,255,.85);margin-left:8px}
+  header button{color:#fff;padding:8px 9px;font-size:14px;font-weight:700;border-radius:8px}
+  header button:active{background:rgba(255,255,255,.22)}
+  main{max-width:760px;margin:0 auto;padding:12px 14px}
+  .card{background:var(--card);border:1px solid rgba(79,70,200,.12);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 6px 20px rgba(79,70,200,.07)}
+  h2{font-size:15px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  h2 .sub{font-weight:400;color:var(--muted);font-size:12px}
+  label.t{display:block;font-weight:600;margin-bottom:6px;font-size:13px;color:var(--muted)}
+  input[type=text],input[type=time],textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 11px;background:#fff;font-size:16px;min-width:0}
+  textarea{min-height:70px;resize:vertical}
+  input:focus,textarea:focus{outline:none;border-color:#7c6cf0;box-shadow:0 0 0 3px rgba(124,108,240,.15)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;white-space:nowrap}
+  .chip.on{background:var(--g);border-color:transparent;color:#fff;font-weight:600}
+  .hint{color:var(--muted);font-size:12px;margin-top:5px}
+  .small-btn{padding:7px 12px;border-radius:9px;background:var(--g-soft);color:var(--accent);font-size:13px;font-weight:700}
+  .due{display:flex;align-items:center;gap:10px;border-radius:14px;padding:12px 14px;margin-bottom:12px;font-weight:700;background:#fff;border:1px solid var(--line)}
+  .due .big{font-size:20px}
+  .due .sub{font-size:12px;font-weight:600;color:var(--muted);display:block}
+  .due.late{background:#fde8e8;border-color:#f5b4b4;color:var(--neg)}
+  .due.soon{background:#fff4e0;border-color:#f6d39b;color:var(--warn)}
+  .due.ok{background:#e6f6ef;border-color:#a8dcc4;color:var(--ok)}
+  .due input{flex:0 0 136px;margin-left:auto}
+  .add{display:flex;gap:6px}
+  .add button{flex:0 0 64px;border-radius:10px;background:var(--g);color:#fff;font-weight:700}
+  .task{border:1px solid var(--line);border-radius:12px;padding:10px 10px 10px 12px;margin-top:8px}
+  .task.done{background:#f3fbf7;border-color:#bfe6d3}
+  .task .top{display:flex;align-items:center;gap:8px}
+  .task .ttl{flex:1;font-weight:600;font-size:15px;word-break:break-word}
+  .task.done .ttl{color:var(--ok)}
+  .task .ck{flex:0 0 auto;padding:7px 12px;border-radius:9px;background:var(--soft);font-size:13px;font-weight:700;color:var(--muted)}
+  .task.done .ck{background:var(--ok);color:#fff}
+  .task .x{flex:0 0 32px;height:32px;border-radius:9px;color:var(--muted);font-size:18px}
+  .task .mv{flex:0 0 28px;height:32px;border-radius:9px;color:var(--muted);font-size:14px}
+  .task .memo{margin-top:8px;font-size:14px;padding:8px 10px}
+  .task .old{font-size:11px;color:var(--warn);font-weight:700;margin-left:4px}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;z-index:6}
+  .bar button,.btns button{flex:1;padding:13px 4px;border-radius:12px;font-weight:700;font-size:15px;white-space:nowrap}
+  .b1{background:var(--g-soft);color:var(--accent)}.b3{background:var(--g);color:#fff;box-shadow:0 4px 12px rgba(79,70,200,.35)}
+  .btns{display:flex;gap:8px;margin-top:10px}
+  .page{display:none}
+  .h-item{padding:12px 2px;border-bottom:1px solid var(--line)}
+  .h-item:last-child{border:none}
+  .h-item small{color:var(--muted);display:block;font-size:12px}
+  .h-item pre{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;background:var(--soft);border-radius:10px;padding:8px 10px;margin-top:6px;display:none}
+  .h-item.open pre{display:block}
+  #toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:14px;opacity:0;transition:.25s;pointer-events:none;z-index:30;white-space:nowrap;font-size:14px}
+  #toast.show{opacity:1}
+  @media (max-width:600px){main{padding:10px}.card{padding:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>タスク報告<small id="hDate"></small></h1>
+  <button data-go="hist">履歴</button>
+</header>
+
+<main>
+<!-- ===== タスク一覧 ===== -->
+<div class="page" id="p-list">
+  <div class="due" id="due">
+    <div><span class="sub" id="dueSub">次の進捗報告</span><span class="big" id="dueTxt"></span></div>
+    <input type="time" id="dueTime">
+  </div>
+
+  <div class="card">
+    <h2>今日のタスク<span class="sub">終わったら「完了」。途中のものは一言書いておきます</span></h2>
+    <div class="add"><input type="text" id="newTask" placeholder="タスクを書く（例：インフルエンサー進捗更新）" enterkeyhint="done"><button id="btnAdd">追加</button></div>
+    <div class="chips" id="recent"></div>
+    <div id="tasks"></div>
+  </div>
+  <div class="hint" style="margin:4px 4px 14px">やる前に「予定を送る」、終わったら「進捗を送る」。終わらなかったタスクは翌日にそのまま残ります。</div>
+</div>
+
+<!-- ===== 送る文章 ===== -->
+<div class="page" id="p-send">
+  <div class="card">
+    <h2 id="sendTitle"></h2>
+    <div class="hint" style="margin:-6px 0 8px">送る前にここで直せます。</div>
+    <textarea id="sendText" style="min-height:300px;font-size:14px;line-height:1.7"></textarea>
+    <div class="btns"><button class="b1" id="btnCopy">コピー</button><button class="b3" id="btnShare">LINEで送る</button></div>
+  </div>
+</div>
+
+<!-- ===== 履歴 ===== -->
+<div class="page" id="p-hist">
+  <div class="card"><h2>送った報告<span class="sub">日付を押すと中身が出ます</span></h2><div id="histList"></div></div>
+</div>
+</main>
+
+<div class="bar" id="bar">
+  <button class="b1" id="btnPlan">予定を送る</button>
+  <button class="b3" id="btnProg">進捗を送る</button>
+</div>
+<div id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+          set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const todayStr=()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
+const md=d=>(+d.slice(5,7))+'/'+(+d.slice(8,10));
+const hm=d=>pad(d.getHours())+':'+pad(d.getMinutes());
+const tm=t=>t?t.replace(/^0(\d)/,'$1'):'';
+
+// T：タスク一覧 {id,t,done,doneDate,memo,added}
+// D：日ごとの記録 {deadline,plan:{at,text},prog:{at,text}}
+let T=ls.get('shin_tasks',[]),D=ls.get('shin_days',{}),today=todayStr(),mode='plan';
+function saveT(){ls.set('shin_tasks',T)}
+function saveD(){ls.set('shin_days',D)}
+function day(){return D[today]||(D[today]={deadline:'',plan:null,prog:null})}
+// 日が変わったら、前の日までに完了したタスクを片付ける（未完了はそのまま残る）
+function rollover(){today=todayStr();const n=T.length;T=T.filter(x=>!x.done||x.doneDate===today);if(T.length!==n)saveT()}
+function remember(t){const r=ls.get('shin_recent',[]).filter(x=>x!==t);r.unshift(t);ls.set('shin_recent',r.slice(0,30))}
+
+function addTask(t){t=t.trim();if(!t)return;
+  if(T.some(x=>x.t===t&&!x.done)){toast('同じタスクがもうあります');return}
+  T.push({id:Date.now(),t,done:false,doneDate:'',memo:'',added:today});remember(t);saveT();renderTasks()}
+
+function renderRecent(){
+  const box=$('recent');box.innerHTML='';
+  const open=new Set(T.map(x=>x.t));
+  ls.get('shin_recent',[]).filter(t=>!open.has(t)).slice(0,12).forEach(t=>{const b=document.createElement('button');b.className='chip';b.textContent='＋ '+t;
+    b.onclick=()=>addTask(t);box.appendChild(b)});
+}
+function renderTasks(){
+  const box=$('tasks');box.innerHTML='';
+  if(!T.length)box.innerHTML='<div class="hint" style="margin-top:12px">まだタスクがありません</div>';
+  T.forEach((x,i)=>{const e=document.createElement('div');e.className='task'+(x.done?' done':'');
+    const old=!x.done&&x.added<today?`<span class="old">${md(x.added)}から</span>`:'';
+    e.innerHTML=`<div class="top"><button class="mv" data-a="up">▲</button><span class="ttl">${esc(x.t)}${old}</span><button class="ck">${x.done?'✓ 完了':'完了'}</button><button class="x">×</button></div>`;
+    e.querySelector('.ck').onclick=()=>{x.done=!x.done;x.doneDate=x.done?today:'';saveT();renderTasks()};
+    e.querySelector('.x').onclick=()=>{if(!confirm(`「${x.t}」を消しますか？`))return;T.splice(i,1);saveT();renderTasks()};
+    e.querySelector('.mv').onclick=()=>{if(!i)return;T.splice(i-1,0,T.splice(i,1)[0]);saveT();renderTasks()};
+    if(!x.done){const m=document.createElement('input');m.type='text';m.className='memo';m.placeholder='途中なら一言（例：本人確認完了、次はオーナー確認）';m.value=x.memo||'';
+      m.oninput=()=>{x.memo=m.value;saveT()};e.appendChild(m)}
+    box.appendChild(e)});
+  renderRecent();
+}
+
+/* ---------- 報告の期限 ---------- */
+function renderDue(){
+  const d=day(),box=$('due');$('dueTime').value=d.deadline||'';
+  box.className='due';
+  if(d.prog){box.classList.add('ok');$('dueSub').textContent='今日の進捗報告';$('dueTxt').textContent=`送信済み ${d.prog.at}`;return}
+  if(!d.deadline){$('dueSub').textContent='次の進捗報告';$('dueTxt').textContent='時刻を決める →';return}
+  const [h,m]=d.deadline.split(':').map(Number),now=new Date(),lim=new Date();lim.setHours(h,m,0,0);
+  const left=Math.round((lim-now)/60000);
+  $('dueSub').textContent=`${tm(d.deadline)}までに進捗報告`;
+  if(left<0){box.classList.add('late');$('dueTxt').textContent=`${-left>=60?Math.floor(-left/60)+'時間':''}${-left%60}分 過ぎています`}
+  else{if(left<=30)box.classList.add('soon');$('dueTxt').textContent=`あと ${left>=60?Math.floor(left/60)+'時間':''}${left%60}分`}
+}
+$('dueTime').onchange=()=>{day().deadline=$('dueTime').value;saveD();renderDue()};
+
+/* ---------- 報告の文章 ---------- */
+function planText(){
+  const d=day(),open=T.filter(x=>!x.done);
+  const L=[`本日行う予定のタスクです。${d.deadline?tm(d.deadline)+'までに':'また'}進捗報告いたします。`];
+  open.forEach(x=>L.push('・'+x.t));
+  return L.join('\n');
+}
+function progText(){
+  const L=['本日のタスク進捗です'];
+  const done=T.filter(x=>x.done),open=T.filter(x=>!x.done);
+  done.forEach(x=>L.push('・'+x.t,'→完了'));
+  open.forEach(x=>L.push('・'+x.t,'→'+((x.memo||'').trim()||'未着手')));
+  return L.join('\n');
+}
+function openSend(m){
+  if(!T.length){toast('タスクを入れてください');return}
+  if(m==='plan'&&!T.some(x=>!x.done)){toast('未完了のタスクがありません');return}
+  mode=m;$('sendTitle').textContent=m==='plan'?'予定を送る':'進捗を送る';
+  $('sendText').value=m==='plan'?planText():progText();go('send');
+}
+$('btnPlan').onclick=()=>openSend('plan');
+$('btnProg').onclick=()=>openSend('prog');
+
+async function copy(t){
+  try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}
+}
+function sent(){const t=$('sendText').value;day()[mode]={at:hm(new Date()),text:t};saveD()}
+$('btnCopy').onclick=async()=>{await copy($('sendText').value);sent();toast('コピーしました。LINEに貼り付けてください')};
+$('btnShare').onclick=async()=>{const t=$('sendText').value;
+  if(navigator.share){let ok=false;try{await navigator.share({text:t});ok=true}catch(e){}if(!ok)return;sent();go('list');toast('送信しました')}
+  else{sent();location.href='https://line.me/R/share?text='+encodeURIComponent(t)}
+};
+
+function renderHist(){
+  const keys=Object.keys(D).filter(k=>D[k].plan||D[k].prog).sort().reverse();
+  $('histList').innerHTML=keys.length?'':'<div class="hint">まだ送った報告はありません</div>';
+  keys.forEach(k=>{const d=D[k];
+    [['plan','予定'],['prog','進捗']].forEach(([m,n])=>{if(!d[m])return;const e=document.createElement('div');e.className='h-item';
+      e.innerHTML=`<b>${k.replace(/-/g,'/')}</b> ${n}<small>${d[m].at} に送信${m==='prog'&&d.deadline?`（期限 ${tm(d.deadline)}）`:''}</small><pre></pre>`;
+      e.querySelector('pre').textContent=d[m].text;e.onclick=()=>e.classList.toggle('open');$('histList').appendChild(e)})});
+}
+
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2200)}
+
+/* ---------- 画面切替 ---------- */
+let page='list';
+function go(p){
+  page=p;['list','send','hist'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  $('bar').style.display=p==='list'?'flex':'none';
+  document.querySelector('[data-go=hist]').textContent=p==='list'?'履歴':'戻る';
+  if(p==='list'){rollover();$('hDate').textContent=md(today);renderDue();renderTasks()}
+  if(p==='hist')renderHist();
+  scrollTo(0,0);
+}
+document.querySelector('[data-go=hist]').onclick=()=>go(page==='list'?'hist':'list');
+$('btnAdd').onclick=()=>{addTask($('newTask').value);$('newTask').value=''};
+$('newTask').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){addTask($('newTask').value);$('newTask').value=''}});
+// 開き直したとき・1分ごとに、残り時間と日付を更新
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&page==='list')go('list')});
+setInterval(()=>{if(!document.hidden&&page==='list'){if(todayStr()!==today)go('list');else renderDue()}},60000);
+go('list');
+</script>
+</body>
+</html>
