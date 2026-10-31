@@ -241,10 +241,11 @@
 <!-- ===== 設定 ===== -->
 <div class="page" id="p-set">
   <div class="card">
-    <h2>Square連携</h2>
+    <h2>Square連携・スマホ同期</h2>
     <label class="t">合言葉</label>
     <input type="password" id="sqKey" autocomplete="off" placeholder="Vercelに設定した NIPPO_TOKEN と同じ文字">
-    <div class="hint">入れると、本日売上と会計ごとの注文がSquareから自動で入ります。</div>
+    <div class="hint">入れると、本日売上と会計ごとの注文がSquareから自動で入ります。<br>スマホでもこのページを開いて同じ合言葉を入れると、iPadで書いた日報の続きをスマホで編集・送信できます（常連リストや名前の一覧も共有されます）。</div>
+    <div class="hint" id="syncState" style="margin-top:6px"></div>
   </div>
   <div class="card">
     <h2>累計売上</h2>
@@ -269,7 +270,77 @@
 const API='https://task-app-nine-liard.vercel.app/api/nippo_sales';
 const $=id=>document.getElementById(id);
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
-          set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+          set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}if(typeof onLsSet==='function')onLsSet(k)}};
+/* ---------- 端末間同期（iPadで書いた日報を、スマホでも続けて編集・送信する） ----------
+   日報は1日ずつ、常連・名前・よく使う言葉・表示設定はまとめてサーバーに置く。
+   各データの _u（最終更新時刻）が新しい方が勝つ。合言葉（設定）が入っている端末だけ同期する。 */
+var SYNC_API='https://task-app-nine-liard.vercel.app/api/nippo_sync';
+var SHARED_KEYS=['nippo_regs','nippo_names','nippo_kw_who','nippo_kw_react','nippo_kw_hand','nippo_cummode','nippo_repmode'];
+var syncApplying=false,syncTimer=null,syncBusy=false,syncAgain=false,syncMsg='',onRemote=null;
+function onLsSet(k){if(syncApplying||!SHARED_KEYS.includes(k))return;ls.set('nippo_shared_u',Date.now());ls.set('nippo_shared_dirty',true);syncSoon()}
+function markDirty(d){const q=ls.get('nippo_dirty',[]);if(!q.includes(d)){q.push(d);ls.set('nippo_dirty',q)}syncSoon()}
+function syncSoon(){clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,1500)}
+const uOf=o=>+((o&&o._u)||0);
+// サーバーから来た日報・共有データを取り込む。今開いている日報が変わったら onRemote で画面を描き直す
+function applyRemote(reports,shared){
+  let touched=[];
+  if(reports){const a=ls.get('nippo_all',{}),dels=ls.get('nippo_dels',{});
+    Object.entries(reports).forEach(([d,rem])=>{if(!rem)return;const loc=a[d];
+      if(rem._del){if(loc&&uOf(loc)<=uOf(rem)){delete a[d];touched.push(d)}if(!dels[d]||uOf(dels[d])<uOf(rem))dels[d]=rem;return}
+      if(dels[d]&&uOf(dels[d])>=uOf(rem))return;
+      if(!loc||uOf(rem)>uOf(loc)){a[d]=rem;touched.push(d)}});
+    syncApplying=true;ls.set('nippo_all',a);ls.set('nippo_dels',dels);syncApplying=false}
+  let sharedChanged=false;
+  if(shared&&shared.data&&uOf(shared)>+ls.get('nippo_shared_u',0)){
+    syncApplying=true;Object.entries(shared.data).forEach(([k,v])=>{if(SHARED_KEYS.includes(k)&&v!=null)ls.set(k,v)});
+    ls.set('nippo_shared_u',uOf(shared));ls.set('nippo_shared_dirty',false);syncApplying=false;sharedChanged=true}
+  if((touched.length||sharedChanged)&&onRemote)onRemote(touched,sharedChanged);
+}
+async function syncPost(body){
+  const key=ls.get('nippo_sqkey','');
+  const res=await fetch(SYNC_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify(body)});
+  const j=await res.json().catch(()=>({}));
+  if(!res.ok||!j.ok)throw new Error(j.error||res.status);
+  return j;
+}
+async function syncNow(){
+  if(!ls.get('nippo_sqkey',''))return;
+  if(syncBusy){syncAgain=true;return}
+  syncBusy=true;
+  try{
+    // 1) 他の端末の変更を受け取る（初回は全部。2回目からは前回以降の分だけ。時計のずれを見込んで10分さかのぼる）
+    const first=!ls.get('nippo_sync_init',false);
+    const since=first?0:Math.max(0,+ls.get('nippo_sync_since',0)-600000);
+    const p=await syncPost({op:'pull',since});
+    applyRemote(p.reports,p.shared);
+    const mx=Math.max(+ls.get('nippo_sync_since',0),...Object.values(p.reports||{}).map(uOf));
+    ls.set('nippo_sync_since',mx);
+    if(first){
+      // この端末にしかない日報（同期を始める前に書いたもの）をサーバーへ上げる
+      Object.keys(ls.get('nippo_all',{})).forEach(d=>{if(!(p.reports||{})[d])markDirty(d)});
+      if(!p.shared&&SHARED_KEYS.some(k=>localStorage.getItem(k)!=null)){syncApplying=true;ls.set('nippo_shared_u',Date.now());ls.set('nippo_shared_dirty',true);syncApplying=false}
+      ls.set('nippo_sync_init',true);
+    }
+    // 2) この端末の変更を送る
+    const dirty=ls.get('nippo_dirty',[]),a=ls.get('nippo_all',{}),dels=ls.get('nippo_dels',{});
+    const reports={};dirty.forEach(d=>{if(a[d])reports[d]=a[d];else if(dels[d])reports[d]=dels[d]});
+    const sendShared=ls.get('nippo_shared_dirty',false);
+    let shared=null;
+    if(sendShared){const data={};SHARED_KEYS.forEach(k=>{const v=ls.get(k,null);if(v!=null)data[k]=v});shared={_u:+ls.get('nippo_shared_u',Date.now()),data}}
+    if(Object.keys(reports).length||shared){
+      const r=await syncPost({op:'push',reports,shared});
+      // 送っている間にまた書き換えた日は、次の回でもう一度送る
+      const now=ls.get('nippo_all',{}),nd=ls.get('nippo_dels',{});
+      ls.set('nippo_dirty',ls.get('nippo_dirty',[]).filter(d=>!(d in reports)||uOf(now[d]||nd[d])>uOf(reports[d])));
+      if(shared&&+ls.get('nippo_shared_u',0)===shared._u)ls.set('nippo_shared_dirty',false);
+      applyRemote(r.reports,r.shared);
+    }
+    syncMsg='✓ '+new Date().toTimeString().slice(0,5)+' に同期しました';
+  }catch(e){syncMsg='⚠️ 同期できませんでした（'+(e.message||'通信エラー')+'）。電波が戻ったら自動で送り直します'}
+  syncBusy=false;
+  const st=document.getElementById('syncState');if(st)st.textContent=syncMsg;
+  if(syncAgain){syncAgain=false;syncSoon()}
+}
 const SOURCES=['リピーター','インスタ','スレッズ','X','看板','グーグル','チラシ','紹介','インフルエンサー','出前','声かけ','通りがかり','その他'];
 // 日報の「来店経緯」欄に出す項目（声かけ・通りがかりは「その他」に合算）
 const REPORT_SOURCES=SOURCES; // 記録ボタンと日報の来店経緯は同じ並び・同じ項目
@@ -333,7 +404,13 @@ function blank(date){
 }
 function allReports(){return ls.get('nippo_all',{})}
 function latestBefore(date){const a=allReports();const k=Object.keys(a).filter(x=>x<date&&a[x].cum!==''&&a[x].cum!=null).sort().pop();return k?a[k]:null}
-function save(){if(!R.date)return;const a=allReports();a[R.date]=R;ls.set('nippo_all',a)}
+const sameRep=(x,y)=>{const f=o=>JSON.stringify(Object.assign({},o,{_u:0}));return f(x)===f(y)};
+const isBlankRep=r=>sameRep(r,blank(r.date));
+function save(){if(!R.date)return;const a=allReports(),old=a[R.date];
+  if(old&&sameRep(old,R)){R._u=old._u;return} // 開いただけ・中身が同じなら更新時刻を進めない（他の端末の変更を上書きしないため）
+  if(!old&&isBlankRep(R)){R._u=0}            // まだ何も書いていない日は、他の端末の日報に負けるようにする
+  else{R._u=Date.now();markDirty(R.date);const dl=ls.get('nippo_dels',{});if(dl[R.date]){delete dl[R.date];ls.set('nippo_dels',dl)}}
+  a[R.date]=R;ls.set('nippo_all',a)}
 
 /* ---------- 集計 ---------- */
 const guestTotal=()=>R.customers.reduce((s,c)=>s+(+c.n||0),0);
@@ -830,12 +907,14 @@ function renderHist(){
     const dl=document.createElement('button');dl.className='small-btn';dl.textContent='削除';dl.style.color='#b91c1c';
     dl.onclick=()=>{if(!confirm(k.replace(/-/g,'/')+'の日報を削除しますか？'))return;
       const all=allReports(),old=all[k];delete all[k];ls.set('nippo_all',all);
+      const dl=ls.get('nippo_dels',{});dl[k]={date:k,_del:true,_u:Date.now()};ls.set('nippo_dels',dl);markDirty(k);
       if(R.date===k)load(blank(k));
-      renderHist();toast('日報を削除しました',()=>{const x=allReports();x[k]=old;ls.set('nippo_all',x);if(R.date===k)load(old);renderHist()})};
+      renderHist();toast('日報を削除しました',()=>{const x=allReports();const back=Object.assign({},old,{_u:Date.now()});x[k]=back;ls.set('nippo_all',x);
+        const d2=ls.get('nippo_dels',{});delete d2[k];ls.set('nippo_dels',d2);markDirty(k);if(R.date===k)load(back);renderHist()})};
     r.appendChild(b);r.appendChild(dl);$('histList').appendChild(r)});
 }
 function renderSettings(){
-  $('sqKey').value=ls.get('nippo_sqkey','');
+  $('sqKey').value=ls.get('nippo_sqkey','');$('syncState').textContent=ls.get('nippo_sqkey','')?(syncMsg||'同期中…'):'合言葉が未入力のため、この端末だけに保存しています';
   const mode=ls.get('nippo_cummode','month');$('cumMode').innerHTML='';
   [['month','月ごと'],['all','ずっと足し続ける']].forEach(([v,t])=>{const b=document.createElement('button');b.className='chip'+(mode===v?' on':'');b.textContent=t;
     b.onclick=()=>{ls.set('nippo_cummode',v);renderSettings()};$('cumMode').appendChild(b)});
@@ -843,7 +922,7 @@ function renderSettings(){
   [['all','記録した組すべて'],['detail','反応・お客さん情報を入れた組だけ']].forEach(([v,t])=>{const b=document.createElement('button');b.className='chip'+(rm===v?' on':'');b.textContent=t;
     b.onclick=()=>{ls.set('nippo_repmode',v);renderSettings()};$('repMode').appendChild(b)});
 }
-$('sqKey').oninput=()=>{ls.set('nippo_sqkey',$('sqKey').value.trim());SQ=null;sqErr=''};
+$('sqKey').oninput=()=>{ls.set('nippo_sqkey',$('sqKey').value.trim());SQ=null;sqErr='';syncSoon()};
 
 /* ---------- 入力イベント ---------- */
 TEXT.forEach(f=>$(f).addEventListener('input',()=>{
@@ -909,8 +988,26 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&(page==='
 setInterval(()=>{if(!document.hidden&&(page==='form'||page==='end'))fetchSquare(false)},60000);
 
 $('handKw').appendChild(kwChips(KW_HAND,t=>addText($('handover'),t),'nippo_kw_hand'));
+// 他の端末で書き換えられた日報が届いたら、開いている画面に反映する
+onRemote=(dates,sharedChanged)=>{
+  const a=allReports();
+  if(dates.includes(R.date)){
+    const fresh=a[R.date];
+    if(fresh){load(fresh);if(page==='start'&&R.started)go('form');else if(page==='prev')$('prevText').textContent=reportText();else if(page==='end')renderCounts()}
+    else{load(blank(R.date));go('start')}
+    toast('ほかの端末の変更を取り込みました');
+  }else if(sharedChanged){renderAll()}
+  if(page==='hist')renderHist();
+  if(page==='reg')renderRegs();
+  if(page==='start')renderStart();
+  if(page==='set')renderSettings();
+};
 load(allReports()[todayStr()]||blank());
 go(R.started?'form':'start');
+syncNow();
+// アプリに戻ってきたとき・30秒ごとに、ほかの端末の変更を受け取る
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow()});
+setInterval(()=>{if(!document.hidden)syncNow()},30000);
 </script>
 </body>
 </html>

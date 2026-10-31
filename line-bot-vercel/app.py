@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 85
+APP_VERSION = 86
 
 
 def _respond(start_response, status, body, cors=False):
@@ -452,6 +452,29 @@ def _handle_nippo_sales(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
+def _handle_nippo_sync(environ, start_response):
+    """日報アプリ（nippo.html）の端末間同期。iPadとスマホで同じ日報を編集・送信できるようにする。"""
+    if not config.NIPPO_TOKEN:
+        return _respond(start_response, '503 Service Unavailable',
+                        {'error': 'NIPPO_TOKEN が未設定です。Vercelの環境変数に追加してRedeployしてください。'},
+                        cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います'}, cors=True)
+    body = _read_json_body(environ)
+    if body is None:
+        return _respond(start_response, '400 Bad Request', {'error': 'JSONが読めません'}, cors=True)
+    from linebot import nippo_sync
+    try:
+        if body.get('op') == 'push':
+            result = nippo_sync.push(body.get('reports'), body.get('shared'))
+        else:
+            result = nippo_sync.pull(body.get('since'))
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    status = '200 OK' if result.get('ok') else '502 Bad Gateway'
+    return _respond(start_response, status, result, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -461,6 +484,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_sales(environ, start_response)
+
+    if path == '/api/nippo_sync':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_nippo_sync(environ, start_response)
 
     if path == '/api/meeting_ingest':
         if method == 'OPTIONS':
