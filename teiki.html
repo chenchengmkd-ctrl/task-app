@@ -125,7 +125,7 @@
   .rrow select{flex:0 0 74px;border:1px solid var(--line);border-radius:10px;padding:9px 4px;background:#fff;font-size:15px}
   .rrow .x{flex:0 0 34px;height:34px;border-radius:9px;background:var(--soft);color:var(--neg);font-weight:700}
   .kwsel{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px;font-weight:700;padding:0 12px;margin-bottom:10px;color:var(--ink)}
-  #p-cf{--c-pay:#e8853d;--c-inc:#0e7c86;--c-sc:#6250d6;--c-rep:#9aa5a2}
+  #p-cf{--c-sh:#e87ba4;--c-pay:#e8853d;--c-inc:#0e7c86;--c-sc:#6250d6;--c-rep:#9aa5a2}
   .calm{flex:1;height:46px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:17px;font-weight:700}
   .callg{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:var(--muted);margin:2px 0 8px}
   .callg i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:3px;vertical-align:0}
@@ -154,6 +154,10 @@
   .pld-h .td{font-size:11px;background:var(--g);color:#fff;border-radius:6px;padding:1px 6px}
   .pld-h .sm{margin-left:auto;font-weight:400;font-size:13px;color:var(--muted);text-align:right;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pld .srow input.t{flex:1}
+  .shr{display:flex;align-items:center;gap:6px;margin-top:6px}
+  .shr .nm{flex:1;min-width:0;font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .shr select{flex:0 0 84px;border:1px solid var(--line);border-radius:10px;padding:8px 4px;background:#fff;font-size:15px}
+  .shr .x{flex:0 0 32px;height:32px;border-radius:9px;background:var(--soft);color:var(--neg);font-weight:700}
   .chip.ed{color:var(--muted);border-style:dashed}
   .srow select{flex:0 0 92px;border:1px solid var(--line);border-radius:10px;padding:9px 6px;background:#fff;font-size:16px;min-width:0}
   .th{padding:12px 2px;border-bottom:1px solid var(--line)}
@@ -258,9 +262,15 @@
 
 <!-- ===== 予定を決める ===== -->
 <div class="page" id="p-plan">
+  <div class="seg" id="plMode"></div>
   <div class="seg" id="plSeg"></div>
-  <div class="hint" style="margin:-4px 4px 10px">日にちを押すと、時間と予定のボタンが出ます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。</div>
+  <div class="hint" id="plHint" style="margin:-4px 4px 10px"></div>
   <div id="plDays"></div>
+  <div class="card" id="stCard" style="display:none">
+    <h2>スタッフ<span class="sub">シフトに出てくる名前です</span></h2>
+    <div id="stList"></div>
+    <div class="tadd" style="margin-top:10px"><input type="text" id="stNew" placeholder="名前を書く" enterkeyhint="done"><button id="stAdd">追加</button></div>
+  </div>
 </div>
 
 <!-- ===== 資金繰り（支払い日前の報告）===== -->
@@ -268,7 +278,7 @@
   <div class="card">
     <h2>カレンダー</h2>
     <div class="trnav"><button id="calPrev" aria-label="前の月">◀</button><div class="calm" id="calM"></div><button id="calNext" aria-label="次の月">▶</button></div>
-    <div class="callg"><span><i style="background:var(--c-pay)"></i>支払い</span><span><i style="background:var(--c-inc)"></i>入金予定</span><span><i style="background:var(--c-sc)"></i>予定</span><span><i style="background:var(--c-rep)"></i>報告</span></div>
+    <div class="callg"><span><i style="background:var(--c-pay)"></i>支払い</span><span><i style="background:var(--c-inc)"></i>入金予定</span><span><i style="background:var(--c-sc)"></i>予定</span><span><i style="background:var(--c-sh)"></i>シフト</span><span><i style="background:var(--c-rep)"></i>報告</span></div>
     <div class="calg" id="calG"></div>
     <div id="calDay"></div>
   </div>
@@ -698,13 +708,15 @@ $('kwPrune').onclick=()=>{const c=kwCounts(kwTab),l=words(kwTab),z=l.filter(w=>!
   if(!confirm(`使っていない ${z.length}個（${z.join('、')}）を消しますか？`))return;setWords(kwTab,l.filter(w=>c[w]));renderKw();toast(`${z.length}個消しました`,()=>{setWords(kwTab,l);renderKw()})};
 NM_KEYS.forEach(k=>$(k).addEventListener('input',()=>{const c=ls.get('teiki_cfg',{});c[k]=$(k).value.trim()||DEF_CFG[k];ls.set('teiki_cfg',c)}));
 $('btnExport').onclick=()=>{
-  const blob=new Blob([JSON.stringify({reports:allReports(),cfg:ls.get('teiki_cfg',{}),cf:ls.get('teiki_cf',{}),tasks:{t:ls.get('shin_tasks',[]),d:ls.get('shin_days',{}),r:ls.get('shin_recent',[])}},null,1)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({reports:allReports(),cfg:ls.get('teiki_cfg',{}),cf:ls.get('teiki_cf',{}),tasks:{t:ls.get('shin_tasks',[]),d:ls.get('shin_days',{}),r:ls.get('shin_recent',[])},extra:Object.fromEntries(BK_KEYS.map(k=>[k,ls.get(k,null)]))},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='teiki-backup.json';a.click()};
+// 予定・シフト・支払いなどもバックアップに入れる
+const BK_KEYS=['teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once'];
 $('btnImport').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
   try{const o=JSON.parse(await f.text());if(!o.reports)throw 0;
     if(!confirm('バックアップの内容で上書きしますか？'))return;
-    putAll(o.reports);ls.set('teiki_cfg',o.cfg||{});if(o.cf)ls.set('teiki_cf',o.cf);if(o.tasks){ls.set('shin_tasks',o.tasks.t||[]);ls.set('shin_days',o.tasks.d||{});ls.set('shin_recent',o.tasks.r||[]);T=o.tasks.t||[];TD=o.tasks.d||{}}load(allReports()[todayStr()]||blank(todayStr()));go('hist');toast('戻しました')}
+    putAll(o.reports);ls.set('teiki_cfg',o.cfg||{});if(o.cf)ls.set('teiki_cf',o.cf);if(o.tasks){ls.set('shin_tasks',o.tasks.t||[]);ls.set('shin_days',o.tasks.d||{});ls.set('shin_recent',o.tasks.r||[]);T=o.tasks.t||[];TD=o.tasks.d||{}}if(o.extra)BK_KEYS.forEach(k=>{if(o.extra[k]!=null)ls.set(k,o.extra[k])});load(allReports()[todayStr()]||blank(todayStr()));go('hist');toast('戻しました')}
   catch(err){alert('バックアップのファイルを読めませんでした')}
   e.target.value=''};
 
@@ -998,10 +1010,12 @@ function calItems(y,m){const t=todayStr(),first=dstr(new Date(y,m,1)),last=dstr(
     const nd=nextDay(o.date);if(inM(nd)&&(o.sched||[]).length){scDone[nd]=1;(o.sched||[]).forEach(x=>{if((x.t||'').trim()||x.s)add(nd,{c:'sc',k:(x.t||'').trim(),t:x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜'):''})})}
     if(inM(o.date)&&o.date<=t){const i=sum(o.corp.ins.filter(x=>!/現金/.test(x.k||'')))+sum(o.pers.ins)+num(o.cash.sales),out=['corp','pers','cash'].reduce((s,id)=>s+sum(o[id].outs),0);
       if(i||out)add(o.date,{c:'rep',k:'資金報告',v2:[i,out]})}});
+  // お店のシフト（1日1行にまとめる）
+  Object.entries(ls.get('teiki_shift',{})).forEach(([d,l])=>{if(inM(d)&&l.length)add(d,{c:'sh',k:l.map(x=>x.n).join('・'),t:'シフト',sub:l.map(x=>`${x.n}${x.s?' '+shTime(x):''}`).join('／')})});
   // 報告の「明日の予定」がまだない日は、「予定」タブで決めた予定を出す
   Object.entries(ls.get('teiki_plan',{})).forEach(([d,l])=>{if(inM(d)&&!scDone[d])l.forEach(x=>{if((x.t||'').trim()||x.s)add(d,{c:'sc',k:(x.t||'').trim(),t:x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜'):''})})});
   // 時間のある予定（明日の予定）を時間順に、そのあと支払い・入金予定・報告
-  const ord={sc:0,pay:2,inc:3,rep:4},key=x=>ord[x.c]?'z'+ord[x.c]:(x.t==='終日'?'00:00':hhmm(x.t)||'99');Object.values(by).forEach(l=>l.sort((a,b)=>key(a).localeCompare(key(b))));
+  const ord={sc:0,sh:1,pay:2,inc:3,rep:4},key=x=>x.c==='sh'?'!':ord[x.c]?'z'+ord[x.c]:(x.t==='終日'?'00:00':hhmm(x.t)||'99');Object.values(by).forEach(l=>l.sort((a,b)=>key(a).localeCompare(key(b))));
   return by}
 function renderCal(){const now=new Date();if(!calYM)calYM=[now.getFullYear(),now.getMonth()];const [y,m]=calYM,t=todayStr();if(!calSel)calSel=t;
   $('calM').textContent=(y!==now.getFullYear()?y+'年':'')+(m+1)+'月';
@@ -1018,8 +1032,8 @@ function renderCal(){const now=new Date();if(!calYM)calYM=[now.getFullYear(),now
   let dh=`<div class="cday"><h3>${sd.getMonth()+1}/${sd.getDate()}（${WD[sd.getDay()]}）${calSel===t?' 今日':''}</h3>`;
   if(!l.length)dh+='<div class="hint">この日の予定・記録はありません</div>';
   l.forEach(x=>{const v=x.c==='rep'?`<span class="v">入 ＋${fmt(x.v2[0])}／出 −${fmt(x.v2[1])}</span>`:x.c==='pay'||x.c==='inc'?(x.v==null?'<span class="v" style="color:var(--muted);font-weight:600">金額未定</span>':`<span class="v">${x.c==='inc'?'＋':'−'}${x.est?'約':''}${fmt(x.v)}</span>`):'';
-    const nm=({sc:'予定',pay:'支払い',inc:'入金予定',rep:'報告'})[x.c];
-    dh+=`<div class="ci"><i style="background:var(--c-${x.c})"></i><span class="t">${esc(x.t||nm)}</span><span class="k">${esc(x.k||'')}${x.tag?`<span class="tag" style="font-size:11px;color:var(--muted);margin-left:4px">${esc(x.tag)}</span>`:''}</span>${v}</div>`});
+    const nm=({sh:'シフト',sc:'予定',pay:'支払い',inc:'入金予定',rep:'報告'})[x.c];
+    dh+=`<div class="ci"><i style="background:var(--c-${x.c})"></i><span class="t">${esc(x.t||nm)}</span><span class="k">${esc(x.sub||x.k||'')}${x.tag?`<span class="tag" style="font-size:11px;color:var(--muted);margin-left:4px">${esc(x.tag)}</span>`:''}</span>${v}</div>`});
   box.innerHTML=dh+'</div>';
 }
 $('calPrev').onclick=()=>{const [y,m]=calYM,d=new Date(y,m-1,1);calYM=[d.getFullYear(),d.getMonth()];renderCal()};
@@ -1028,13 +1042,34 @@ $('calNext').onclick=()=>{const [y,m]=calYM,d=new Date(y,m+1,1);calYM=[d.getFull
 /* ---------- 予定を決める（今週・来週・再来週・来月） ---------- */
 // teiki_plan：{YYYY-MM-DD: [{s,e,t}]}
 const PL_TABS=[['w0','今週'],['w1','来週'],['w2','再来週'],['m1','来月']];
-let plTab='w0',plDay=null;
+const PL_MODES=[['me','自分の予定'],['shop','お店のシフト']];
+let plTab='w0',plDay=null,plMode=ls.get('teiki_pl_mode','me');
+// お店のシフト teiki_shift：{YYYY-MM-DD: [{n, s, e}]}、スタッフ teiki_staff：[名前]
+const shGet=()=>ls.get('teiki_shift',{}),shPut=a=>{const old=dstr(new Date(Date.now()-62*864e5));Object.keys(a).forEach(d=>{if(!a[d].length||d<old)delete a[d]});ls.set('teiki_shift',a)};
+const staff=()=>ls.get('teiki_staff',[]);
+const shTime=x=>x.s?`${tm(x.s)}〜${x.e?tm(x.e):''}`:'';
+const shSum=l=>l.map(x=>`${x.n}${x.s?' '+tm(x.s).replace(/:00$/,'')+'〜'+(x.e?tm(x.e).replace(/:00$/,''):''):''}`).join('、');
+// その人が前回入ったときの時間（新しく入れるときの初期値）
+function lastTimes(n,before){const a=shGet(),ds=Object.keys(a).filter(d=>d<before).sort().reverse();
+  for(const d of ds){const x=a[d].find(y=>y.n===n&&y.s);if(x)return {s:x.s,e:x.e}}
+  const ds2=Object.keys(a).filter(d=>d>before).sort();for(const d of ds2){const x=a[d].find(y=>y.n===n&&y.s);if(x)return {s:x.s,e:x.e}}return {s:'',e:''}}
+function renderStaff(){const l=staff(),box=$('stList');box.innerHTML=l.length?'':'<div class="hint">まだいません。下で名前を追加してください。</div>';
+  l.forEach((n,i)=>{const r=document.createElement('div');r.className='kw';r.innerHTML='<span class="n"></span><button>↑</button><button>↓</button><button class="x">×</button>';r.querySelector('.n').textContent=n;
+    const [u,d,x]=r.querySelectorAll('button'),mv=k=>{const a=staff(),j=i+k;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];ls.set('teiki_staff',a);renderPlan()};
+    u.onclick=()=>mv(-1);d.onclick=()=>mv(1);x.onclick=()=>{const a=staff();a.splice(i,1);ls.set('teiki_staff',a);renderPlan();toast(`「${n}」を消しました（入れてあるシフトは残ります）`,()=>{const b=staff();b.splice(i,0,n);ls.set('teiki_staff',b);renderPlan()})};
+    box.appendChild(r)})}
+function stAdd(){const v=$('stNew').value.trim();if(!v)return;const a=staff();if(!a.includes(v))a.push(v);ls.set('teiki_staff',a);$('stNew').value='';renderPlan()}
+$('stAdd').onclick=stAdd;$('stNew').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing)stAdd()});
 const plGet=()=>ls.get('teiki_plan',{}),plPut=a=>{// 空の日と、2か月より前の日は片付ける
   const old=dstr(new Date(Date.now()-62*864e5));Object.keys(a).forEach(d=>{a[d]=a[d].filter(x=>x.s||x.e||(x.t||'').trim()||(x._new&&d===plDay));if(!a[d].length||d<old)delete a[d]});ls.set('teiki_plan',a)};
 function plDates(k){const t=new Date();if(k==='m1'){const y=t.getFullYear(),m=t.getMonth()+1,n=new Date(y,m+1,0).getDate();return [...Array(n)].map((_,i)=>dstr(new Date(y,m,i+1)))}
   const a=monday(t);a.setDate(a.getDate()+7*+k.slice(1));return [...Array(7)].map((_,i)=>{const d=new Date(a);d.setDate(a.getDate()+i);return dstr(d)})}
 function renderPlan(){
+  segBtns($('plMode'),PL_MODES,plMode,k=>{plMode=k;ls.set('teiki_pl_mode',k);plDay=null;renderPlan()});
   segBtns($('plSeg'),PL_TABS,plTab,k=>{plTab=k;plDay=null;renderPlan()});
+  $('stCard').style.display=plMode==='shop'?'':'none';
+  $('plHint').textContent=plMode==='shop'?'日にちを押すと、スタッフの名前ボタンが出ます。時間は前回入ったときの時間が入ります。':'日にちを押すと、時間と予定のボタンが出ます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
+  if(plMode==='shop'){renderShift();renderStaff();return}
   const days=plDates(plTab),all=plGet(),t=todayStr(),box=$('plDays');box.innerHTML='';
   if(plTab!=='m1'){const prev=plDates('w'+(+plTab.slice(1)-1)),has=prev.some(d=>(all[d]||[]).length);
     const b=document.createElement('button');b.className='small-btn';b.style.marginBottom='8px';b.textContent='前の週と同じにする（空いている日だけ）';b.disabled=!has;b.style.opacity=has?1:.4;
@@ -1061,6 +1096,32 @@ function renderPlan(){
       const add=document.createElement('button');add.className='small-btn addrow';add.textContent='＋ 行を追加';
       add.onclick=()=>{l.push({s:'',e:'',t:'',_new:1});ls.set('teiki_plan',a);renderPlan();const ts=box.querySelectorAll('.pld.on input.t');if(ts.length)ts[ts.length-1].focus()};
       blk.appendChild(add)}
+    box.appendChild(blk)});
+}
+
+function renderShift(){
+  const days=plDates(plTab),all=shGet(),t=todayStr(),box=$('plDays'),st=staff();box.innerHTML='';
+  if(!st.length)box.insertAdjacentHTML('beforeend','<div class="hint warn" style="margin:0 4px 10px">まずページの下の「スタッフ」で名前を登録してください。</div>');
+  if(plTab!=='m1'){const prev=plDates('w'+(+plTab.slice(1)-1)),has=prev.some(d=>(all[d]||[]).length);
+    const b=document.createElement('button');b.className='small-btn';b.style.marginBottom='8px';b.textContent='前の週と同じにする（空いている日だけ）';b.disabled=!has;b.style.opacity=has?1:.4;
+    b.onclick=()=>{const a=shGet();let n=0;days.forEach((d,i)=>{if((a[d]||[]).length||!(a[prev[i]]||[]).length)return;a[d]=a[prev[i]].map(x=>({n:x.n,s:x.s,e:x.e}));n++});shPut(a);renderPlan();toast(n?`${n}日分を写しました`:'写せる日がありませんでした')};
+    box.appendChild(b)}
+  days.forEach(d=>{const dt=new Date(d+'T00:00'),wd=dt.getDay(),list=all[d]||[],on=plDay===d;
+    const blk=document.createElement('div');blk.className='pld'+(d<t?' past':'')+(on?' on':'');
+    const h=document.createElement('button');h.className='pld-h';
+    h.innerHTML=`<span class="${wd===0?'su':wd===6?'sa':''}">${md(d)}（${WD[wd]}）</span>${d===t?'<span class="td">今日</span>':''}<span class="sm">${on?'':esc(list.length?shSum(list):'＋ シフトを入れる')}</span>`;
+    h.onclick=()=>{plDay=on?null:d;renderPlan()};blk.appendChild(h);
+    if(on){const a=shGet(),l=a[d]=a[d]||[],save2=()=>shPut(a);
+      if(!l.length)blk.insertAdjacentHTML('beforeend','<div class="hint">下の名前を押して、この日に出る人を入れます。</div>');
+      l.forEach((x,i)=>{const r=document.createElement('div');r.className='shr';
+        const nm=document.createElement('span');nm.className='nm';nm.textContent=x.n;
+        const s1=timeSel(x.s,v=>{x.s=v;save2()}),s2=timeSel(x.e,v=>{x.e=v;save2()}),til=document.createElement('span');til.className='til';til.textContent='〜';
+        const del=document.createElement('button');del.className='x';del.textContent='×';del.onclick=()=>{l.splice(i,1);save2();renderPlan()};
+        r.append(nm,s1,til,s2,del);blk.appendChild(r)});
+      const rest=st.filter(n=>!l.some(x=>x.n===n));
+      if(rest.length){const c=document.createElement('div');c.className='chl';c.textContent='出る人を追加';const ch=document.createElement('div');ch.className='chips';
+        rest.forEach(n=>{const b=document.createElement('button');b.className='chip';b.textContent='＋ '+n;b.onclick=()=>{const tt=lastTimes(n,d);l.push({n,s:tt.s,e:tt.e});save2();renderPlan()};ch.appendChild(b)});
+        blk.append(c,ch)}}
     box.appendChild(blk)});
 }
 
