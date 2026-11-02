@@ -114,63 +114,6 @@ def get_events(date_iso):
     return out
 
 
-def get_events_range(from_iso, to_iso):
-    """from_iso〜to_iso（両端を含む）の予定をまとめて取得。定期報告アプリのカレンダー表示用。
-    → (ok, [{'date','start','end','title','all_day'}])。連携なし・失敗時は (False, [])。
-    数日にまたがる終日予定は、その各日に1件ずつ入れる。"""
-    if not is_enabled():
-        return False, []
-    token = _access_token()
-    if not token:
-        return False, []
-    d0, d1 = config.parse_date(from_iso), config.parse_date(to_iso)
-    if not d0 or not d1 or d1 < d0 or (d1 - d0).days > 62:
-        return False, []
-    time_min = quote(d0.strftime('%Y-%m-%dT00:00:00+09:00'), safe='')
-    time_max = quote((d1 + timedelta(days=1)).strftime('%Y-%m-%dT00:00:00+09:00'), safe='')
-    base = (f'{_API}/calendars/{quote(config.GOOGLE_CALENDAR_ID, safe="")}/events'
-            f'?timeMin={time_min}&timeMax={time_max}&singleEvents=true&orderBy=startTime&maxResults=250')
-    out, page = [], None
-    for _ in range(5):
-        url = base + (f'&pageToken={quote(page, safe="")}' if page else '')
-        try:
-            res = requests.get(url, headers={'Authorization': f'Bearer {token}'}, timeout=20)
-        except requests.RequestException as e:
-            print('gcal range request error:', e)
-            return False, []
-        if res.status_code != 200:
-            print('gcal range error', res.status_code, res.text[:300])
-            return False, []
-        body = res.json()
-        for ev in body.get('items', []):
-            if ev.get('status') == 'cancelled':
-                continue
-            title = ev.get('summary') or '(無題)'
-            start, end = ev.get('start') or {}, ev.get('end') or {}
-            if start.get('date'):
-                sd, ed = config.parse_date(start['date']), config.parse_date(end.get('date') or start['date'])
-                if not sd:
-                    continue
-                if not ed or ed <= sd:
-                    ed = sd + timedelta(days=1)
-                d = sd
-                while d < ed:
-                    iso = config.iso_of_date(d)
-                    if from_iso <= iso <= to_iso:
-                        out.append({'date': iso, 'start': '', 'end': '', 'title': title, 'all_day': True})
-                    d += timedelta(days=1)
-                continue
-            sdt, edt = config.parse_timestamp(start.get('dateTime')), config.parse_timestamp(end.get('dateTime'))
-            if not sdt:
-                continue
-            out.append({'date': config.iso_of_date(sdt), 'start': sdt.strftime('%H:%M'),
-                        'end': edt.strftime('%H:%M') if edt else '', 'title': title, 'all_day': False})
-        page = body.get('nextPageToken')
-        if not page:
-            break
-    return True, out
-
-
 def get_events_with_id(date_iso):
     """予定をイベントIDつきで取得（変更・削除の対象を選ぶ用）。"""
     if not is_enabled():
