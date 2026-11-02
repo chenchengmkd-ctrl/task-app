@@ -540,57 +540,90 @@ $('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
 
 /* ---------- LINEの過去の報告を取り込む ---------- */
 // 「トーク履歴を送信」のテキスト（日付の行＋「時刻<TAB>名前<TAB>本文」）でも、報告を貼り付けただけの文章でも読む
-const zen=t=>String(t).replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/[，]/g,',');
-// 行の最後にある金額と、その前の文字を分ける（「└スクエア89,000」→ スクエア / 89000）
-function tailAmt(line){const m=zen(line).match(/^(.*?)\s*([＋+−\-▲△ー]?)\s*(\d[\d,]*)\s*円?\s*(\(.*\)|（.*）)?\s*$/);
-  if(!m)return null;const v=+m[3].replace(/,/g,'');return {k:m[1].replace(/^[└・\-－*＊※\s]+/,'').replace(/[：:\s]+$/,'').trim(),v:/[−\-▲△ー]/.test(m[2])?-v:v,tail:m[4]||''}}
-function acctOf(name){const C=cfg(),n=name.replace(/\s/g,'');
-  for(const id of ['corp','pers','cash'])if(n===C['nm_'+id].replace(/\s/g,''))return id;
+// 書き方は時期で3通りある（どれも読む）
+//  ①4/30〜：「5/1残高の報告です」個人状況 • 本日入金 • 本日引出 (使途) • 残高目安 / • 法人口座：◯円 / • 屋台うなぎ現金売上：◯円
+//  ②7月〜：「7/22 残高報告」GMO個人 / GMO法人 / 屋台うなぎ現金 の見出しに 昨日残 • 入金 • 引出 • 残高目安
+//  ③8/8〜：「■8/8資金報告」▼法人GMO 昨日残 入金 出金 └内訳 残高（今のアプリと同じ形）
+const zen=t=>String(t).replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/[，]/g,',').replace(/＋/g,'+').replace(/[−－]/g,'-').replace(/：/g,':').replace(/[（]/g,'(').replace(/[）]/g,')');
+const N=s=>+String(s).replace(/,/g,'');
+function acctOf(name){const C=cfg(),n=zen(name).replace(/[\s•･・]/g,'');if(!n||/ワンバーグ/.test(n))return null;
+  for(const id of ['corp','pers','cash'])if(n===zen(C['nm_'+id]).replace(/\s/g,''))return id;
   if(/法人/.test(n))return 'corp';if(/個人/.test(n))return 'pers';if(/現金|屋台|レジ/.test(n))return 'cash';return null}
-// 1つの報告の行から、アプリの報告の形を作る
+// 「62,000+13,000+7,000」は足し算、「-280,000」はマイナス。かっこの中は数えない
+function valOf(rest){const r=rest.replace(/\([^)]*\)?/g,' '),ns=r.match(/\d[\d,]*/g);if(!ns)return null;
+  const parts=/\d\s*\+\s*\d/.test(r)?ns.map(N):[N(ns[0])],v=parts.reduce((a,b)=>a+b,0);
+  return {v:/^\s*[-▲△]\s*\d/.test(r)?-v:v,parts}}
+const parenOf=l=>{const m=l.match(/\(([^)]*)\)?/);return m?m[1]:''};
+const namesOf=t=>t.replace(/^(使途|内訳)\s*:?\s*/,'').split(/[、，・\/]|,(?!\d{3})/).map(x=>x.trim()).filter(Boolean);
+const LABELS=[['prev',/^昨日残高?/],['bal',/^残高/],['unpaid',/^未入金/],['sales',/^現金売上/],['bank',/^銀行入金/],['skip',/予定|返却/],['ins',/^入金/],['outs',/^(出金|引出|引き出し)/]];
 function parseOne(date,lines){
+  const st={},warn=[];let id=null,mode=null,blocked=false;
+  const A=k=>st[k]||(st[k]={ins:[],outs:[],names:{},tot:{},parts:{}});
+  lines.forEach(raw=>{let l=zen(raw).trim();if(!l||/^[─━\-=_]{3,}$/.test(l))return;
+    if(/^[▼【■]/.test(l)){const nm=l.replace(/^[▼【■]+|】.*$/g,'');if(/資金報告/.test(nm))return;id=acctOf(nm);mode=null;blocked=!id;if(id)A(id);return}
+    if(blocked)return;// 【債務残高】【入出金予定】などの中は読まない
+    const item=/^└/.test(l);l=l.replace(/^[•･・*＊\s]+/,'');if(!l)return;
+    const lb=l.replace(/^本日/,'');let hit=LABELS.find(([k,re])=>re.test(lb));
+    if(!hit&&!item&&!/^\(/.test(l)){// 見出し（「GMO個人」「個人状況」）か、「法人口座：65,000円」のような残高だけの行
+      const m=l.match(/^([^:\d→]+?)\s*:?\s*([-▲]?\s*\d[\d,]*)\s*円?\s*(\(.*)?$/),a=/→/.test(l)?null:acctOf(m?m[1]:l);
+      if(a&&(m||!/\d/.test(l))&&(m?m[1]:l).length<=24){id=a;mode=null;const x=A(a);if(m){x.bal=valOf(m[2]).v}return}
+      if(/^(ワンバーグ|債務|スクエア入金|明日|入出金)/.test(l)){id=null;mode=null;return}}
+    if(/→/.test(l))return;
+    if(!id)return;const x=A(id);
+    if(hit){const [k]=hit,rest=lb.replace(hit[1],'').replace(/^\s*:?/,''),v=valOf(rest);
+      if(k==='skip'){mode=null;return}
+      if(k==='prev'){if(v)x.prev=v.v;return}
+      if(k==='bal'){if(v)x.bal=v.v;mode=null;return}
+      if(k==='unpaid'){if(v)x.unpaid=Math.abs(v.v);x.unpaidToday=/本日/.test(rest);return}
+      if(k==='sales'||k==='bank'){if(id==='cash'&&v)x[k]=Math.abs(v.v);mode=null;return}
+      if(id==='cash'&&k==='ins'){mode=null;return}
+      mode=k;if(v){x.tot[k]=Math.abs(v.v);x.parts[k]=v.parts}const pn=parenOf(rest);if(pn)x.names[k]=namesOf(pn);return}
+    if(!mode){// 現金の「薙刀返済 -0」のような出金
+      if(id==='cash'&&x.bal==null&&!/未入金|小銭/.test(l)){const m=l.match(/^([^\d(:]+?)\s*[-:]\s*-?\s*(\d[\d,]*)/);if(m&&N(m[2]))x.outs.push({k:m[1].trim(),v:N(m[2])})}return}
+    if(/^\(/.test(l)){if(!x[mode].length&&!x.names[mode])x.names[mode]=namesOf(parenOf(l));return}
+    const m=l.replace(/^└\s*/,'').match(/^(.*?)\s*[-+]?\s*(\d[\d,]*)\s*円?\s*(\(.*)?$/);
+    if(m&&m[1]&&!/^\d/.test(l.replace(/^└\s*/,'')))x[mode].push({k:m[1].replace(/[:\s]+$/,''),v:N(m[2])});
+    else if(item)x[mode].push({k:l.replace(/^└\s*/,'').replace(/\(.*$/,'').trim()||'（内訳なし）',v:null})});
+  const ids=Object.keys(st);if(!ids.length)return null;
   const o={date,corp:{prev:'',ins:[],outs:[]},pers:{prev:'',ins:[],outs:[],unpaid:'',unpaidToday:false},cash:{prev:'',sales:'',bank:'',outs:[]},
-    plans:[],sched:[],note:'',sent:true,imported:true},st={},warn=[];
-  let id=null,mode=null;
-  lines.forEach(raw=>{const l=zen(raw).trim();if(!l||/^[─━\-=]{3,}$/.test(l))return;
-    const h=l.match(/^(?:▼|【|■)(.+?)】?$/);
-    if(h&&!/資金報告/.test(l)){id=acctOf(h[1]);mode=null;if(id)st[id]=st[id]||{};return}
-    if(!id)return;const a=o[id],x=st[id],t=tailAmt(l);
-    if(/^昨日残/.test(l)){if(t)a.prev=String(t.v);return}
-    if(/^(本日)?残高/.test(l)){if(t)x.bal=t.v;mode=null;return}
-    if(/^(合計|計)[\s　]/.test(l))return;
-    if(/^未入金/.test(l)){if(id==='pers'){if(t)a.unpaid=String(t.v);a.unpaidToday=/本日/.test(l)}return}
-    if(/^現金売上/.test(l)&&id==='cash'){if(t)a.sales=String(Math.abs(t.v));mode=null;return}
-    if(/^銀行入金/.test(l)&&id==='cash'){if(t)a.bank=String(Math.abs(t.v));mode=null;return}
-    if(/^入金/.test(l)&&id!=='cash'){mode='ins';if(t)x.inT=Math.abs(t.v);return}
-    if(/^出金/.test(l)){mode='outs';if(t)x.outT=Math.abs(t.v);return}
-    if(mode&&t&&t.k)a[mode].push({k:t.k,v:String(Math.abs(t.v))})});
-  // 内訳が書かれていない分・書かれた残高との差は、行を足して合わせる（印を付けて知らせる）
-  ['corp','pers','cash'].forEach(id=>{const a=o[id],x=st[id];if(!x)return;
-    [['ins','inT'],['outs','outT']].forEach(([k,tk])=>{if(!a[k]||x[tk]==null)return;const d=x[tk]-sum(a[k]);if(d>0)a[k].push({k:'（内訳なし）',v:String(d)})});
-    if(x.bal!=null&&a.prev!==''){const b=bal(o,id),d=x.bal-b;
-      if(d){// 増やすときは入金に、減らすときは出金に足す（現金は入金の欄がないので、出金にマイナスで入れる）
-        if(d<0)a.outs.push({k:'（差額調整）',v:String(-d)});else if(a.ins)a.ins.push({k:'（差額調整）',v:String(d)});else a.outs.push({k:'（差額調整）',v:String(-d)});
-        warn.push(`${cfg()['nm_'+id]}：計算 ${fmt(b)} と報告の残高 ${fmt(x.bal)} が合わないので、差額 ${fmt(Math.abs(d))} を足しました`)}}
-    x.used=true});
-  if(!Object.keys(st).length)return null;
+    plans:[],sched:[],note:'',sent:true,imported:true};
+  ids.forEach(id=>{const x=st[id],a=o[id];
+    ['ins','outs'].forEach(k=>{if(id==='cash'&&k==='ins')return;let it=x[k];const T=x.tot[k],nm=x.names[k]||[],pt=x.parts[k]||[];
+      if(!it.length&&T){// 内訳が「(交通費、飲食代)」だけのとき。金額が「+」で分かれていて数が合えば組にする
+        if(pt.length>1&&pt.length===nm.length)it=nm.map((n,i)=>({k:n,v:pt[i]}));
+        else if(nm.length)it=[{k:nm.join('・'),v:T}];}
+      const known=it.filter(z=>z.v!=null),no=it.filter(z=>z.v==null),rem=(T||0)-known.reduce((s,z)=>s+z.v,0);
+      it=known.slice();if(rem>0)it.push({k:no.length?no.map(z=>z.k).join('・'):'（内訳なし）',v:rem});
+      a[k]=it.filter(z=>z.v).map(z=>({k:z.k,v:String(z.v)}))});
+    if(id==='cash'){if(x.sales!=null)a.sales=String(x.sales);if(x.bank!=null)a.bank=String(x.bank)}
+    if(id==='pers'&&x.unpaid!=null){a.unpaid=String(x.unpaid);a.unpaidToday=!!x.unpaidToday}
+    if(x.prev!=null)a.prev=String(x.prev);
+    else if(x.bal!=null){a.prev='0';a.prev=String(x.bal-bal(o,id))}// 昨日残が書かれていないときは、残高から逆算する
+    if(x.bal!=null&&x.prev!=null){const b=bal(o,id),d=x.bal-b;
+      if(d){if(d<0)a.outs.push({k:'（差額調整）',v:String(-d)});else if(a.ins)a.ins.push({k:'（差額調整）',v:String(d)});else a.outs.push({k:'（差額調整）',v:String(-d)});
+        warn.push(`${cfg()['nm_'+id]}：計算 ${fmt(b)} と報告の残高 ${fmt(x.bal)} が合わないので、差額 ${fmt(Math.abs(d))} を足しました`)}}});
   return {o,warn,bals:st};
 }
-// 文章全体から「◯/◯資金報告」を探して1件ずつ読む
+// 文章全体から「◯/◯資金報告」「◯/◯残高報告」「◯/◯残高の報告です」を探して1件ずつ読む
+const RH=/(\d{1,2})\/(\d{1,2})\s*(?:\([^)]*\))?\s*(?:の)?\s*(?:資金報告|残高の?報告)/;
 function parseLine(text){
   const L=String(text).replace(/\r/g,'').split('\n'),out=[];
-  let cur=null,hdr=null;const t=new Date(),ty=t.getFullYear();
+  let cur=null,hdr=null;const t=new Date();
   const close=()=>{if(cur){const r=parseOne(cur.date,cur.lines);if(r)out.push(r);cur=null}};
-  L.forEach(raw=>{let l=raw;
-    const dh=zen(l).trim().match(/^(\d{4})[\/.年](\d{1,2})[\/.月](\d{1,2})日?\s*[(（]?[月火水木金土日][^)）]*[)）]?\s*$/);
+  const start=(m,d)=>{close();const base=hdr||t;let y=base.getFullYear();
+    if(new Date(y,m-1,d)>new Date(base.getFullYear(),base.getMonth(),base.getDate()+1))y--;
+    if(m>=1&&m<=12&&d>=1&&d<=31)cur={date:y+'-'+pad(m)+'-'+pad(d),lines:[]}};
+  L.forEach((raw,i)=>{let l=raw;
+    const dh=zen(l).trim().match(/^(\d{4})[\/.年](\d{1,2})[\/.月](\d{1,2})日?\s*\(?[月火水木金土日][^)]*\)?\s*$/);
     if(dh){close();hdr=new Date(+dh[1],+dh[2]-1,+dh[3]);return}
     const msg=l.match(/^\d{1,2}:\d{2}\t[^\t]*\t(.*)$/);
     if(msg){close();l=msg[1].replace(/^"/,'')}
-    l=l.replace(/"$/,'').replace(/""/g,'"');
-    const rh=zen(l).match(/(\d{1,2})\/(\d{1,2})\s*(?:\([^)]*\)|（[^）]*）)?\s*(?:の)?資金報告/);
-    if(rh){close();const m=+rh[1],d=+rh[2],base=hdr||t;let y=base.getFullYear();
-      if(new Date(y,m-1,d)>new Date(base.getFullYear(),base.getMonth(),base.getDate()+1))y--;
-      if(m<1||m>12||d<1||d>31)return;cur={date:y+'-'+pad(m)+'-'+pad(d),lines:[]};return}
+    l=l.replace(/"$/,'').replace(/""/g,'"');const z=zen(l);
+    const rh=z.match(RH);if(rh){start(+rh[1],+rh[2]);return}
+    // 「7/11」の次の行が「残高報告」
+    const md2=z.trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+    if(md2&&/^\s*(資金報告|残高の?報告)/.test(zen(L[i+1]||''))){start(+md2[1],+md2[2]);return}
+    if(cur&&/^\s*(資金報告|残高の?報告)\s*$/.test(z))return;
     if(cur)cur.lines.push(l)});
   close();
   // 同じ日が何回もあるときは、あとから送った方（訂正）を使う
@@ -736,7 +769,7 @@ function renderTrend(){
   let inT=0,outT=0;const used={},use=(k,v)=>{v=num(v);if(!v)return;k=(k||'').trim()||'（内容なし）';used[k]=(used[k]||0)+v};
   rows.forEach(r=>{const o=r.o;
     inT+=sum(o.corp.ins.filter(x=>!/現金/.test(x.k||'')))+sum(o.pers.ins)+num(o.cash.sales);
-    ['corp','pers','cash'].forEach(id=>o[id].outs.forEach(x=>{outT+=num(x.v);use(x.k,x.v)}))});
+    ['corp','pers','cash'].forEach(id=>o[id].outs.forEach(x=>{outT+=num(x.v);if(x.k!=='（差額調整）')use(x.k,x.v)}))});
   const d=inT-outT,t=document.createElement('div');t.className='card tra tot';
   t.innerHTML=`<div class="tra-h"><b>${per}のお金の出入り</b></div>
     <div class="io"><div><small>入ったお金</small><b>＋${fmt(inT)}</b></div><div><small>出たお金</small><b>−${fmt(outT)}</b></div>
@@ -748,7 +781,7 @@ function renderTrend(){
   if(cats.length>8){const rest=cats.slice(7).reduce((s,x)=>s+x[1],0);cats=cats.slice(0,7).concat([['その他',rest]])}
   const mx=Math.max(1,...cats.map(x=>x[1])),u=document.createElement('div');u.className='card tra';
   u.innerHTML=`<div class="tra-h" style="margin-bottom:4px"><b>${per}、何にいくら使ったか</b></div>`+(cats.length?cats.map(([k,v])=>
-    `<div class="brow"><span class="nm">${esc(k)}</span><span class="tr"><i style="width:${Math.max(2,v/mx*100)}%"></i></span><span class="vv">${fmt(v)}</span></div>`).join('')
+    `<div class="brow"><span class="nm">${esc(k)}</span><span class="tr"><i style="width:${Math.max(2,v/mx*100)}%${k==='その他'?';background:#b8c4c1':''}"></i></span><span class="vv">${fmt(v)}</span></div>`).join('')
     :'<div class="hint">この期間の出金はありません</div>');
   box.appendChild(u);
 }
