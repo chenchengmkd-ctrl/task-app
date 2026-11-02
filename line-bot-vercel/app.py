@@ -29,6 +29,7 @@ from linebot import receipt as receipt_mod
 from linebot import weekly_cf as weekly_cf_mod
 from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_report
 from linebot.square import check_midday_sales
+from linebot.teiki import check_teiki_deadline
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
 APP_VERSION = 87
@@ -124,6 +125,7 @@ def _run_poll(environ, start_response):
         (check_daily_plan, 'check_daily_plan'),
         (check_weekly_actual, 'check_weekly_actual'),
         (check_midday_sales, 'check_midday_sales'),
+        (check_teiki_deadline, 'check_teiki_deadline'),
     ):
         try:
             fn(push_text, get_users)
@@ -475,6 +477,26 @@ def _handle_nippo_sync(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
+def _handle_teiki_status(environ, start_response):
+    """定期報告アプリ（teiki.html）用。送信の記録と、未送信のときのLINE通知の設定。合言葉は日報アプリと同じ。"""
+    if not config.NIPPO_TOKEN:
+        return _respond(start_response, '503 Service Unavailable',
+                        {'error': 'NIPPO_TOKEN が未設定です。Vercelの環境変数に追加してRedeployしてください。'},
+                        cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います'}, cors=True)
+    body = _read_json_body(environ)
+    if body is None:
+        return _respond(start_response, '400 Bad Request', {'error': 'JSONが読めません'}, cors=True)
+    from linebot import teiki
+    try:
+        result = teiki.handle(body)
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    status = '200 OK' if result.get('ok') else '400 Bad Request'
+    return _respond(start_response, status, result, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -484,6 +506,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_sales(environ, start_response)
+
+    if path == '/api/teiki_status':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_teiki_status(environ, start_response)
 
     if path == '/api/nippo_sync':
         if method == 'OPTIONS':

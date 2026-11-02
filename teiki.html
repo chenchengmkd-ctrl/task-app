@@ -297,6 +297,14 @@
     <label class="t" style="margin-top:10px">現金</label><input type="text" id="nm_cash">
   </div>
   <div class="card">
+    <h2>LINEでお知らせ<span class="sub">期限までに資金報告を送れていないとき、botからLINEが届きます</span></h2>
+    <label class="tog" style="font-size:15px;color:var(--ink);font-weight:600"><input type="checkbox" id="ntOn"> お知らせを使う</label>
+    <div class="srow" style="margin-top:10px"><span class="lbl">期限の時刻</span><span id="ntTime"></span></div>
+    <label class="t" style="margin-top:12px">合言葉</label>
+    <input type="password" id="ntKey" autocomplete="off" placeholder="日報アプリと同じ合言葉（NIPPO_TOKEN）">
+    <div class="hint" id="ntState"></div>
+  </div>
+  <div class="card">
     <h2 id="kwH">よく使う項目<span class="sub">入力画面にボタンとして出てきます</span></h2>
     <div class="seg" id="kwSeg"></div>
     <div class="hint" style="margin:-4px 0 6px">↑↓で並べ替え、×で消せます。右の数字はこれまでの報告で使った回数です。</div>
@@ -552,9 +560,9 @@ async function copy(t){
 $('btnCopy').onclick=async()=>{if(!check())return;await copy(reportText());toast('コピーしました。LINEに貼って送ったら →',afterSent,'送った・翌日へ')};
 // 送信できたら翌日の報告へ（間違えたときは「取り消す」で戻れます）
 function afterSent(){
-  const sent=R.date;R.sent=true;save();
+  const sent=R.date;R.sent=true;save();ntMark(sent,true);
   const nd=nextDay(sent);load(allReports()[nd]||blank(nd));go('form');
-  toast(`送信しました。${md(nd)}の報告です`,()=>{load(allReports()[sent]);R.sent=false;save();go('form')});
+  toast(`送信しました。${md(nd)}の報告です`,()=>{load(allReports()[sent]);R.sent=false;save();ntMark(sent,false);go('form')});
 }
 $('btnShare').onclick=async()=>{
   if(!check())return;const t=reportText();
@@ -576,7 +584,32 @@ function renderHist(){
       renderHist();toast('削除しました',()=>{const x=allReports();x[k]=old;putAll(x);if(R.date===k)R=old;renderHist()})};
     r.append(b,dl);$('histList').appendChild(r)});
 }
-function renderSettings(){const C=cfg();NM_KEYS.forEach(k=>$(k).value=C[k]);renderKw()}
+function renderSettings(){const C=cfg();NM_KEYS.forEach(k=>$(k).value=C[k]);renderKw();renderNotify()}
+/* ---------- LINEでお知らせ（botに送信を記録し、期限までに送れていなければ通知してもらう） ---------- */
+const NT_API='https://task-app-nine-liard.vercel.app/api/teiki_status';
+const ntKey=()=>ls.get('nippo_sqkey','');// 日報アプリと同じ合言葉を使う（同じ端末なら入力済み）
+async function ntCall(body){const key=ntKey();if(!key)throw new Error('合言葉が未入力です');
+  const r=await fetch(NT_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||('エラー '+r.status));return j}
+function ntMsg(t,warn){$('ntState').textContent=t;$('ntState').className='hint'+(warn?' warn':'')}
+let ntSeq=0;
+async function renderNotify(){const n=ls.get('teiki_nt',{on:false,time:'17:00'}),seq=++ntSeq;
+  $('ntOn').checked=!!n.on;$('ntKey').value=ntKey();
+  const box=$('ntTime');box.innerHTML='';box.appendChild(timeSel(n.time,v=>{if(!v)return;ntSave({time:v})}));
+  if(!ntKey()){ntMsg('合言葉を入れると使えます');return}
+  try{const j=await ntCall({op:'status'});if(seq!==ntSeq)return;// 読み込み中に設定を変えたときは、その変更を優先する
+    ls.set('teiki_nt',{on:!!j.cfg.enabled,time:j.cfg.deadline});$('ntOn').checked=!!j.cfg.enabled;box.querySelector('select').value=hhmm(j.cfg.deadline);
+    ntMsg(j.cfg.enabled?`${tm(j.cfg.deadline)}までに送れていなければLINEが届きます。今日の分は${j.sent_today?'送信済み':'まだです'}。`:'お知らせはオフです')}
+  catch(e){ntMsg('botにつながりませんでした（'+e.message+'）',true)}}
+async function ntSave(ch){ntSeq++;const sel=$('ntTime').querySelector('select'),n=Object.assign({on:$('ntOn').checked,time:(sel&&sel.value)||'17:00'},ch);ls.set('teiki_nt',n);
+  try{await ntCall({op:'config',enabled:n.on,deadline:n.time});ntMsg(n.on?`保存しました。${tm(n.time)}までに送れていなければLINEが届きます。`:'お知らせをオフにしました')}
+  catch(e){ntMsg('保存できませんでした（'+e.message+'）',true)}}
+$('ntOn').onchange=()=>ntSave({on:$('ntOn').checked});
+$('ntKey').addEventListener('change',()=>{ls.set('nippo_sqkey',$('ntKey').value.trim());renderNotify()});
+// 送信の記録。電波がないなどで届かなかった分は、次に開いたときに送り直す
+async function ntFlush(){const q=ls.get('teiki_ntq',[]);if(!q.length||!ntKey())return;const rest=[];
+  for(const x of q){try{await ntCall(x)}catch(e){rest.push(x)}}ls.set('teiki_ntq',rest)}
+function ntMark(date,sent){const q=ls.get('teiki_ntq',[]).filter(x=>x.date!==date);q.push({op:sent?'sent':'unsent',date});ls.set('teiki_ntq',q);ntFlush()}
 function renderKw(){
   segBtns($('kwSeg'),KW.map(([k,n])=>[k,n]),kwTab,k=>{kwTab=k;renderKw()});
   const list=words(kwTab),cnt=kwCounts(kwTab),box=$('kwList');box.innerHTML=list.length?'':'<div class="hint">まだありません。下で追加するか、よく使っているものから選べます。</div>';
@@ -1017,7 +1050,7 @@ $('btnNew').onclick=()=>{load(allReports()[todayStr()]||blank(todayStr()));go(TA
 function load(o){R=JSON.parse(JSON.stringify(o));save();if(page==='form')renderAll()}
 
 load(allReports()[todayStr()]||blank(todayStr()));
-go(TABS.includes(location.hash.slice(1))?location.hash.slice(1):'form');renderTabDot();
+go(TABS.includes(location.hash.slice(1))?location.hash.slice(1):'form');renderTabDot();ntFlush();
 </script>
 </body>
 </html>
