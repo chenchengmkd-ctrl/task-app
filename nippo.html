@@ -490,7 +490,8 @@ function renderQuick(){
   tk.onclick=()=>{qTake=!qTake;renderQuick()};$('nRow').appendChild(tk);
   renderOrdRow();
   $('whoText').value=qWhoText;$('reactText').value=qReactText;
-  toggleChips($('sexRow'),SEXES,qSex);toggleChips($('ageRow'),AGES,qAge);
+  trimLimited(qSex,qN);trimLimited(qAge,qN);
+  toggleChips($('sexRow'),SEXES,qSex,()=>qN);toggleChips($('ageRow'),AGES,qAge,()=>qN);
   panelChips($('whoRow'),KW_WHO,'nippo_kw_who',qWho);
   panelChips($('reactRow'),KW_REACT,'nippo_kw_react',qReact);
   renderSrc();
@@ -547,10 +548,13 @@ function panelChips(el,defs,key,sel){
   el.appendChild(a);
 }
 // 押すたびに選択／解除（追加ボタンなし）
-function toggleChips(el,list,sel){
+// 性別・年代は人数までしか選べない（1名なら1つだけ。上限を超えたら、先に選んだものと入れ替える）
+function pickLimited(sel,t,limit){const i=sel.indexOf(t);if(i>=0){sel.splice(i,1);return}sel.push(t);while(sel.length>Math.max(1,limit))sel.shift()}
+function trimLimited(sel,limit){while(sel.length>Math.max(1,limit))sel.shift()}
+function toggleChips(el,list,sel,limit){
   el.innerHTML='';
   list.forEach(t=>{const b=document.createElement('button');b.className='chip'+(sel.includes(t)?' on':'');b.textContent=t;
-    b.onclick=()=>{const i=sel.indexOf(t);if(i>=0)sel.splice(i,1);else sel.push(t);b.classList.toggle('on',i<0)};el.appendChild(b)});
+    b.onclick=()=>{if(limit)pickLimited(sel,t,limit());else{const i=sel.indexOf(t);if(i>=0)sel.splice(i,1);else sel.push(t)}toggleChips(el,list,sel,limit)};el.appendChild(b)});
 }
 // 選んだ会計（複数可）の中身を「食べたもの」に入れる
 function applySq(){
@@ -808,9 +812,10 @@ function editor(c){
   const sa=document.createElement('div');sa.innerHTML='<label class="t">性別・年代</label>';
   c.sex=c.sex||[];c.age=c.age||[];
   const sr=document.createElement('div');sr.className='chips';const ar=document.createElement('div');ar.className='chips';ar.style.marginTop='6px';
-  const tog=(el,list,arr)=>list.forEach(t=>{const b=document.createElement('button');b.className='chip'+(arr.includes(t)?' on':'');b.textContent=t;
-    b.onclick=()=>{const i=arr.indexOf(t);if(i>=0)arr.splice(i,1);else arr.push(t);b.classList.toggle('on',i<0);save()};el.appendChild(b)});
-  tog(sr,SEXES,c.sex);tog(ar,AGES,c.age);sa.append(sr,ar);e.appendChild(sa);
+  const tog=(el,list,arr)=>{el.innerHTML='';list.forEach(t=>{const b=document.createElement('button');b.className='chip'+(arr.includes(t)?' on':'');b.textContent=t;
+    b.onclick=()=>{pickLimited(arr,t,+c.n||1);tog(el,list,arr);save()};el.appendChild(b)})};
+  const drawSA=()=>{trimLimited(c.sex,+c.n||1);trimLimited(c.age,+c.n||1);tog(sr,SEXES,c.sex);tog(ar,AGES,c.age)};
+  drawSA();sa.append(sr,ar);e.appendChild(sa);
   // 常連カードとの紐付け（新規のお客さんも、ここで登録しておけば次回から選べる）
   const rgBox=document.createElement('div');const rg=c.regId&&regById(c.regId);
   rgBox.innerHTML=`<label class="t">常連カード</label>${rg?`<div class="hint" style="margin:0 0 6px"><b>${esc(rg.name)}</b>　${esc(rg.feature||'')}</div>`:''}`;
@@ -819,7 +824,7 @@ function editor(c){
   const r=document.createElement('div');r.className='row';
   const n=document.createElement('div');n.innerHTML='<label class="t">人数</label>';
   const ns=document.createElement('div');ns.className='step';n.appendChild(ns);
-  stepper(ns,()=>+c.n||1,v=>{c.n=v;if(c.srcs){const mm=srcMapOf(c);fitMap(mm,v,true);storeSrc(c,mm)}save();renderCounts();drawSrc()},1);
+  stepper(ns,()=>+c.n||1,v=>{c.n=v;if(c.srcs){const mm=srcMapOf(c);fitMap(mm,v,true);storeSrc(c,mm)}drawSA();save();renderCounts();drawSrc()},1);
   const tk=document.createElement('div');tk.innerHTML='<label class="t">形態</label>';
   const tb=document.createElement('button');tb.className='chip'+(c.takeout?' on':'');tb.textContent='テイクアウト';
   tb.onclick=()=>{c.takeout=!c.takeout;tb.classList.toggle('on',c.takeout);save()};tk.appendChild(tb);
