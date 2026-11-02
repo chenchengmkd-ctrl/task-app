@@ -126,6 +126,7 @@
   .rrow input.k{flex:1;min-width:0}.rrow input.a{flex:0 0 110px}
   .rrow select{flex:0 0 74px;border:1px solid var(--line);border-radius:10px;padding:9px 4px;background:#fff;font-size:15px}
   .rrow .x{flex:0 0 34px;height:34px;border-radius:9px;background:var(--soft);color:var(--neg);font-weight:700}
+  .kwsel{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px;font-weight:700;padding:0 12px;margin-bottom:10px;color:var(--ink)}
   .chip.ed{color:var(--muted);border-style:dashed}
   .srow select{flex:0 0 92px;border:1px solid var(--line);border-radius:10px;padding:9px 6px;background:#fff;font-size:16px;min-width:0}
   .th{padding:12px 2px;border-bottom:1px solid var(--line)}
@@ -333,7 +334,7 @@
   </div>
   <div class="card">
     <h2 id="kwH">よく使う項目<span class="sub">入力画面にボタンとして出てきます</span></h2>
-    <div class="seg" id="kwSeg"></div>
+    <select id="kwSel" class="kwsel" aria-label="どの項目か"></select>
     <div class="hint" style="margin:-4px 0 6px">↑↓で並べ替え、×で消せます。右の数字はこれまでの報告で使った回数です。</div>
     <div id="kwList"></div>
     <div class="tadd" style="margin-top:10px"><input type="text" id="kwNew" placeholder="新しい項目を書く" enterkeyhint="done"><button id="kwAdd">追加</button></div>
@@ -372,10 +373,18 @@ const nextDay=d=>{const x=new Date(d+'T00:00');x.setDate(x.getDate()+1);return d
 
 // 2026年5〜10月の「資金報告」に出てきた項目から
 const DEF_CFG={nm_corp:'法人GMO',nm_pers:'個人GMO',nm_cash:'屋台現金(レジ金除く)',
-  kw_in:'スクエア、現金売上、個人入金、法人入金、借入、立替精算、その他',
-  kw_out:'交通費、飲食費、食品、肉のハナマサ、鰻代金、家賃、人件費、スマホ料金、光熱費、スクエア、法人入金、その他',
+  // 入金・出金のボタンは口座ごとに別々に持つ
+  kw_in_corp:'スクエア、現金売上、個人入金、法人入金、借入、立替精算、その他',kw_in_pers:'スクエア、現金売上、個人入金、法人入金、借入、立替精算、その他',
+  kw_out_corp:'交通費、飲食費、食品、肉のハナマサ、鰻代金、家賃、人件費、スマホ料金、光熱費、スクエア、法人入金、その他',
+  kw_out_pers:'交通費、飲食費、食品、肉のハナマサ、鰻代金、家賃、人件費、スマホ料金、光熱費、スクエア、法人入金、その他',
+  kw_out_cash:'交通費、飲食費、食品、肉のハナマサ、鰻代金、家賃、人件費、スマホ料金、光熱費、スクエア、法人入金、その他',
   kw_plan:'鰻代金、家賃、給与、光熱費、スクエア入金',kw_sched:'',kw_time:''};
-const KW=[['kw_in','入金'],['kw_out','出金'],['kw_plan','入出金予定'],['kw_sched','明日の予定'],['kw_time','時間']];
+const KW_ACC=[['kw_in_corp','corp','入金'],['kw_out_corp','corp','出金'],['kw_in_pers','pers','入金'],['kw_out_pers','pers','出金'],['kw_out_cash','cash','出金']];
+const KW=()=>KW_ACC.map(([k,id,n])=>[k,cfName(cfg()['nm_'+id])+'の'+n]).concat([['kw_plan','入出金予定'],['kw_sched','明日の予定（内容）'],['kw_time','明日の予定（時間）']]);
+// 以前は入金・出金を全口座で共有していた。個人で直した分は個人と現金に引き継ぎ、法人は最初の状態に戻す
+(()=>{const c=ls.get('teiki_cfg',{});if(c._kwSplit)return;
+  if(c.kw_in)c.kw_in_pers=c.kw_in;if(c.kw_out){c.kw_out_pers=c.kw_out;c.kw_out_cash=c.kw_out}
+  delete c.kw_in;delete c.kw_out;c._kwSplit=1;ls.set('teiki_cfg',c)})();
 const NM_KEYS=['nm_corp','nm_pers','nm_cash'];
 const cfg=()=>Object.assign({},DEF_CFG,ls.get('teiki_cfg',{}));
 const TIME_RE=/^(\d{1,2}:\d{2})\s*(?:[〜~～-]\s*(\d{1,2}:\d{2})?)?\s*/;
@@ -388,8 +397,7 @@ const setWords=(k,list)=>{const c=ls.get('teiki_cfg',{});c[k]=list.join('、');l
 const schedTmpl=x=>`${tm(x.s)}${x.e?'〜'+tm(x.e):(x.s?'〜':'')} ${(x.t||'').trim()}`.trim();
 function kwCounts(k){const m={},add=w=>{w=(w||'').trim();if(!w||/^（(差額調整|内訳なし|内容なし)）$/.test(w))return;m[w]=(m[w]||0)+1};
   Object.values(allReports()).forEach(o=>{
-    if(k==='kw_in')['corp','pers'].forEach(id=>(o[id].ins||[]).forEach(x=>add(x.k)));
-    if(k==='kw_out')['corp','pers','cash'].forEach(id=>(o[id].outs||[]).forEach(x=>add(x.k)));
+    const ka=KW_ACC.find(x=>x[0]===k);if(ka)((k.startsWith('kw_in')?o[ka[1]].ins:o[ka[1]].outs)||[]).forEach(x=>add(x.k));
     if(k==='kw_plan')(o.plans||[]).forEach(x=>add(x.k));
     if(k==='kw_sched')(o.sched||[]).forEach(x=>add(x.t));
     if(k==='kw_time')(o.sched||[]).forEach(x=>add(timeLabel(x)))});
@@ -397,7 +405,7 @@ function kwCounts(k){const m={},add=w=>{w=(w||'').trim();if(!w||/^（(差額調�
 // ボタンに出す項目。予定の2つは、まだ何も登録していなければ、よく使ったものを出す
 function chipWords(k){const w=words(k);if(w.length||!['kw_plan','kw_sched','kw_time'].includes(k))return w;
   return Object.entries(kwCounts(k)).filter(x=>x[1]>=2).sort((a,b)=>b[1]-a[1]).slice(0,8).map(x=>x[0])}
-let kwTab='kw_in';
+let kwTab='kw_in_corp';
 function editChip(k){const b=document.createElement('button');b.className='chip ed';b.textContent='✎ 編集';b.onclick=()=>{kwTab=k;go('set')};return b}
 // 口座ごとの入力欄。cash は入金の代わりに「現金売上」「銀行入金」
 const ACCTS=[{id:'corp',ins:true},{id:'pers',ins:true,unpaid:true},{id:'cash',cash:true}];
@@ -457,13 +465,13 @@ function renderAccts(){
     const pi=moneyInput(a.prev!==''?a.prev:(auto==null?'':auto),auto==null?'最初の1回だけ入力':'',v=>{a.prev=v===''?'':v});
     pl.appendChild(pi);card.appendChild(pl);
     const ph=document.createElement('div');ph.className='hint';ph.dataset.prevhint='';card.appendChild(ph);
-    if(def.ins)itemList(card,a.ins,'kw_in','入金');
+    if(def.ins)itemList(card,a.ins,'kw_in_'+def.id,'入金');
     if(def.cash){
       const g=document.createElement('div');g.className='grp';
       const s=document.createElement('div');s.className='line';s.innerHTML='<span class="lb">現金売上</span>';s.appendChild(moneyInput(a.sales,'＋ 金額',v=>a.sales=v));
       const b=document.createElement('div');b.className='line';b.innerHTML='<span class="lb">銀行入金</span>';b.appendChild(moneyInput(a.bank,'− 口座に入れた金額',v=>a.bank=v));
       g.append(s,b);card.appendChild(g)}
-    itemList(card,a.outs,'kw_out','出金');
+    itemList(card,a.outs,'kw_out_'+def.id,'出金');
     if(def.unpaid){
       const g=document.createElement('div');g.className='grp';
       const u=document.createElement('div');u.className='line';u.style.marginTop='0';u.innerHTML='<span class="lb">未入金分</span>';u.appendChild(moneyInput(a.unpaid,'金額',v=>a.unpaid=v));
@@ -620,7 +628,8 @@ function renderHist(){
 }
 function renderSettings(){const C=cfg();NM_KEYS.forEach(k=>$(k).value=C[k]);renderKw()}
 function renderKw(){
-  segBtns($('kwSeg'),KW.map(([k,n])=>[k,n]),kwTab,k=>{kwTab=k;renderKw()});
+  const kws=KW();if(!kws.some(x=>x[0]===kwTab))kwTab=kws[0][0];
+  $('kwSel').innerHTML=kws.map(([k,n])=>`<option value="${k}">${esc(n)}</option>`).join('');$('kwSel').value=kwTab;$('kwSel').onchange=()=>{kwTab=$('kwSel').value;renderKw()};
   const list=words(kwTab),cnt=kwCounts(kwTab),box=$('kwList');box.innerHTML=list.length?'':'<div class="hint">まだありません。下で追加するか、よく使っているものから選べます。</div>';
   list.forEach((w,i)=>{const r=document.createElement('div');r.className='kw';
     r.innerHTML=`<span class="n"></span><span class="c ${cnt[w]?'':'z'}">${cnt[w]?cnt[w]+'回':'未使用'}</span><button>↑</button><button>↓</button><button class="x">×</button>`;
