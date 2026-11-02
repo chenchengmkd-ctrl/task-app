@@ -96,6 +96,12 @@
   .tk .mv{flex:0 0 28px;height:32px;border-radius:9px;color:var(--muted);font-size:14px}
   .tk .memo{margin-top:8px;font-size:14px;padding:8px 10px}
   .tk .old{font-size:11px;color:var(--warn);font-weight:700;margin-left:4px}
+  .ln-h{display:flex;align-items:center;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);font-weight:700;font-size:14px}
+  .ln-i{padding:9px 2px;border-bottom:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
+  .ln-i b{font-size:14px}
+  .ln-i small{display:block;color:var(--muted);font-size:12px}
+  .ln-i .w{color:var(--warn);font-weight:600}
+  .ln-i.skip{opacity:.45}
   .th{padding:12px 2px;border-bottom:1px solid var(--line)}
   .th:last-child{border:none}
   .th small{color:var(--muted);display:block;font-size:12px}
@@ -252,6 +258,15 @@
 <div class="page" id="p-hist">
   <div class="card"><h2>過去の報告</h2><div id="histList"></div></div>
   <div class="card"><h2>送ったタスク報告<span class="sub">押すと中身が出ます</span></h2><div id="tHistList"></div></div>
+  <div class="card">
+    <h2>LINEの過去の報告を取り込む</h2>
+    <div class="hint" style="margin:-6px 0 10px">LINEグループの「トーク履歴を送信」で保存したファイルを選ぶか、報告の文章をそのまま貼り付けます。取り込む前に中身を確認できます。</div>
+    <button class="small-btn" id="lnFileBtn">トーク履歴ファイルを選ぶ</button>
+    <input type="file" id="lnFile" accept=".txt,text/plain" style="display:none">
+    <textarea id="lnText" placeholder="ここに貼り付けてもOK（■5/1資金報告 … のような文章）" style="margin-top:10px;min-height:90px;font-size:14px"></textarea>
+    <button class="small-btn addrow" id="lnRead">読み取る</button>
+    <div id="lnPrev"></div>
+  </div>
   <div class="card">
     <button class="small-btn" id="btnExport">バックアップを保存</button>
     <button class="small-btn" id="btnImport">バックアップから戻す</button>
@@ -522,6 +537,91 @@ $('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
     putAll(o.reports);ls.set('teiki_cfg',o.cfg||{});if(o.cf)ls.set('teiki_cf',o.cf);if(o.tasks){ls.set('shin_tasks',o.tasks.t||[]);ls.set('shin_days',o.tasks.d||{});ls.set('shin_recent',o.tasks.r||[]);T=o.tasks.t||[];TD=o.tasks.d||{}}load(allReports()[todayStr()]||blank(todayStr()));go('hist');toast('戻しました')}
   catch(err){alert('バックアップのファイルを読めませんでした')}
   e.target.value=''};
+
+/* ---------- LINEの過去の報告を取り込む ---------- */
+// 「トーク履歴を送信」のテキスト（日付の行＋「時刻<TAB>名前<TAB>本文」）でも、報告を貼り付けただけの文章でも読む
+const zen=t=>String(t).replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/[，]/g,',');
+// 行の最後にある金額と、その前の文字を分ける（「└スクエア89,000」→ スクエア / 89000）
+function tailAmt(line){const m=zen(line).match(/^(.*?)\s*([＋+−\-▲△ー]?)\s*(\d[\d,]*)\s*円?\s*(\(.*\)|（.*）)?\s*$/);
+  if(!m)return null;const v=+m[3].replace(/,/g,'');return {k:m[1].replace(/^[└・\-－*＊※\s]+/,'').replace(/[：:\s]+$/,'').trim(),v:/[−\-▲△ー]/.test(m[2])?-v:v,tail:m[4]||''}}
+function acctOf(name){const C=cfg(),n=name.replace(/\s/g,'');
+  for(const id of ['corp','pers','cash'])if(n===C['nm_'+id].replace(/\s/g,''))return id;
+  if(/法人/.test(n))return 'corp';if(/個人/.test(n))return 'pers';if(/現金|屋台|レジ/.test(n))return 'cash';return null}
+// 1つの報告の行から、アプリの報告の形を作る
+function parseOne(date,lines){
+  const o={date,corp:{prev:'',ins:[],outs:[]},pers:{prev:'',ins:[],outs:[],unpaid:'',unpaidToday:false},cash:{prev:'',sales:'',bank:'',outs:[]},
+    plans:[],sched:[],note:'',sent:true,imported:true},st={},warn=[];
+  let id=null,mode=null;
+  lines.forEach(raw=>{const l=zen(raw).trim();if(!l||/^[─━\-=]{3,}$/.test(l))return;
+    const h=l.match(/^(?:▼|【|■)(.+?)】?$/);
+    if(h&&!/資金報告/.test(l)){id=acctOf(h[1]);mode=null;if(id)st[id]=st[id]||{};return}
+    if(!id)return;const a=o[id],x=st[id],t=tailAmt(l);
+    if(/^昨日残/.test(l)){if(t)a.prev=String(t.v);return}
+    if(/^(本日)?残高/.test(l)){if(t)x.bal=t.v;mode=null;return}
+    if(/^(合計|計)[\s　]/.test(l))return;
+    if(/^未入金/.test(l)){if(id==='pers'){if(t)a.unpaid=String(t.v);a.unpaidToday=/本日/.test(l)}return}
+    if(/^現金売上/.test(l)&&id==='cash'){if(t)a.sales=String(Math.abs(t.v));mode=null;return}
+    if(/^銀行入金/.test(l)&&id==='cash'){if(t)a.bank=String(Math.abs(t.v));mode=null;return}
+    if(/^入金/.test(l)&&id!=='cash'){mode='ins';if(t)x.inT=Math.abs(t.v);return}
+    if(/^出金/.test(l)){mode='outs';if(t)x.outT=Math.abs(t.v);return}
+    if(mode&&t&&t.k)a[mode].push({k:t.k,v:String(Math.abs(t.v))})});
+  // 内訳が書かれていない分・書かれた残高との差は、行を足して合わせる（印を付けて知らせる）
+  ['corp','pers','cash'].forEach(id=>{const a=o[id],x=st[id];if(!x)return;
+    [['ins','inT'],['outs','outT']].forEach(([k,tk])=>{if(!a[k]||x[tk]==null)return;const d=x[tk]-sum(a[k]);if(d>0)a[k].push({k:'（内訳なし）',v:String(d)})});
+    if(x.bal!=null&&a.prev!==''){const b=bal(o,id),d=x.bal-b;
+      if(d){// 増やすときは入金に、減らすときは出金に足す（現金は入金の欄がないので、出金にマイナスで入れる）
+        if(d<0)a.outs.push({k:'（差額調整）',v:String(-d)});else if(a.ins)a.ins.push({k:'（差額調整）',v:String(d)});else a.outs.push({k:'（差額調整）',v:String(-d)});
+        warn.push(`${cfg()['nm_'+id]}：計算 ${fmt(b)} と報告の残高 ${fmt(x.bal)} が合わないので、差額 ${fmt(Math.abs(d))} を足しました`)}}
+    x.used=true});
+  if(!Object.keys(st).length)return null;
+  return {o,warn,bals:st};
+}
+// 文章全体から「◯/◯資金報告」を探して1件ずつ読む
+function parseLine(text){
+  const L=String(text).replace(/\r/g,'').split('\n'),out=[];
+  let cur=null,hdr=null;const t=new Date(),ty=t.getFullYear();
+  const close=()=>{if(cur){const r=parseOne(cur.date,cur.lines);if(r)out.push(r);cur=null}};
+  L.forEach(raw=>{let l=raw;
+    const dh=zen(l).trim().match(/^(\d{4})[\/.年](\d{1,2})[\/.月](\d{1,2})日?\s*[(（]?[月火水木金土日][^)）]*[)）]?\s*$/);
+    if(dh){close();hdr=new Date(+dh[1],+dh[2]-1,+dh[3]);return}
+    const msg=l.match(/^\d{1,2}:\d{2}\t[^\t]*\t(.*)$/);
+    if(msg){close();l=msg[1].replace(/^"/,'')}
+    l=l.replace(/"$/,'').replace(/""/g,'"');
+    const rh=zen(l).match(/(\d{1,2})\/(\d{1,2})\s*(?:\([^)]*\)|（[^）]*）)?\s*(?:の)?資金報告/);
+    if(rh){close();const m=+rh[1],d=+rh[2],base=hdr||t;let y=base.getFullYear();
+      if(new Date(y,m-1,d)>new Date(base.getFullYear(),base.getMonth(),base.getDate()+1))y--;
+      if(m<1||m>12||d<1||d>31)return;cur={date:y+'-'+pad(m)+'-'+pad(d),lines:[]};return}
+    if(cur)cur.lines.push(l)});
+  close();
+  // 同じ日が何回もあるときは、あとから送った方（訂正）を使う
+  const by={};out.forEach(r=>by[r.o.date]=r);return Object.values(by).sort((a,b)=>a.o.date.localeCompare(b.o.date));
+}
+let LN=[];
+function renderLn(){const box=$('lnPrev'),all=allReports(),C=cfg();box.innerHTML='';
+  if(!LN.length)return;
+  const over=$('lnOver')?$('lnOver').checked:false;
+  const h=document.createElement('div');h.className='ln-h';
+  h.innerHTML=`<span>${LN.length}件 見つかりました（${md(LN[0].o.date)}〜${md(LN[LN.length-1].o.date)}）</span>`;box.appendChild(h);
+  const n=LN.filter(r=>all[r.o.date]).length;
+  if(n){const t=document.createElement('label');t.className='tog';t.innerHTML=`<input type="checkbox" id="lnOver"${over?' checked':''}> すでにアプリにある日（${n}件）も上書きする`;
+    t.querySelector('input').onchange=renderLn;box.appendChild(t)}
+  const list=document.createElement('div');
+  LN.slice().reverse().forEach(r=>{const has=!!all[r.o.date],skip=has&&!over,e=document.createElement('div');e.className='ln-i'+(skip?' skip':'');
+    e.innerHTML=`<b>${r.o.date.replace(/-/g,'/')}</b>${has?(skip?' <small style="display:inline">アプリにあるので取り込みません</small>':' <small style="display:inline">上書きします</small>'):''}
+      <small>${['corp','pers','cash'].filter(id=>r.bals[id]).map(id=>`${esc(C['nm_'+id])} ${fmt(bal(r.o,id))}`).join('・')}</small>${r.warn.map(w=>`<small class="w">⚠ ${esc(w)}</small>`).join('')}`;
+    list.appendChild(e)});
+  box.appendChild(list);
+  const cnt=LN.filter(r=>over||!all[r.o.date]).length,b=document.createElement('button');b.className='commit2 b3';b.style.cssText='width:100%;margin-top:12px';
+  b.textContent=cnt?`${cnt}件を取り込む`:'取り込むものはありません';b.disabled=!cnt;
+  b.onclick=()=>{const before=allReports(),a=allReports();LN.forEach(r=>{if(over||!a[r.o.date])a[r.o.date]=r.o});putAll(a);
+    LN=[];$('lnText').value='';renderLn();renderHist();
+    toast(`${cnt}件を取り込みました`,()=>{putAll(before);renderHist()})};
+  box.appendChild(b);
+}
+$('lnFileBtn').onclick=()=>$('lnFile').click();
+$('lnFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('lnText').value='';lnRun(await f.text());e.target.value=''};
+$('lnRead').onclick=()=>lnRun($('lnText').value);
+function lnRun(text){LN=parseLine(text);if(!LN.length){$('lnPrev').innerHTML='<div class="hint warn">「◯/◯資金報告」で始まる報告が見つかりませんでした</div>';return}renderLn()}
 
 /* ---------- 資金繰り（支払い日前の報告） ---------- */
 // 2026/10/21・10/23の「給与支払いに向けた資金状況」の報告をもとにした形
