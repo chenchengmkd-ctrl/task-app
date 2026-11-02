@@ -1,0 +1,27 @@
+{
+  "id": "kanda",
+  "name": "株式会社ワンバーグ（屋台うなぎ）・神田",
+  "kv_table": "birdmen_kv",
+  "kv_prefix": "birdmen:",
+  "report_artifact": "https://claude.ai/artifact/4vd1jpxeL12MuGarMB5hqz",
+  "main_ingredient": {
+    "name": "鰻",
+    "unit": "尾",
+    "purchase_match": ["鰻"],
+    "menu_match": "鰻重",
+    "menu_rates": [
+      {"match": "特", "rate": 1.5, "label": "特上"},
+      {"match": "並", "rate": 0.5, "label": "並"},
+      {"match": "", "rate": 1.0, "label": "上"}
+    ],
+    "units_per_purchase": 100
+  },
+  "monthly_inputs": [
+    "月初と月末の在庫（鰻の尾数）",
+    "インフルエンサーへの無料提供（店内・持ち帰りの食数とメニュー）",
+    "焦がし・廃棄（尾数）",
+    "その月だけの特別な出来事（臨時休業・イベント・値上げなど）"
+  ],
+  "nippo_source": null,
+  "notes": "日報（客数・来店経緯・お客様の反応・申し送り）はLINEのスタッフグループに送られている。保存先が決まったら nippo_source に書く。"
+}
