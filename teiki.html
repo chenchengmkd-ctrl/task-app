@@ -102,6 +102,44 @@
   .th pre{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;background:var(--soft);border-radius:10px;padding:8px 10px;margin-top:6px;display:none}
   .th.open pre{display:block}
   pre.prev{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:14px;line-height:1.7}
+  /* 推移 */
+  .viz{--s-total:#1a1a1a;--s-corp:#2a78d6;--s-pers:#eb6834;--s-cash:#1baf7a;--grid:#e6ecea;--axis:#8a9592}
+  .kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .kpi>div{background:var(--soft);border-radius:12px;padding:10px 12px}
+  .kpi small{display:block;color:var(--muted);font-size:12px;font-weight:600}
+  .kpi b{font-size:20px;font-variant-numeric:tabular-nums}
+  .lg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .lg button{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);font-size:13px;font-weight:600;background:#fff}
+  .lg button i{width:12px;height:3px;border-radius:2px;display:inline-block}
+  .lg button.off{opacity:.4}
+  .chart{position:relative;touch-action:pan-y}
+  .chart svg{display:block;width:100%;height:auto;overflow:visible}
+  .chart svg text{font-size:11px;fill:var(--axis);font-variant-numeric:tabular-nums}
+  .tip{position:absolute;top:0;pointer-events:none;background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.10);white-space:nowrap;display:none;z-index:2}
+  .tip b{display:block;font-size:12px;margin-bottom:2px}
+  .tip div{display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+  .tip div span{margin-left:auto;padding-left:10px;font-weight:700}
+  .tip i{width:8px;height:8px;border-radius:50%;display:inline-block}
+  table.sm{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  table.sm th,table.sm td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  table.sm th:first-child,table.sm td:first-child{text-align:left}
+  table.sm thead th{color:var(--muted);font-weight:600;font-size:12px}
+  table.sm thead th{white-space:normal;max-width:84px;vertical-align:bottom}
+  .acc{padding:10px 0;border-bottom:1px solid var(--line)}
+  .acc .t{display:flex;align-items:center;font-weight:700;font-size:15px}
+  .acc .t b{margin-left:auto;font-variant-numeric:tabular-nums}
+  .acc .s{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:12px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+  .acc .s b{color:var(--ink)}
+  .acc.sum{border:none;background:var(--g-soft);border-radius:12px;padding:10px 12px;margin-top:10px}
+  .tblwrap{overflow-x:auto;margin:0 -4px;padding:0 4px}
+  .brow{display:grid;grid-template-columns:minmax(70px,30%) 1fr auto;align-items:center;gap:8px;margin-top:7px;font-size:13px}
+  .brow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .brow .tr{height:10px;background:var(--soft);border-radius:4px;overflow:hidden}
+  .brow .tr i{display:block;height:100%;border-radius:0 4px 4px 0;background:var(--accent)}
+  .brow .vv{font-weight:700;font-variant-numeric:tabular-nums;min-width:76px;text-align:right}
+  .seg{display:flex;gap:4px;background:var(--soft);border-radius:10px;padding:3px;margin-bottom:10px}
+  .seg button{flex:1;padding:6px 2px;border-radius:8px;font-size:13px;font-weight:700;color:var(--muted)}
+  .seg button.on{background:#fff;color:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.08)}
   @media (max-width:600px){main{padding:10px}.card{padding:14px}}
 </style>
 </head>
@@ -118,6 +156,7 @@
   <button data-tab="form">資金報告</button>
   <button data-tab="task">タスク</button>
   <button data-tab="cf">資金繰り</button>
+  <button data-tab="trend">推移</button>
 </nav>
 <!-- ===== 入力 ===== -->
 <div class="page" id="p-form">
@@ -180,6 +219,37 @@
       <button class="commit2 b2" id="cfCopy">コピー</button>
       <button class="commit2 b3" id="cfShare">LINEで送る</button>
     </div>
+  </div>
+</div>
+
+<!-- ===== 推移・累計 ===== -->
+<div class="page viz" id="p-trend">
+  <div class="card">
+    <div class="chips" id="trRange" style="margin-top:0"></div>
+    <div class="hint" id="trRangeTxt"></div>
+  </div>
+  <div class="card">
+    <div class="kpi" id="trKpi"></div>
+  </div>
+  <div class="card">
+    <h2>残高の推移<span class="sub">グラフをなぞると、その日の残高が出ます</span></h2>
+    <div class="lg" id="trLegend"></div>
+    <div class="chart" id="trChart"></div>
+  </div>
+  <div class="card">
+    <h2>期間の累計</h2>
+    <div id="trSum"></div>
+    <div class="hint">現金は「入金」が現金売上、「出金」が銀行入金と出金の合計です。口座どうしの移し替えも入金・出金に含まれます。</div>
+  </div>
+  <div class="card">
+    <h2>項目ごとの累計</h2>
+    <div class="seg" id="trCatSeg"><button data-k="out" class="on">出金</button><button data-k="in">入金</button></div>
+    <div id="trCats"></div>
+  </div>
+  <div class="card">
+    <h2>日ごとの残高</h2>
+    <div class="tblwrap"><table class="sm" id="trDays"></table></div>
+    <button class="small-btn addrow" id="trMore" style="display:none"></button>
   </div>
 </div>
 
@@ -416,10 +486,10 @@ function check(){
 
 /* ---------- 画面切替 ---------- */
 let page='form',lastMain='form';
-const TABS=['form','task','cf'];
+const TABS=['form','task','cf','trend'];
 function go(p){
   page=p;if(TABS.includes(p))lastMain=p;
-  ['form','prev','cf','task','tsend','hist','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  ['form','prev','cf','task','tsend','hist','set','trend'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('tbar').style.display=p==='task'?'flex':'none';
   $('tabs').style.display=TABS.includes(p)?'flex':'none';
@@ -431,6 +501,7 @@ function go(p){
   if(p==='hist'){renderHist();renderTHist()}
   if(p==='set')renderSettings();
   if(p==='cf')renderCf();
+  if(p==='trend')renderTrend();
   if(p==='form')renderAll();
   scrollTo(0,0);
 }
@@ -555,6 +626,111 @@ $('cfReset').onclick=()=>{CF.edited=false;CF.text='';cfSave();$('cfText').value=
 $('cfCopy').onclick=()=>copy($('cfText').value);
 $('cfShare').onclick=async()=>{const t=$('cfText').value;
   if(navigator.share){try{await navigator.share({text:t})}catch(e){}}else location.href='https://line.me/R/share?text='+encodeURIComponent(t)};
+
+/* ---------- 推移・累計 ---------- */
+// 報告を日付順にたどって、各日の昨日残・残高・入出金を出す（bal() と同じ計算を一度に）
+function series(){
+  const a=allReports(),last={};
+  return Object.keys(a).sort().map(k=>{const o=a[k],row={date:k,o};let tp=0,tb=0;
+    ACCTS.forEach(({id})=>{const x=o[id];
+      const p=(x.prev!==''&&x.prev!=null)?num(x.prev):(last[id]==null?0:last[id]);
+      const inn=id==='cash'?num(x.sales):sum(x.ins||[]),out=id==='cash'?num(x.bank)+sum(x.outs):sum(x.outs);
+      const b=p+inn-out;row[id]={prev:p,bal:b,in:inn,out};last[id]=b;tp+=p;tb+=b});
+    row.total={prev:tp,bal:tb};return row});
+}
+const TR_RANGES=[['m0','今月'],['m1','先月'],['d30','30日'],['d90','90日'],['all','全部']];
+let trRange=ls.get('teiki_tr_range','m0'),trCat='out',trAll=false,trOff=ls.get('teiki_tr_off',{});
+function rangeOf(k){const t=new Date(),y=t.getFullYear(),m=t.getMonth();
+  if(k==='m0')return [dstr(new Date(y,m,1)),dstr(new Date(y,m+1,0))];
+  if(k==='m1')return [dstr(new Date(y,m-1,1)),dstr(new Date(y,m,0))];
+  if(k==='d30'||k==='d90'){const f=new Date(t);f.setDate(f.getDate()-(k==='d30'?29:89));return [dstr(f),dstr(t)]}
+  return ['0000-00-00','9999-99-99']}
+const SER=[{id:'total',nm:()=>'合計'},{id:'corp',nm:C=>C.nm_corp},{id:'pers',nm:C=>C.nm_pers},{id:'cash',nm:C=>C.nm_cash}];
+const sgn=n=>(n>0?'＋':n<0?'−':'±')+Math.abs(Math.round(n)).toLocaleString('ja-JP');
+const man=n=>{const a=Math.abs(n);return (n<0?'−':'')+(a>=1e8?(a/1e8).toFixed(a>=1e9?0:1)+'億':a>=1e4?Math.round(a/1e4).toLocaleString('ja-JP')+'万':Math.round(a).toLocaleString('ja-JP'))};
+function renderTrend(){
+  const C=cfg(),all=series(),[from,to]=rangeOf(trRange),rows=all.filter(r=>r.date>=from&&r.date<=to);
+  // 期間ボタン
+  const rb=$('trRange');rb.innerHTML='';
+  TR_RANGES.forEach(([k,n])=>{const b=document.createElement('button');b.className='chip'+(k===trRange?' on':'');b.textContent=n;
+    b.onclick=()=>{trRange=k;ls.set('teiki_tr_range',k);renderTrend()};rb.appendChild(b)});
+  $('trRangeTxt').textContent=rows.length?`${rows[0].date.replace(/-/g,'/')} 〜 ${rows[rows.length-1].date.replace(/-/g,'/')}（報告 ${rows.length}件）`:'この期間の報告はありません';
+  const empty='<div class="hint">この期間の報告はありません</div>';
+  if(!rows.length){$('trKpi').innerHTML=empty;$('trLegend').innerHTML='';$('trChart').innerHTML='';$('trSum').innerHTML='';$('trCats').innerHTML=empty;$('trDays').innerHTML='';$('trMore').style.display='none';return}
+  const f=rows[0],l=rows[rows.length-1];
+  // ひと目でわかる数字
+  const inT=rows.reduce((s,r)=>s+r.corp.in+r.pers.in+r.cash.in,0),outT=rows.reduce((s,r)=>s+r.corp.out+r.pers.out+r.cash.out,0);
+  const d=l.total.bal-f.total.prev;
+  $('trKpi').innerHTML=`<div><small>合計残高（${md(l.date)}）</small><b>${fmt(l.total.bal)}</b></div>
+    <div><small>期間の増減</small><b class="${d<0?'neg':''}">${sgn(d)}</b></div>
+    <div><small>入金の累計</small><b>${fmt(inT)}</b></div><div><small>出金の累計</small><b>${fmt(outT)}</b></div>`;
+  // 凡例（押すと線を出す・消す）
+  const lg=$('trLegend');lg.innerHTML='';
+  SER.forEach(s=>{const b=document.createElement('button');b.className=trOff[s.id]?'off':'';b.setAttribute('aria-pressed',!trOff[s.id]);
+    b.innerHTML=`<i style="background:var(--s-${s.id})"></i>${esc(s.nm(C))}`;
+    b.onclick=()=>{trOff[s.id]=!trOff[s.id];ls.set('teiki_tr_off',trOff);renderTrend()};lg.appendChild(b)});
+  drawChart(rows,SER.filter(s=>!trOff[s.id]),C);
+  // 累計の表
+  let h='',sp=0,si=0,so=0,sb=0;
+  const acc=(nm,p,i,o,b,cls)=>`<div class="acc${cls||''}"><div class="t"><span>${nm}</span><b class="${b-p<0?'neg':''}">${sgn(b-p)}</b></div>
+    <div class="s"><span>期首 ${fmt(p)}</span><span>入金 ＋${fmt(i)}</span><span>出金 −${fmt(o)}</span><span>期末 <b>${fmt(b)}</b></span></div></div>`;
+  ACCTS.forEach(({id})=>{const p=f[id].prev,b=l[id].bal,i=rows.reduce((s,r)=>s+r[id].in,0),o=rows.reduce((s,r)=>s+r[id].out,0);sp+=p;si+=i;so+=o;sb+=b;
+    h+=acc(esc(C['nm_'+id]),p,i,o,b)});
+  h+=acc('合計',sp,si,so,sb,' sum');
+  $('trSum').innerHTML=h;
+  // 項目ごとの累計
+  document.querySelectorAll('#trCatSeg button').forEach(b=>b.classList.toggle('on',b.dataset.k===trCat));
+  const m={},add=(k,v)=>{k=(k||'').trim()||'（内容なし）';v=num(v);if(!v)return;m[k]=(m[k]||0)+v};
+  rows.forEach(r=>{const o=r.o;
+    if(trCat==='out'){['corp','pers','cash'].forEach(id=>o[id].outs.forEach(x=>add(x.k,x.v)));add('銀行入金（現金→口座）',o.cash.bank)}
+    else{['corp','pers'].forEach(id=>o[id].ins.forEach(x=>add(x.k,x.v)));add('現金売上（'+C.nm_cash+'）',o.cash.sales)}});
+  let cats=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  if(cats.length>10){const rest=cats.slice(9).reduce((s,x)=>s+x[1],0);cats=cats.slice(0,9).concat([['その他（'+(cats.length-9)+'項目）',rest]])}
+  const mx=Math.max(1,...cats.map(x=>x[1])),tot=cats.reduce((s,x)=>s+x[1],0);
+  $('trCats').innerHTML=cats.length?cats.map(([k,v])=>`<div class="brow"><span class="nm" title="${esc(k)}">${esc(k)}</span><span class="tr"><i style="width:${Math.max(1,v/mx*100)}%"></i></span><span class="vv">${fmt(v)}</span></div>`).join('')
+    +`<div class="total"><span>合計</span><b>${fmt(tot)}</b></div>`:'<div class="hint">この期間はありません</div>';
+  // 日ごとの表（新しい順）
+  let t=`<thead><tr><th>日付</th>${ACCTS.map(({id})=>`<th>${esc(C['nm_'+id])}</th>`).join('')}<th>合計</th><th>増減</th></tr></thead><tbody>`;
+  const DN=10,mb=$('trMore');mb.style.display=rows.length>DN?'':'none';mb.textContent=trAll?'閉じる':`すべて表示（${rows.length}日分）`;
+  rows.slice().reverse().slice(0,trAll?Infinity:DN).forEach(r=>{const dd=r.total.bal-r.total.prev;
+    t+=`<tr><td>${md(r.date)}</td>${ACCTS.map(({id})=>`<td class="${r[id].bal<0?'neg':''}">${fmt(r[id].bal)}</td>`).join('')}<td><b>${fmt(r.total.bal)}</b></td><td class="${dd<0?'neg':''}">${sgn(dd)}</td></tr>`});
+  $('trDays').innerHTML=t+'</tbody>';
+}
+$('trMore').onclick=()=>{trAll=!trAll;renderTrend()};
+document.querySelectorAll('#trCatSeg button').forEach(b=>b.onclick=()=>{trCat=b.dataset.k;renderTrend()});
+function drawChart(rows,ser,C){
+  const box=$('trChart'),W=Math.max(280,box.clientWidth||600),H=Math.round(Math.min(260,Math.max(190,W*.5))),L=46,Rp=10,T=10,B=24;
+  if(!ser.length){box.innerHTML='<div class="hint">表示する線を上で選んでください</div>';return}
+  const ts=rows.map(r=>new Date(r.date+'T00:00').getTime()),t0=ts[0],t1=ts[ts.length-1]||t0;
+  let lo=Infinity,hi=-Infinity;rows.forEach(r=>ser.forEach(s=>{const v=r[s.id].bal;lo=Math.min(lo,v);hi=Math.max(hi,v)}));
+  lo=Math.min(lo,0);if(hi-lo<10000)hi=lo+10000;
+  const st=Math.pow(10,Math.floor(Math.log10((hi-lo)/4))),step=[1,2,2.5,5,10].map(x=>x*st).find(x=>(hi-lo)/x<=5);
+  lo=Math.floor(lo/step)*step;hi=Math.ceil(hi/step)*step;
+  const X=t=>t1===t0?L+(W-L-Rp)/2:L+(t-t0)/(t1-t0)*(W-L-Rp),Y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  let g='';
+  for(let v=lo;v<=hi+step/2;v+=step){const y=Y(v).toFixed(1);g+=`<line x1="${L}" x2="${W-Rp}" y1="${y}" y2="${y}" stroke="${v===0?'var(--axis)':'var(--grid)'}" stroke-width="1"/><text x="${L-6}" y="${+y+4}" text-anchor="end">${man(v)}</text>`}
+  // 日付の目盛り（最大6つ）
+  const n=rows.length,k=Math.max(1,Math.ceil(n/6));
+  const xe=X(ts[n-1]);rows.forEach((r,i)=>{if(i%k&&i!==n-1)return;if(i!==n-1&&xe-X(ts[i])<44)return;
+    g+=`<text x="${X(ts[i]).toFixed(1)}" y="${H-6}" text-anchor="${n===1?'middle':i===0?'start':i===n-1?'end':'middle'}">${md(r.date)}</text>`});
+  let lines='';
+  ser.slice().reverse().forEach(s=>{const pts=rows.map((r,i)=>`${X(ts[i]).toFixed(1)},${Y(r[s.id].bal).toFixed(1)}`);
+    const w=s.id==='total'?2.5:2;
+    lines+=n>1?`<polyline points="${pts.join(' ')}" fill="none" stroke="var(--s-${s.id})" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"/>`
+      :`<circle cx="${pts[0].split(',')[0]}" cy="${pts[0].split(',')[1]}" r="4" fill="var(--s-${s.id})" stroke="#fff" stroke-width="2"/>`});
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="残高の推移">${g}${lines}<g id="trHov" style="display:none"><line id="trHl" y1="${T}" y2="${H-B}" stroke="var(--axis)" stroke-dasharray="3 3"/>${ser.map(s=>`<circle data-s="${s.id}" r="4.5" fill="var(--s-${s.id})" stroke="#fff" stroke-width="2"/>`).join('')}</g></svg><div class="tip" id="trTip"></div>`;
+  const svg=box.querySelector('svg'),hov=$('trHov'),tip=$('trTip');
+  const show=e=>{const rc=svg.getBoundingClientRect(),x=(e.clientX-rc.left)*W/rc.width;
+    let bi=0,bd=Infinity;ts.forEach((t,i)=>{const dd=Math.abs(X(t)-x);if(dd<bd){bd=dd;bi=i}});
+    const r=rows[bi],cx=X(ts[bi]);hov.style.display='';$('trHl').setAttribute('x1',cx);$('trHl').setAttribute('x2',cx);
+    hov.querySelectorAll('circle').forEach(c=>{c.setAttribute('cx',cx);c.setAttribute('cy',Y(r[c.dataset.s].bal))});
+    tip.innerHTML=`<b>${r.date.replace(/-/g,'/')}</b>`+ser.map(s=>`<div><i style="background:var(--s-${s.id})"></i>${esc(s.nm(C))}<span>${fmt(r[s.id].bal)}</span></div>`).join('');
+    tip.style.display='block';const px=cx*rc.width/W,tw=tip.offsetWidth;
+    tip.style.left=Math.max(0,Math.min(rc.width-tw,px+(px>rc.width/2?-tw-12:12)))+'px'};
+  const hide=()=>{hov.style.display='none';tip.style.display='none'};
+  svg.addEventListener('pointermove',show);svg.addEventListener('pointerdown',show);svg.addEventListener('pointerleave',hide);
+}
+addEventListener('resize',()=>{if(page==='trend')renderTrend()});
 
 /* ---------- タスク報告 ---------- */
 // T：タスク一覧 {id,t,done,doneDate,memo,added}　TD：日ごとの記録 {deadline,plan:{at,text},prog:{at,text}}
