@@ -123,6 +123,16 @@
   .tra-s{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
   .tra-s b{color:var(--ink)}
   .tra.tot{background:var(--g-soft)}
+  .io{margin:8px 0 2px;background:rgba(255,255,255,.75);border-radius:12px;padding:2px 12px}
+  .io>div{display:flex;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
+  .io>div:last-child{border:none}
+  .io small{font-size:14px;color:var(--muted);font-weight:600}
+  .io b{margin-left:auto;font-size:18px;font-variant-numeric:tabular-nums}
+  .brow{display:grid;grid-template-columns:minmax(64px,32%) 1fr auto;align-items:center;gap:8px;margin-top:9px;font-size:14px}
+  .brow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .brow .tr{height:10px;background:var(--soft);border-radius:4px;overflow:hidden}
+  .brow .tr i{display:block;height:100%;border-radius:0 4px 4px 0;background:var(--accent)}
+  .brow .vv{font-weight:700;font-variant-numeric:tabular-nums;min-width:76px;text-align:right}
   @media (max-width:600px){main{padding:10px}.card{padding:14px}}
 </style>
 </head>
@@ -166,8 +176,8 @@
   <button class="trtog" id="trTog" aria-expanded="false"><span>📈 残高の動きを見る</span><i>▾</i></button>
   <div class="viz" id="trWrap" style="display:none">
     <div class="seg" id="trRange"></div>
+    <div class="hint" style="margin:-6px 4px 10px">グラフを指でなぞると、その日の残高が出ます。</div>
     <div id="trAccts"></div>
-    <div class="hint" style="margin:-4px 4px 14px">グラフを指でなぞると、その日の残高が出ます。</div>
   </div>
 </div>
 
@@ -621,10 +631,26 @@ function renderTrend(){
       <div class="mini"></div><div class="tra-tip"></div>
       <div class="tra-s">入ったお金 <b>＋${fmt(i)}</b>　出たお金 <b>−${fmt(o)}</b></div>`;
     box.appendChild(c);mini(c.querySelector('.mini'),c.querySelector('.tra-tip'),rows,id)});
-  const tp=f.total.prev,tb=l.total.bal,t=document.createElement('div');t.className='card tra tot';
-  t.innerHTML=`<div class="tra-h"><b>3つの合計</b><span class="${tb<0?'neg':''}">${fmt(tb)}</span></div>
-    <div class="tra-m">はじめ ${fmt(tp)} → ${endLb} ${fmt(tb)} ${chg(tb-tp)}</div>`;
+  // お金の出入り（3つの合計）。現金を口座に入れた分は移しただけなので入れない
+  const per=({m0:'今月',m1:'先月',d90:'この3か月'})[trRange];
+  let inT=0,outT=0;const used={},use=(k,v)=>{v=num(v);if(!v)return;k=(k||'').trim()||'（内容なし）';used[k]=(used[k]||0)+v};
+  rows.forEach(r=>{const o=r.o;
+    inT+=sum(o.corp.ins.filter(x=>!/現金/.test(x.k||'')))+sum(o.pers.ins)+num(o.cash.sales);
+    ['corp','pers','cash'].forEach(id=>o[id].outs.forEach(x=>{outT+=num(x.v);use(x.k,x.v)}))});
+  const d=inT-outT,t=document.createElement('div');t.className='card tra tot';
+  t.innerHTML=`<div class="tra-h"><b>${per}のお金の出入り</b></div>
+    <div class="io"><div><small>入ったお金</small><b>＋${fmt(inT)}</b></div><div><small>出たお金</small><b>−${fmt(outT)}</b></div>
+    <div><small>差し引き</small><b class="${d<0?'neg':''}">${sgn(d)||'0'}</b></div></div>
+    <div class="hint">3つの合計です。現金を口座に入れた分は、移しただけなので入れていません。</div>`;
   box.appendChild(t);
+  // 何にいくら使ったか
+  let cats=Object.entries(used).sort((a,b)=>b[1]-a[1]);
+  if(cats.length>8){const rest=cats.slice(7).reduce((s,x)=>s+x[1],0);cats=cats.slice(0,7).concat([['その他',rest]])}
+  const mx=Math.max(1,...cats.map(x=>x[1])),u=document.createElement('div');u.className='card tra';
+  u.innerHTML=`<div class="tra-h" style="margin-bottom:4px"><b>${per}、何にいくら使ったか</b></div>`+(cats.length?cats.map(([k,v])=>
+    `<div class="brow"><span class="nm">${esc(k)}</span><span class="tr"><i style="width:${Math.max(2,v/mx*100)}%"></i></span><span class="vv">${fmt(v)}</span></div>`).join('')
+    :'<div class="hint">この期間の出金はありません</div>');
+  box.appendChild(u);
 }
 function mini(el,tip,rows,id){
   // 先頭は期間のはじめの残高（最初の日の昨日残）
