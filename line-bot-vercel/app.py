@@ -475,6 +475,30 @@ def _handle_nippo_sync(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
+def _handle_teiki_calendar(environ, start_response):
+    """定期報告アプリ（teiki.html）のカレンダー用。指定した期間のGoogleカレンダーの予定を返す（読むだけ）。合言葉は日報アプリと同じ。"""
+    if not config.NIPPO_TOKEN:
+        return _respond(start_response, '503 Service Unavailable',
+                        {'error': 'NIPPO_TOKEN が未設定です。Vercelの環境変数に追加してRedeployしてください。'},
+                        cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います'}, cors=True)
+    body = _read_json_body(environ)
+    if not body or not body.get('from') or not body.get('to'):
+        return _respond(start_response, '400 Bad Request', {'error': 'from / to がありません'}, cors=True)
+    from linebot import gcal
+    if not gcal.is_enabled():
+        return _respond(start_response, '200 OK', {'ok': True, 'enabled': False, 'events': []}, cors=True)
+    try:
+        ok, events = gcal.get_events_range(body['from'], body['to'])
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    if not ok:
+        return _respond(start_response, '502 Bad Gateway',
+                        {'error': 'Googleカレンダーを読めませんでした（共有の設定を確認してください）'}, cors=True)
+    return _respond(start_response, '200 OK', {'ok': True, 'enabled': True, 'events': events}, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -484,6 +508,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_sales(environ, start_response)
+
+    if path == '/api/teiki_calendar':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_teiki_calendar(environ, start_response)
 
     if path == '/api/nippo_sync':
         if method == 'OPTIONS':

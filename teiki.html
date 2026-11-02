@@ -125,6 +125,27 @@
   .rrow select{flex:0 0 74px;border:1px solid var(--line);border-radius:10px;padding:9px 4px;background:#fff;font-size:15px}
   .rrow .x{flex:0 0 34px;height:34px;border-radius:9px;background:var(--soft);color:var(--neg);font-weight:700}
   .kwsel{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px;font-weight:700;padding:0 12px;margin-bottom:10px;color:var(--ink)}
+  #p-cf{--c-pay:#e8853d;--c-inc:#0e7c86;--c-g:#2a78d6;--c-sc:#6250d6;--c-rep:#9aa5a2}
+  .calm{flex:1;height:46px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:17px;font-weight:700}
+  .callg{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:var(--muted);margin:2px 0 8px}
+  .callg i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:3px;vertical-align:0}
+  .calg{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .calg .wd{font-size:11px;text-align:center;color:var(--muted);padding:3px 0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--soft)}
+  .calg .wd.su,.calg .c.su .n{color:#c2410c}.calg .wd.sa,.calg .c.sa .n{color:#2563eb}
+  .calg .c{min-height:64px;padding:2px 2px 3px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:#fff;text-align:left;display:flex;flex-direction:column;gap:1px;overflow:hidden;font:inherit}
+  .calg .c.out{background:#fafbfb}.calg .c.out .n{opacity:.35}
+  .calg .c .n{font-size:12px;font-weight:700;line-height:1.3}
+  .calg .c.td .n{background:var(--g);color:#fff;border-radius:6px;padding:0 4px;align-self:flex-start}
+  .calg .c.sel{outline:2px solid var(--accent);outline-offset:-2px;z-index:1}
+  .calg .c .e{font-size:9.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:clip;border-left:2px solid;padding-left:2px;color:var(--ink)}
+  .calg .c .more{font-size:9.5px;color:var(--muted)}
+  .cday{margin-top:12px}
+  .cday h3{font-size:15px;margin-bottom:4px}
+  .cday .ci{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:14px;font-variant-numeric:tabular-nums}
+  .cday .ci i{flex:0 0 8px;height:8px;border-radius:2px;align-self:center}
+  .cday .ci .t{flex:0 0 auto;color:var(--muted);font-size:12px;min-width:44px}
+  .cday .ci .k{flex:1;min-width:0;word-break:break-all}
+  .cday .ci .v{font-weight:700;white-space:nowrap}
   .chip.ed{color:var(--muted);border-style:dashed}
   .srow select{flex:0 0 92px;border:1px solid var(--line);border-radius:10px;padding:9px 6px;background:#fff;font-size:16px;min-width:0}
   .th{padding:12px 2px;border-bottom:1px solid var(--line)}
@@ -228,6 +249,14 @@
 
 <!-- ===== 資金繰り（支払い日前の報告）===== -->
 <div class="page" id="p-cf">
+  <div class="card">
+    <h2>カレンダー</h2>
+    <div class="trnav"><button id="calPrev" aria-label="前の月">◀</button><div class="calm" id="calM"></div><button id="calNext" aria-label="次の月">▶</button></div>
+    <div class="callg"><span><i style="background:var(--c-pay)"></i>支払い</span><span><i style="background:var(--c-inc)"></i>入金予定</span><span><i style="background:var(--c-g)"></i>Google</span><span><i style="background:var(--c-sc)"></i>予定</span><span><i style="background:var(--c-rep)"></i>報告</span></div>
+    <div class="calg" id="calG"></div>
+    <div id="calGs" class="hint"></div>
+    <div id="calDay"></div>
+  </div>
   <div class="card">
     <h2>今月の支払い予定<span class="sub" id="upSub"></span></h2>
     <div id="upList"></div>
@@ -853,7 +882,7 @@ function renderCf(){
   ['本日の現金売上（予想）','レジ金','スクエア入金'].concat(['＋ 自由に書く']).forEach(w=>{const b=document.createElement('button');b.className='chip';b.textContent=w;
     b.onclick=()=>{CF.exps.push({k:w.startsWith('＋')?'':w,v:''});cfChanged();renderCf();const l=$('cfExps').lastChild;l.querySelector(w.startsWith('＋')?'.k':'.a').focus()};ec.appendChild(b)});
   cfNumsShow();$('cfText').value=CF.edited&&CF.text?CF.text:cfText();
-  renderUp();
+  renderUp();{const n=new Date();if(!calYM)calYM=[n.getFullYear(),n.getMonth()]}gcLoad(...calYM);renderCal();
 }
 $('cfDate').onchange=()=>{CF.date=$('cfDate').value;cfChanged();renderCf()};
 $('cfAddFund').onclick=()=>{CF.funds.push({k:'',v:''});cfChanged();renderCf();$('cfFunds').lastChild.querySelector('.k').focus()};
@@ -933,6 +962,64 @@ function renderOnce(){const t=todayStr(),old=dstr(new Date(Date.now()-60*864e5))
     b.onclick=()=>{list.push({d:'',k:w.startsWith('＋')?'':w,v:''});ls.set('teiki_once',list);renderUp();const bs=$('upOnce').querySelectorAll('.rblk');bs[bs.length-1].querySelector('input[type=date]').focus()};ch.appendChild(b)});
 }
 $('upEdit').onclick=()=>{upOpen=!upOpen;renderUp()};
+
+/* ---------- カレンダー（支払い・入金予定・Googleカレンダー・明日の予定・過去の報告） ---------- */
+const GC_API='https://task-app-nine-liard.vercel.app/api/teiki_calendar';
+let calYM=null,calSel=null;const GC={};// GC[YYYY-MM] = {st:'loading'|'ok'|'off'|'err'|'nokey', ev:[], msg}
+// その月の日付ごとの項目。支払い・入金予定は今日から先だけ、報告は今日まで
+function calItems(y,m){const t=todayStr(),first=dstr(new Date(y,m,1)),last=dstr(new Date(y,m+1,0)),by={},add=(d,x)=>{(by[d]=by[d]||[]).push(x)};
+  const inM=d=>d&&d>=first&&d<=last;
+  R.plans.forEach(p=>{if(inM(p.d)&&p.d>=t&&((p.k||'').trim()||num(p.v)))add(p.d,{c:isIncome(p.k)?'inc':'pay',k:(p.k||'').trim(),v:p.v===''?null:num(p.v),tag:'入出金予定'})});
+  ls.get('teiki_once',[]).forEach(o=>{if(inM(o.d)&&o.d>=t)add(o.d,{c:'pay',k:(o.k||'').trim(),v:o.v===''||o.v==null?null:num(o.v),tag:'不定期'})});
+  ls.get('teiki_recur',[]).filter(r=>(r.k||'').trim()).forEach(r=>{const ld=new Date(y,m+1,0).getDate(),d=dstr(new Date(y,m,r.day==='末'?ld:Math.min(+r.day||1,ld)));
+    if(d<t)return;const k=r.k.trim();
+    if(Object.entries(by).some(([dd,l])=>l.some(x=>x.tag!=='毎月'&&x.k&&(x.k.includes(k)||k.includes(x.k)))))return;
+    add(d,{c:'pay',k,v:r.v===''||r.v==null?null:num(r.v),tag:r.vary?'毎月・変動':'毎月',est:!!r.vary})});
+  const all=allReports();
+  Object.values(all).forEach(o=>{
+    // 報告の「明日の予定」は翌日の予定
+    const nd=nextDay(o.date);if(inM(nd))(o.sched||[]).forEach(x=>{if((x.t||'').trim()||x.s)add(nd,{c:'sc',k:(x.t||'').trim(),t:x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜'):''})});
+    if(inM(o.date)&&o.date<=t){const i=sum(o.corp.ins.filter(x=>!/現金/.test(x.k||'')))+sum(o.pers.ins)+num(o.cash.sales),out=['corp','pers','cash'].reduce((s,id)=>s+sum(o[id].outs),0);
+      if(i||out)add(o.date,{c:'rep',k:'資金報告',v2:[i,out]})}});
+  ((GC[`${y}-${pad(m+1)}`]||{}).ev||[]).forEach(e=>{if(inM(e.date))add(e.date,{c:'g',k:e.title,t:e.all_day?'終日':tm(e.start)+(e.end?'〜'+tm(e.end):'')})});
+  // 時間のある予定（Google・明日の予定）を時間順に、そのあと支払い・入金予定・報告
+  const ord={g:0,sc:0,pay:2,inc:3,rep:4},key=x=>ord[x.c]?'z'+ord[x.c]:(x.t==='終日'?'00:00':hhmm(x.t)||'99');Object.values(by).forEach(l=>l.sort((a,b)=>key(a).localeCompare(key(b))));
+  return by}
+async function gcLoad(y,m){const ym=`${y}-${pad(m+1)}`,key=ls.get('nippo_sqkey','');
+  if(!key){GC[ym]={st:'nokey',ev:[]};return}
+  if(GC[ym]&&GC[ym].st!=='err')return;GC[ym]={st:'loading',ev:(ls.get('teiki_gc',{})[ym]||[])};
+  try{const r=await fetch(GC_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify({from:dstr(new Date(y,m,1)),to:dstr(new Date(y,m+1,0))})});
+    const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||('エラー '+r.status));
+    GC[ym]=j.enabled?{st:'ok',ev:j.events}:{st:'off',ev:[]};if(j.enabled){const c=ls.get('teiki_gc',{});c[ym]=j.events;ls.set('teiki_gc',c)}}
+  catch(e){GC[ym]={st:'err',ev:GC[ym].ev,msg:e.message}}
+  if(page==='cf'&&calYM&&calYM[0]===y&&calYM[1]===m)renderCal()}
+function renderCal(){const now=new Date();if(!calYM)calYM=[now.getFullYear(),now.getMonth()];const [y,m]=calYM,t=todayStr();if(!calSel)calSel=t;
+  $('calM').textContent=(y!==now.getFullYear()?y+'年':'')+(m+1)+'月';
+  const by=calItems(y,m),g=$('calG'),start=new Date(y,m,1-new Date(y,m,1).getDay()),cells=[];
+  let h=[...WD].map((w,i)=>`<div class="wd${i===0?' su':i===6?' sa':''}">${w}</div>`).join('');
+  for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);if(i>=35&&d.getMonth()!==m)break;
+    const ds=dstr(d),l=by[ds]||[],out=d.getMonth()!==m,wd=d.getDay();
+    const lab=l.slice(0,3).map(x=>`<span class="e" style="border-color:var(--c-${x.c})">${esc(x.c==='rep'?'報告':x.k||'予定')}</span>`).join('');
+    h+=`<button class="c${out?' out':''}${ds===t?' td':''}${ds===calSel?' sel':''}${wd===0?' su':wd===6?' sa':''}" data-d="${ds}"><span class="n">${d.getDate()}</span>${out?'':lab}${!out&&l.length>3?`<span class="more">+${l.length-3}</span>`:''}</button>`}
+  g.innerHTML=h;
+  g.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const d=b.dataset.d,dd=new Date(d+'T00:00');calSel=d;if(dd.getMonth()!==m||dd.getFullYear()!==y){calYM=[dd.getFullYear(),dd.getMonth()];gcLoad(...calYM)}renderCal()});
+  // Googleカレンダーの読み込み状況
+  const st=(GC[`${y}-${pad(m+1)}`]||{}).st,gs=$('calGs');
+  gs.className='hint'+(st==='err'||st==='off'?' warn':'');
+  gs.innerHTML=st==='loading'?'Googleカレンダーを読み込み中…':st==='off'?'botにGoogleカレンダーがつながっていないため、Googleの予定は出ていません。':st==='err'?`Googleカレンダーを読めませんでした（${esc(GC[`${y}-${pad(m+1)}`].msg||'')}）`:
+    st==='nokey'?'Googleの予定も出すには、合言葉（日報アプリと同じ）を入れてください。<div class="tadd" style="margin-top:6px"><input type="password" id="calKey" placeholder="合言葉" autocomplete="off"><button id="calKeyBtn">保存</button></div>':'';
+  if(st==='nokey')$('calKeyBtn').onclick=()=>{const v=$('calKey').value.trim();if(!v)return;ls.set('nippo_sqkey',v);delete GC[`${y}-${pad(m+1)}`];gcLoad(y,m);renderCal()};
+  // 選んだ日の中身
+  const sd=new Date(calSel+'T00:00'),l=by[calSel]||[],box=$('calDay');
+  let dh=`<div class="cday"><h3>${sd.getMonth()+1}/${sd.getDate()}（${WD[sd.getDay()]}）${calSel===t?' 今日':''}</h3>`;
+  if(!l.length)dh+='<div class="hint">この日の予定・記録はありません</div>';
+  l.forEach(x=>{const v=x.c==='rep'?`<span class="v">入 ＋${fmt(x.v2[0])}／出 −${fmt(x.v2[1])}</span>`:x.c==='pay'||x.c==='inc'?(x.v==null?'<span class="v" style="color:var(--muted);font-weight:600">金額未定</span>':`<span class="v">${x.c==='inc'?'＋':'−'}${x.est?'約':''}${fmt(x.v)}</span>`):'';
+    const nm=({g:'Google',sc:'予定',pay:'支払い',inc:'入金予定',rep:'報告'})[x.c];
+    dh+=`<div class="ci"><i style="background:var(--c-${x.c})"></i><span class="t">${esc(x.t||nm)}</span><span class="k">${esc(x.k||'')}${x.tag?`<span class="tag" style="font-size:11px;color:var(--muted);margin-left:4px">${esc(x.tag)}</span>`:''}</span>${v}</div>`});
+  box.innerHTML=dh+'</div>';
+}
+$('calPrev').onclick=()=>{const [y,m]=calYM,d=new Date(y,m-1,1);calYM=[d.getFullYear(),d.getMonth()];gcLoad(...calYM);renderCal()};
+$('calNext').onclick=()=>{const [y,m]=calYM,d=new Date(y,m+1,1);calYM=[d.getFullYear(),d.getMonth()];gcLoad(...calYM);renderCal()};
 
 /* ---------- 推移・累計 ---------- */
 // 報告を日付順にたどって、各日の昨日残・残高・入出金を出す（bal() と同じ計算を一度に）
