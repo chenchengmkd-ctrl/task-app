@@ -265,6 +265,15 @@
   <div class="seg" id="plMode"></div>
   <div class="seg" id="plSeg"></div>
   <div class="hint" id="plHint" style="margin:-4px 4px 10px"></div>
+  <div class="card" id="shPaste" style="display:none">
+    <button class="small-btn" id="shPasteTog" style="width:100%">📋 シフトを貼り付けて登録</button>
+    <div id="shPasteBody" style="display:none;margin-top:10px">
+      <div class="hint" style="margin:0 0 6px">チャットで読み取ったシフトの文章を貼り付けます。1日1行で「11/5 山田 10:00-15:00、佐藤 17:00-23:00」の形です。</div>
+      <textarea id="shText" style="min-height:140px;font-size:14px" placeholder="11/5 山田 10:00-15:00、佐藤 17:00-23:00&#10;11/6 鈴木 10:00-17:00"></textarea>
+      <button class="small-btn addrow" id="shRead">読み取る</button>
+      <div id="shPrev"></div>
+    </div>
+  </div>
   <div id="plDays"></div>
   <div class="card" id="stCard" style="display:none">
     <h2>スタッフ<span class="sub">シフトに出てくる名前です</span></h2>
@@ -1067,7 +1076,7 @@ function plDates(k){const t=new Date();if(k==='m1'){const y=t.getFullYear(),m=t.
 function renderPlan(){
   segBtns($('plMode'),PL_MODES,plMode,k=>{plMode=k;ls.set('teiki_pl_mode',k);plDay=null;renderPlan()});
   segBtns($('plSeg'),PL_TABS,plTab,k=>{plTab=k;plDay=null;renderPlan()});
-  $('stCard').style.display=plMode==='shop'?'':'none';
+  $('stCard').style.display=$('shPaste').style.display=plMode==='shop'?'':'none';
   $('plHint').textContent=plMode==='shop'?'日にちを押すと、スタッフの名前ボタンが出ます。時間は前回入ったときの時間が入ります。':'日にちを押すと、時間と予定のボタンが出ます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
   if(plMode==='shop'){renderShift();renderStaff();return}
   const days=plDates(plTab),all=plGet(),t=todayStr(),box=$('plDays');box.innerHTML='';
@@ -1099,6 +1108,40 @@ function renderPlan(){
     box.appendChild(blk)});
 }
 
+// 貼り付けたシフトの文章を読む。1行＝1日：「11/5 山田 10:00-15:00、佐藤 17:00-23:00」
+// 日付は 11/5・11月5日・2026-11-05。人の区切りは「、」「,」「／」か空白。時間がない人は時間なしで入れる
+function shParse(text){const out=[],bad=[],t=new Date();
+  String(text).replace(/\r/g,'').split('\n').forEach(raw=>{const l=zen(raw).replace(/[〜～~ー－−]/g,'-').trim();if(!l)return;
+    const m=l.match(/^(?:(\d{4})[-\/年])?(\d{1,2})[\/月-](\d{1,2})日?\s*(?:\([^)]*\))?\s*[:：]?\s*(.*)$/);
+    if(!m){bad.push(raw);return}
+    let y=m[1]?+m[1]:t.getFullYear();const mo=+m[2],d=+m[3];if(!m[1]&&mo<t.getMonth()+1-6)y++;
+    if(mo<1||mo>12||d<1||d>31){bad.push(raw);return}
+    const date=y+'-'+pad(mo)+'-'+pad(d),rest=m[4].trim(),ppl=[];
+    if(!/^(なし|休み?|定休日?|-)?$/.test(rest))
+      rest.split(/[、,，／\/]|\s+(?=[^\d\s-])/).map(x=>x.trim()).filter(Boolean).forEach(x=>{
+        const tm2=x.match(/^(.*?)\s*(\d{1,2}(?::\d{2})?)\s*-\s*(\d{1,2}(?::\d{2})?)?\s*$/),hm=v=>v?(v.includes(':')?hhmm(v):pad(+v)+':00'):'';
+        if(tm2&&tm2[1].trim())ppl.push({n:tm2[1].trim(),s:hm(tm2[2]),e:hm(tm2[3])});else if(!/\d/.test(x))ppl.push({n:x,s:'',e:''});else bad.push(raw)});
+    out.push({date,ppl})});
+  const by={};out.forEach(r=>by[r.date]=r);return {days:Object.values(by).sort((a,b)=>a.date.localeCompare(b.date)),bad}}
+let SHP=null;
+function renderShPrev(){const box=$('shPrev');box.innerHTML='';if(!SHP)return;const {days,bad}=SHP,cur=shGet(),st=staff();
+  if(!days.length){box.innerHTML='<div class="hint warn">日付の行が見つかりませんでした</div>';return}
+  const newN=[...new Set(days.flatMap(d=>d.ppl.map(x=>x.n)))].filter(n=>!st.includes(n));
+  let h=`<div class="ln-h"><span>${days.length}日分（${md(days[0].date)}〜${md(days[days.length-1].date)}）</span></div>`;
+  days.forEach(d=>{const dt=new Date(d.date+'T00:00'),had=(cur[d.date]||[]).length;
+    h+=`<div class="ln-i"><b>${md(d.date)}（${WD[dt.getDay()]}）</b>${had?' <small style="display:inline">今のシフトと入れ替えます</small>':''}<small>${esc(d.ppl.length?shSum(d.ppl):'出る人なし')}</small></div>`});
+  if(newN.length)h+=`<div class="hint">スタッフに新しく追加します：${esc(newN.join('、'))}</div>`;
+  if(bad.length)h+=`<div class="hint warn">読めなかった行：${esc(bad.join(' ／ '))}</div>`;
+  box.innerHTML=h;const b=document.createElement('button');b.className='commit2 b3';b.style.cssText='width:100%;margin-top:12px';b.textContent=`${days.length}日分を登録する`;
+  b.onclick=()=>{const before=shGet(),beforeSt=staff(),a=shGet();days.forEach(d=>{a[d.date]=d.ppl.map(x=>({n:x.n,s:x.s,e:x.e}))});shPut(a);
+    if(newN.length)ls.set('teiki_staff',[...staff(),...newN]);
+    SHP=null;$('shText').value='';$('shPasteBody').style.display='none';
+    // 登録した週を開く
+    const w0=monday(new Date()),dd=new Date(days[0].date+'T00:00'),wk=Math.round((monday(dd)-w0)/(7*864e5));plTab=wk>=0&&wk<=2?'w'+wk:plTab;plDay=null;renderPlan();
+    toast(`${days.length}日分のシフトを登録しました`,()=>{ls.set('teiki_shift',before);ls.set('teiki_staff',beforeSt);renderPlan()})};
+  box.appendChild(b)}
+$('shPasteTog').onclick=()=>{const b=$('shPasteBody');b.style.display=b.style.display==='none'?'':'none'};
+$('shRead').onclick=()=>{SHP=shParse($('shText').value);renderShPrev()};
 function renderShift(){
   const days=plDates(plTab),all=shGet(),t=todayStr(),box=$('plDays'),st=staff();box.innerHTML='';
   if(!st.length)box.insertAdjacentHTML('beforeend','<div class="hint warn" style="margin:0 4px 10px">まずページの下の「スタッフ」で名前を登録してください。</div>');
