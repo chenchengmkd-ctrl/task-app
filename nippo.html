@@ -245,7 +245,8 @@
   <div class="card">
     <h2>Square連携・スマホ同期</h2>
     <label class="t">合言葉</label>
-    <input type="password" id="sqKey" autocomplete="off" placeholder="Vercelに設定した NIPPO_TOKEN と同じ文字">
+    <div style="display:flex;gap:8px"><input type="password" id="sqKey" autocomplete="off" placeholder="Vercelに設定した NIPPO_TOKEN と同じ文字" style="flex:1">
+      <button class="small-btn" id="sqKeyShow" type="button">表示</button></div>
     <div class="hint">入れると、本日売上と会計ごとの注文がSquareから自動で入ります。<br>スマホでもこのページを開いて同じ合言葉を入れると、iPadで書いた日報の続きをスマホで編集・送信できます（常連リストや名前の一覧も共有されます）。</div>
     <div class="hint" id="syncState" style="margin-top:6px"></div>
   </div>
@@ -948,6 +949,7 @@ function renderSettings(){
   [['all','記録した組すべて'],['detail','反応・お客さん情報を入れた組だけ']].forEach(([v,t])=>{const b=document.createElement('button');b.className='chip'+(rm===v?' on':'');b.textContent=t;
     b.onclick=()=>{ls.set('nippo_repmode',v);renderSettings()};$('repMode').appendChild(b)});
 }
+$('sqKeyShow').onclick=()=>{const k=$('sqKey'),show=k.type==='password';k.type=show?'text':'password';$('sqKeyShow').textContent=show?'隠す':'表示'};
 $('sqKey').oninput=()=>{ls.set('nippo_sqkey',$('sqKey').value.trim());SQ=null;sqErr='';syncSoon()};
 
 /* ---------- 入力イベント ---------- */
