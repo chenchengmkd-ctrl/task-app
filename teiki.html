@@ -922,7 +922,6 @@ function renderUp(){
     const tag=x.src==='recur'?(x.vary?'毎月・変動':'毎月'):x.src==='once'?'不定期':'';
     h+=`<div class="up-i"><span class="d">${md(x.d)}（${WD[dt.getDay()]}）</span><span class="k">${esc(x.k||'（内容なし）')}${tag?`<span class="tag">${tag}</span>`:''}</span>`+
       (x.v==null?'<span class="v tbd">金額未定</span>':`<span class="v">${x.vary?'約':''}${fmt(x.v)}</span>`)+'</div>'});
-  if(items.length)h+=`<div class="total"><span>${upNext?'来月末まで':'今月これから'}の支払い 合計${est?'（目安を含む）':''}</span><b>${fmt(tot)}</b></div>`+(tbd?`<div class="hint">ほかに金額未定が${tbd}件あります</div>`:'');
   h+=`<button class="small-btn addrow" id="upNextBtn">${upNext?'今月の分だけにする':'来月の分も見る'}</button>`;
   box.innerHTML=h;
   $('upNextBtn').onclick=()=>{upNext=!upNext;renderUp()};
