@@ -108,6 +108,8 @@
   .kw .c.z{color:var(--warn)}
   .kw button{flex:0 0 32px;height:32px;border-radius:8px;background:var(--soft);color:var(--muted);font-weight:700}
   .kw button.x{color:var(--neg)}
+  .chl{font-size:12px;font-weight:700;color:var(--muted);margin-top:12px}
+  .chl+.chips{margin-top:4px}
   .chip.ed{color:var(--muted);border-style:dashed}
   .srow select{flex:0 0 92px;border:1px solid var(--line);border-radius:10px;padding:9px 6px;background:#fff;font-size:16px;min-width:0}
   .th{padding:12px 2px;border-bottom:1px solid var(--line)}
@@ -184,7 +186,8 @@
   <div class="card">
     <h2>明日の予定<button class="small-btn" id="copySched" style="margin-left:auto">前回と同じにする</button></h2>
     <div id="sched"></div>
-    <div class="chips" id="schedChips"></div>
+    <div class="chl">時間</div><div class="chips" id="timeChips"></div>
+    <div class="chl">予定</div><div class="chips" id="schedChips"></div>
     <button class="small-btn addrow" id="addSched">＋ 行を追加</button>
     <label class="t" style="margin-top:14px">ひとこと（任意・報告のいちばん下に入ります）</label>
     <textarea id="note" placeholder="例：明日の鰻代金は現金で賄える予定です"></textarea>
@@ -339,11 +342,15 @@ const nextDay=d=>{const x=new Date(d+'T00:00');x.setDate(x.getDate()+1);return d
 const DEF_CFG={nm_corp:'法人GMO',nm_pers:'個人GMO',nm_cash:'屋台現金(レジ金除く)',
   kw_in:'スクエア、現金売上、個人入金、法人入金、借入、立替精算、その他',
   kw_out:'交通費、飲食費、食品、肉のハナマサ、鰻代金、家賃、人件費、スマホ料金、光熱費、スクエア、法人入金、その他',
-  kw_plan:'鰻代金、家賃、給与、光熱費、スクエア入金',kw_sched:''};
-const KW=[['kw_in','入金'],['kw_out','出金'],['kw_plan','入出金予定'],['kw_sched','明日の予定']];
+  kw_plan:'鰻代金、家賃、給与、光熱費、スクエア入金',kw_sched:'',kw_time:''};
+const KW=[['kw_in','入金'],['kw_out','出金'],['kw_plan','入出金予定'],['kw_sched','明日の予定'],['kw_time','時間']];
 const NM_KEYS=['nm_corp','nm_pers','nm_cash'];
 const cfg=()=>Object.assign({},DEF_CFG,ls.get('teiki_cfg',{}));
-const words=k=>String(cfg()[k]||'').split(/[、，\n]|,(?!\d{3})/).map(s=>s.trim()).filter(Boolean);
+const TIME_RE=/^(\d{1,2}:\d{2})\s*(?:[〜~～-]\s*(\d{1,2}:\d{2})?)?\s*/;
+const words=k=>{let w=String(cfg()[k]||'').split(/[、，\n]|,(?!\d{3})/).map(s=>s.trim()).filter(Boolean);
+  // 明日の予定は内容だけを持つ（前に「9:30〜 現場」の形で登録したものは時間を外す）
+  if(k==='kw_sched')w=[...new Set(w.map(x=>x.replace(TIME_RE,'').trim()).filter(Boolean))];return w};
+const timeLabel=x=>x.s?`${tm(x.s)}〜${x.e?tm(x.e):''}`:'';
 const setWords=(k,list)=>{const c=ls.get('teiki_cfg',{});c[k]=list.join('、');ls.set('teiki_cfg',c)};
 // これまでの報告で、それぞれの項目を何回使ったか
 const schedTmpl=x=>`${tm(x.s)}${x.e?'〜'+tm(x.e):(x.s?'〜':'')} ${(x.t||'').trim()}`.trim();
@@ -352,10 +359,11 @@ function kwCounts(k){const m={},add=w=>{w=(w||'').trim();if(!w||/^（(差額調�
     if(k==='kw_in')['corp','pers'].forEach(id=>(o[id].ins||[]).forEach(x=>add(x.k)));
     if(k==='kw_out')['corp','pers','cash'].forEach(id=>(o[id].outs||[]).forEach(x=>add(x.k)));
     if(k==='kw_plan')(o.plans||[]).forEach(x=>add(x.k));
-    if(k==='kw_sched')(o.sched||[]).forEach(x=>add(schedTmpl(x)))});
+    if(k==='kw_sched')(o.sched||[]).forEach(x=>add(x.t));
+    if(k==='kw_time')(o.sched||[]).forEach(x=>add(timeLabel(x)))});
   return m}
 // ボタンに出す項目。予定の2つは、まだ何も登録していなければ、よく使ったものを出す
-function chipWords(k){const w=words(k);if(w.length||!['kw_plan','kw_sched'].includes(k))return w;
+function chipWords(k){const w=words(k);if(w.length||!['kw_plan','kw_sched','kw_time'].includes(k))return w;
   return Object.entries(kwCounts(k)).filter(x=>x[1]>=2).sort((a,b)=>b[1]-a[1]).slice(0,8).map(x=>x[0])}
 let kwTab='kw_in';
 function editChip(k){const b=document.createElement('button');b.className='chip ed';b.textContent='✎ 編集';b.onclick=()=>{kwTab=k;go('set')};return b}
@@ -470,8 +478,10 @@ function timeSel(v,on){const sel=document.createElement('select');v=hhmm(v);
 function chipRow(box,k,on){box.innerHTML='';chipWords(k).forEach(w=>{const b=document.createElement('button');b.className='chip';b.textContent=w;b.onclick=()=>on(w);box.appendChild(b)});box.appendChild(editChip(k))}
 function renderSched(){
   const box=$('sched');box.innerHTML='';
-  chipRow($('schedChips'),'kw_sched',w=>{const m=w.match(/^(\d{1,2}:\d{2})?\s*(?:[〜~～-]\s*(\d{1,2}:\d{2})?)?\s*(.*)$/);
-    R.sched.push({s:hhmm(m[1]),e:hhmm(m[2]),t:(m[3]||'').trim()});save();renderSched()});
+  // 時間と予定は別々に選ぶ。まだ空いている行に入れ、なければ行を足す
+  const slot=empty=>{let x=R.sched.find(empty);if(!x){x={s:'',e:'',t:''};R.sched.push(x)}return x};
+  chipRow($('timeChips'),'kw_time',w=>{const m=w.match(TIME_RE)||[];const x=slot(z=>!z.s&&!z.e);x.s=hhmm(m[1]);x.e=hhmm(m[2]);save();renderSched()});
+  chipRow($('schedChips'),'kw_sched',w=>{const x=slot(z=>!(z.t||'').trim());x.t=w;save();renderSched()});
   R.sched.forEach((s,i)=>{const r=document.createElement('div');r.className='srow';
     const a=timeSel(s.s,v=>{s.s=v;save()});
     const til=document.createElement('span');til.className='til';til.textContent='〜';
