@@ -154,10 +154,6 @@
   .pld-h .td{font-size:11px;background:var(--g);color:#fff;border-radius:6px;padding:1px 6px}
   .pld-h .sm{margin-left:auto;font-weight:400;font-size:13px;color:var(--muted);text-align:right;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pld .srow input.t{flex:1}
-  .shr{display:flex;align-items:center;gap:6px;margin-top:6px}
-  .shr .nm{flex:1;min-width:0;font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .shr select{flex:0 0 84px;border:1px solid var(--line);border-radius:10px;padding:8px 4px;background:#fff;font-size:15px}
-  .shr .x{flex:0 0 32px;height:32px;border-radius:9px;background:var(--soft);color:var(--neg);font-weight:700}
   .chip.ed{color:var(--muted);border-style:dashed}
   .srow select{flex:0 0 92px;border:1px solid var(--line);border-radius:10px;padding:9px 6px;background:#fff;font-size:16px;min-width:0}
   .th{padding:12px 2px;border-bottom:1px solid var(--line)}
@@ -268,8 +264,8 @@
   <div class="card" id="shPaste" style="display:none">
     <button class="small-btn" id="shPasteTog" style="width:100%">📋 シフトを貼り付けて登録</button>
     <div id="shPasteBody" style="display:none;margin-top:10px">
-      <div class="hint" style="margin:0 0 6px">チャットで読み取ったシフトの文章を貼り付けます。1日1行で「11/5 山田 10:00-15:00、佐藤 17:00-23:00」の形です。</div>
-      <textarea id="shText" style="min-height:140px;font-size:14px" placeholder="11/5 山田 10:00-15:00、佐藤 17:00-23:00&#10;11/6 鈴木 10:00-17:00"></textarea>
+      <div class="hint" style="margin:0 0 6px">チャットで読み取ったシフトの文章を貼り付けます。1日1行で「11/5 かな、江夏」の形です（休みの日は「11/8 なし」）。</div>
+      <textarea id="shText" style="min-height:140px;font-size:14px" placeholder="11/5 かな、江夏&#10;11/6 上原、江夏&#10;11/8 なし"></textarea>
       <button class="small-btn addrow" id="shRead">読み取る</button>
       <div id="shPrev"></div>
     </div>
@@ -1020,7 +1016,7 @@ function calItems(y,m){const t=todayStr(),first=dstr(new Date(y,m,1)),last=dstr(
     if(inM(o.date)&&o.date<=t){const i=sum(o.corp.ins.filter(x=>!/現金/.test(x.k||'')))+sum(o.pers.ins)+num(o.cash.sales),out=['corp','pers','cash'].reduce((s,id)=>s+sum(o[id].outs),0);
       if(i||out)add(o.date,{c:'rep',k:'資金報告',v2:[i,out]})}});
   // お店のシフト（1日1行にまとめる）
-  Object.entries(ls.get('teiki_shift',{})).forEach(([d,l])=>{if(inM(d)&&l.length)add(d,{c:'sh',k:l.map(x=>x.n).join('・'),t:'シフト',sub:l.map(x=>`${x.n}${x.s?' '+shTime(x):''}`).join('／')})});
+  Object.entries(ls.get('teiki_shift',{})).forEach(([d,l])=>{if(inM(d)&&l.length)add(d,{c:'sh',k:l.map(x=>x.n).join('・'),t:'シフト'})});
   // 報告の「明日の予定」がまだない日は、「予定」タブで決めた予定を出す
   Object.entries(ls.get('teiki_plan',{})).forEach(([d,l])=>{if(inM(d)&&!scDone[d])l.forEach(x=>{if((x.t||'').trim()||x.s)add(d,{c:'sc',k:(x.t||'').trim(),t:x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜'):''})})});
   // 時間のある予定（明日の予定）を時間順に、そのあと支払い・入金予定・報告
@@ -1056,12 +1052,7 @@ let plTab='w0',plDay=null,plMode=ls.get('teiki_pl_mode','me');
 // お店のシフト teiki_shift：{YYYY-MM-DD: [{n, s, e}]}、スタッフ teiki_staff：[名前]
 const shGet=()=>ls.get('teiki_shift',{}),shPut=a=>{const old=dstr(new Date(Date.now()-62*864e5));Object.keys(a).forEach(d=>{if(!a[d].length||d<old)delete a[d]});ls.set('teiki_shift',a)};
 const staff=()=>ls.get('teiki_staff',[]);
-const shTime=x=>x.s?`${tm(x.s)}〜${x.e?tm(x.e):''}`:'';
-const shSum=l=>l.map(x=>`${x.n}${x.s?' '+tm(x.s).replace(/:00$/,'')+'〜'+(x.e?tm(x.e).replace(/:00$/,''):''):''}`).join('、');
-// その人が前回入ったときの時間（新しく入れるときの初期値）
-function lastTimes(n,before){const a=shGet(),ds=Object.keys(a).filter(d=>d<before).sort().reverse();
-  for(const d of ds){const x=a[d].find(y=>y.n===n&&y.s);if(x)return {s:x.s,e:x.e}}
-  const ds2=Object.keys(a).filter(d=>d>before).sort();for(const d of ds2){const x=a[d].find(y=>y.n===n&&y.s);if(x)return {s:x.s,e:x.e}}return {s:'',e:''}}
+const shSum=l=>l.map(x=>x.n).join('・');
 function renderStaff(){const l=staff(),box=$('stList');box.innerHTML=l.length?'':'<div class="hint">まだいません。下で名前を追加してください。</div>';
   l.forEach((n,i)=>{const r=document.createElement('div');r.className='kw';r.innerHTML='<span class="n"></span><button>↑</button><button>↓</button><button class="x">×</button>';r.querySelector('.n').textContent=n;
     const [u,d,x]=r.querySelectorAll('button'),mv=k=>{const a=staff(),j=i+k;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];ls.set('teiki_staff',a);renderPlan()};
@@ -1077,7 +1068,7 @@ function renderPlan(){
   segBtns($('plMode'),PL_MODES,plMode,k=>{plMode=k;ls.set('teiki_pl_mode',k);plDay=null;renderPlan()});
   segBtns($('plSeg'),PL_TABS,plTab,k=>{plTab=k;plDay=null;renderPlan()});
   $('stCard').style.display=$('shPaste').style.display=plMode==='shop'?'':'none';
-  $('plHint').textContent=plMode==='shop'?'日にちを押すと、スタッフの名前ボタンが出ます。時間は前回入ったときの時間が入ります。':'日にちを押すと、時間と予定のボタンが出ます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
+  $('plHint').textContent=plMode==='shop'?'日にちを押すと、スタッフの名前が出ます。出勤する人を押してください。':'日にちを押すと、時間と予定のボタンが出ます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
   if(plMode==='shop'){renderShift();renderStaff();return}
   const days=plDates(plTab),all=plGet(),t=todayStr(),box=$('plDays');box.innerHTML='';
   if(plTab!=='m1'){const prev=plDates('w'+(+plTab.slice(1)-1)),has=prev.some(d=>(all[d]||[]).length);
@@ -1133,7 +1124,7 @@ function renderShPrev(){const box=$('shPrev');box.innerHTML='';if(!SHP)return;co
   if(newN.length)h+=`<div class="hint">スタッフに新しく追加します：${esc(newN.join('、'))}</div>`;
   if(bad.length)h+=`<div class="hint warn">読めなかった行：${esc(bad.join(' ／ '))}</div>`;
   box.innerHTML=h;const b=document.createElement('button');b.className='commit2 b3';b.style.cssText='width:100%;margin-top:12px';b.textContent=`${days.length}日分を登録する`;
-  b.onclick=()=>{const before=shGet(),beforeSt=staff(),a=shGet();days.forEach(d=>{a[d.date]=d.ppl.map(x=>({n:x.n,s:x.s,e:x.e}))});shPut(a);
+  b.onclick=()=>{const before=shGet(),beforeSt=staff(),a=shGet();days.forEach(d=>{a[d.date]=d.ppl.map(x=>({n:x.n}))});shPut(a);
     if(newN.length)ls.set('teiki_staff',[...staff(),...newN]);
     SHP=null;$('shText').value='';$('shPasteBody').style.display='none';
     // 登録した週を開く
@@ -1147,24 +1138,19 @@ function renderShift(){
   if(!st.length)box.insertAdjacentHTML('beforeend','<div class="hint warn" style="margin:0 4px 10px">まずページの下の「スタッフ」で名前を登録してください。</div>');
   if(plTab!=='m1'){const prev=plDates('w'+(+plTab.slice(1)-1)),has=prev.some(d=>(all[d]||[]).length);
     const b=document.createElement('button');b.className='small-btn';b.style.marginBottom='8px';b.textContent='前の週と同じにする（空いている日だけ）';b.disabled=!has;b.style.opacity=has?1:.4;
-    b.onclick=()=>{const a=shGet();let n=0;days.forEach((d,i)=>{if((a[d]||[]).length||!(a[prev[i]]||[]).length)return;a[d]=a[prev[i]].map(x=>({n:x.n,s:x.s,e:x.e}));n++});shPut(a);renderPlan();toast(n?`${n}日分を写しました`:'写せる日がありませんでした')};
+    b.onclick=()=>{const a=shGet();let n=0;days.forEach((d,i)=>{if((a[d]||[]).length||!(a[prev[i]]||[]).length)return;a[d]=a[prev[i]].map(x=>({n:x.n}));n++});shPut(a);renderPlan();toast(n?`${n}日分を写しました`:'写せる日がありませんでした')};
     box.appendChild(b)}
   days.forEach(d=>{const dt=new Date(d+'T00:00'),wd=dt.getDay(),list=all[d]||[],on=plDay===d;
     const blk=document.createElement('div');blk.className='pld'+(d<t?' past':'')+(on?' on':'');
     const h=document.createElement('button');h.className='pld-h';
     h.innerHTML=`<span class="${wd===0?'su':wd===6?'sa':''}">${md(d)}（${WD[wd]}）</span>${d===t?'<span class="td">今日</span>':''}<span class="sm">${on?'':esc(list.length?shSum(list):'＋ シフトを入れる')}</span>`;
     h.onclick=()=>{plDay=on?null:d;renderPlan()};blk.appendChild(h);
-    if(on){const a=shGet(),l=a[d]=a[d]||[],save2=()=>shPut(a);
-      if(!l.length)blk.insertAdjacentHTML('beforeend','<div class="hint">下の名前を押して、この日に出る人を入れます。</div>');
-      l.forEach((x,i)=>{const r=document.createElement('div');r.className='shr';
-        const nm=document.createElement('span');nm.className='nm';nm.textContent=x.n;
-        const s1=timeSel(x.s,v=>{x.s=v;save2()}),s2=timeSel(x.e,v=>{x.e=v;save2()}),til=document.createElement('span');til.className='til';til.textContent='〜';
-        const del=document.createElement('button');del.className='x';del.textContent='×';del.onclick=()=>{l.splice(i,1);save2();renderPlan()};
-        r.append(nm,s1,til,s2,del);blk.appendChild(r)});
-      const rest=st.filter(n=>!l.some(x=>x.n===n));
-      if(rest.length){const c=document.createElement('div');c.className='chl';c.textContent='出る人を追加';const ch=document.createElement('div');ch.className='chips';
-        rest.forEach(n=>{const b=document.createElement('button');b.className='chip';b.textContent='＋ '+n;b.onclick=()=>{const tt=lastTimes(n,d);l.push({n,s:tt.s,e:tt.e});save2();renderPlan()};ch.appendChild(b)});
-        blk.append(c,ch)}}
+    if(on){const a=shGet(),l=a[d]=a[d]||[];
+      // 押すと出勤／休みが切り替わる。スタッフ一覧にない名前（消した人）も、入っていれば出す
+      const names=[...st,...l.map(x=>x.n).filter(n=>!st.includes(n))],ch=document.createElement('div');ch.className='chips';
+      names.forEach(n=>{const b=document.createElement('button'),inn=l.some(x=>x.n===n);b.className='chip'+(inn?' on':'');b.textContent=n;
+        b.onclick=()=>{const k=l.findIndex(x=>x.n===n);if(k>=0)l.splice(k,1);else l.push({n});l.sort((x,y)=>names.indexOf(x.n)-names.indexOf(y.n));shPut(a);renderPlan()};ch.appendChild(b)});
+      blk.insertAdjacentHTML('beforeend','<div class="hint" style="margin-top:4px">出勤する人を押します（もう一度押すと外れます）</div>');blk.appendChild(ch)}
     box.appendChild(blk)});
 }
 
