@@ -231,7 +231,7 @@
 <!-- ===== 資金繰り（支払い日前の報告）===== -->
 <div class="page" id="p-cf">
   <div class="card">
-    <h2>今後の支払い予定<span class="sub" id="upSub"></span></h2>
+    <h2>今月の支払い予定<span class="sub" id="upSub"></span></h2>
     <div class="hint" style="margin:-6px 0 8px">資金報告の「入出金予定」と、下の「毎月の支払い」を日付順に並べています。右の数字は、今の資金からその日までを差し引いた残りの見込みです。</div>
     <div id="upList"></div>
     <button class="small-btn addrow" id="upEdit"></button>
@@ -867,12 +867,13 @@ $('cfShare').onclick=async()=>{const t=$('cfText').value;
 // 毎月の支払い（家賃・給与など）は teiki_recur に [{k, day:1〜31|'末', v}] で持つ
 const isIncome=k=>/入金|売上|受取|返金/.test(k||'');
 const WD='日月火水木金土';
-let upOpen=false;
-function upcoming(){const t=todayStr(),now=new Date(),end=dstr(new Date(now.getFullYear(),now.getMonth()+2,0)),items=[];
+let upOpen=false,upNext=false;
+// ふだんは今月の分だけ。「来月の分も見る」で来月末まで
+function upcoming(){const t=todayStr(),now=new Date(),end=dstr(new Date(now.getFullYear(),now.getMonth()+(upNext?2:1),0)),items=[];
   R.plans.forEach(p=>{if(p.d&&p.d>=t&&p.d<=end&&((p.k||'').trim()||num(p.v)))items.push({d:p.d,k:(p.k||'').trim(),v:num(p.v),inc:isIncome(p.k),src:'plan'})});
   // 毎月の支払いは、同じ月に同じ名前の入出金予定があればそちらを使う
   ls.get('teiki_recur',[]).filter(r=>(r.k||'').trim()).forEach(r=>{
-    for(let i=0;i<2;i++){const y=now.getFullYear(),m=now.getMonth()+i,last=new Date(y,m+1,0).getDate();
+    for(let i=0;i<(upNext?2:1);i++){const y=now.getFullYear(),m=now.getMonth()+i,last=new Date(y,m+1,0).getDate();
       const d=dstr(new Date(y,m,r.day==='末'?last:Math.min(+r.day||1,last)));if(d<t)continue;
       const k=r.k.trim(),ym=d.slice(0,7);
       if(items.some(x=>x.src==='plan'&&x.d.slice(0,7)===ym&&(x.k.includes(k)||k.includes(x.k))))continue;
@@ -880,16 +881,18 @@ function upcoming(){const t=todayStr(),now=new Date(),end=dstr(new Date(now.getF
   return items.sort((a,b)=>a.d.localeCompare(b.d)||(a.inc===b.inc?0:a.inc?-1:1))}
 function renderUp(){
   const C=cfg(),start=bal(R,'corp')+bal(R,'pers')+bal(R,'cash'),items=upcoming(),box=$('upList');
-  $('upSub').textContent=`来月末まで・${items.length}件`;
+  $('upSub').textContent=`${upNext?'来月末まで・':''}${items.length}件`;
   let run=start,h=`<div class="up-start"><span>今の資金（${esc(cfName(C.nm_corp))}・${esc(cfName(C.nm_pers))}・現金）</span><b>${fmt(start)}</b></div>`,lastM='',lastD='';
-  if(!items.length)h+='<div class="hint">これからの予定はまだありません。資金報告の「入出金予定」に日付と金額を入れるか、下の「毎月の支払い」を登録してください。</div>';
+  if(!items.length)h+='<div class="hint">'+(upNext?'これから':'今月これから')+'の予定はありません。資金報告の「入出金予定」に日付と金額を入れるか、下の「毎月の支払い」を登録してください。</div>';
   items.forEach(x=>{const dt=new Date(x.d+'T00:00'),m=x.d.slice(0,7);
     if(m!==lastM){h+=`<div class="up-m">${dt.getMonth()+1}月</div>`;lastM=m}
     if(x.d!==lastD){if(lastD)h+='</div>';h+=`<div class="up-d"><div class="up-dh">${md(x.d)}（${WD[dt.getDay()]}）<button class="small-btn" data-d="${x.d}">この日の報告を作る</button></div>`;lastD=x.d}
     run+=x.inc?x.v:-x.v;
     h+=`<div class="up-i"><span class="k">${esc(x.k||'（内容なし）')}${x.src==='recur'?'<span class="tag">毎月</span>':''}</span><span class="v">${x.inc?'＋':'−'}${x.v?fmt(x.v):'金額未定'}</span><span class="r${run<0?' neg':''}">残り ${fmt(run)}</span></div>`});
   if(lastD)h+='</div>';
+  h+=`<button class="small-btn addrow" id="upNextBtn">${upNext?'今月の分だけにする':'来月の分も見る'}</button>`;
   box.innerHTML=h;
+  $('upNextBtn').onclick=()=>{upNext=!upNext;renderUp()};
   box.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const d=b.dataset.d,outs=items.filter(x=>x.d===d&&!x.inc);
     if(CF.pays.some(x=>(x.k||'').trim()||num(x.v))&&!confirm(`支払い予定を${md(d)}の分に入れ替えますか？`))return;
     CF.date=d;CF.pays=outs.map(x=>({k:x.k,v:x.v?String(x.v):''}));CF.edited=false;CF.text='';cfSave();renderCf();
