@@ -76,6 +76,8 @@
   .commit.off{background:var(--soft);color:var(--muted);box-shadow:none}
   .commit:active{transform:scale(.98)}
   .src-btns button.oth{border-color:var(--line);color:var(--muted)}
+  .ord .to{display:inline-block;padding:0 5px;border-radius:5px;background:#c2410c;color:#fff;font-size:11px;vertical-align:1px}
+  .src-btns button.add{border-style:dashed;background:var(--soft)}
   .src-btns button:active{transform:scale(.96)}
   .hint.warn{color:var(--warn);font-weight:600}
   .gap{margin-top:8px;padding:8px 12px;border-radius:10px;background:#fbf3e4;color:var(--warn);font-size:13px}
@@ -150,7 +152,10 @@
     <div class="q-label">食べたもの<button class="link" id="ordClear">クリア</button></div>
     <div class="o-row" id="ordRow"></div>
     <div class="hint" id="ordOther"></div>
-    <div class="q-label">性別・年代（任意・複数選べます）</div>
+    <div class="q-label">来店経緯</div>
+    <div class="src-btns" id="srcBtns"></div>
+    <div class="hint" id="srcNote"></div>
+    <div class="q-label">性別・年代（任意・人数分まで選べます）</div>
     <div class="scroll-row" id="sexRow"></div>
     <div class="scroll-row" id="ageRow" style="margin-top:6px"></div>
     <div class="q-label">どんなお客さん（任意）</div>
@@ -159,9 +164,6 @@
     <div class="q-label">反応（任意）</div>
     <div class="scroll-row" id="reactRow"></div>
     <textarea id="reactText" class="free" placeholder="今回の反応を具体的に書く（マイク🎤も使えます）"></textarea>
-    <div class="q-label">来店経緯</div>
-    <div class="src-btns" id="srcBtns"></div>
-    <div class="hint" id="srcNote"></div>
     <button class="commit off" id="btnCommit">来店経緯を選んでください</button>
   </div>
 
@@ -179,7 +181,7 @@
 <!-- ===== 最後の入力（申し送り・インバウンド・実績）===== -->
 <div class="page" id="p-end">
   <button class="sumline" id="btnBackForm">‹ 会計の記録に戻る</button>
-  <div class="card"><h2>申し送り</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>
+  <div class="card"><h2>申し送り事項</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>
 
   <div class="card">
     <h2>インバウンド</h2>
@@ -275,7 +277,7 @@ const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
    日報は1日ずつ、常連・名前・よく使う言葉・表示設定はまとめてサーバーに置く。
    各データの _u（最終更新時刻）が新しい方が勝つ。合言葉（設定）が入っている端末だけ同期する。 */
 var SYNC_API='https://task-app-nine-liard.vercel.app/api/nippo_sync';
-var SHARED_KEYS=['nippo_regs','nippo_names','nippo_kw_who','nippo_kw_react','nippo_kw_hand','nippo_cummode','nippo_repmode'];
+var SHARED_KEYS=['nippo_src_custom','nippo_regs','nippo_names','nippo_kw_who','nippo_kw_react','nippo_kw_hand','nippo_cummode','nippo_repmode'];
 var syncApplying=false,syncTimer=null,syncBusy=false,syncAgain=false,syncMsg='',onRemote=null;
 function onLsSet(k){if(syncApplying||!SHARED_KEYS.includes(k))return;ls.set('nippo_shared_u',Date.now());ls.set('nippo_shared_dirty',true);syncSoon()}
 function markDirty(d){const q=ls.get('nippo_dirty',[]);if(!q.includes(d)){q.push(d);ls.set('nippo_dirty',q)}syncSoon()}
@@ -341,10 +343,14 @@ async function syncNow(){
   const st=document.getElementById('syncState');if(st)st.textContent=syncMsg;
   if(syncAgain){syncAgain=false;syncSoon()}
 }
-const SOURCES=['リピーター','インスタ','スレッズ','X','看板','グーグル','チラシ','紹介','インフルエンサー','出前','声かけ','通りがかり','その他'];
-// 日報の「来店経緯」欄に出す項目（声かけ・通りがかりは「その他」に合算）
-const REPORT_SOURCES=SOURCES; // 記録ボタンと日報の来店経緯は同じ並び・同じ項目
-const toReportSrc=s=>REPORT_SOURCES.includes(s)?s:'その他';
+// 来店経緯のボタン。「＋追加」で足した項目（nippo_src_custom）は「聞けなかった」の前に並ぶ
+const SRC_BASE=['リピーター','インスタ','スレッズ','X','看板','グーグル','チラシ','紹介','インフルエンサー','出前','声かけ','通りがかり'];
+const SRC_UNKNOWN='聞けなかった';
+const customSrcs=()=>ls.get('nippo_src_custom',[]);
+const sources=()=>SRC_BASE.concat(customSrcs().filter(x=>x&&!SRC_BASE.includes(x)&&x!==SRC_UNKNOWN),[SRC_UNKNOWN]);
+function addSourcePrompt(){const w=(prompt('来店経緯に追加する項目（例：YouTube、ホテルの紹介）')||'').trim();if(!w)return null;
+  if(sources().includes(w)){toast('「'+w+'」はもうあります');return w}
+  ls.set('nippo_src_custom',customSrcs().concat(w));toast('「'+w+'」を追加しました');return w}
 const MENU=['特上','上','並','おにぎり','混ぜご飯'];
 const WEATHERS=['快晴','晴','晴時々曇','曇時々晴','曇','曇時々雨','小雨','雨','大雨','雪','晴のち曇','晴のち雨','曇のち晴','曇のち雨','雨のち晴','雨のち曇','台風'];
 // よく使う言葉（2026年5〜10月の日報116件から多かった表現を拾ったもの）。[ボタン名, 入る文]
@@ -414,7 +420,9 @@ function save(){if(!R.date)return;const a=allReports(),old=a[R.date];
 
 /* ---------- 集計 ---------- */
 const guestTotal=()=>R.customers.reduce((s,c)=>s+(+c.n||0),0);
-function srcCounts(){const o={};REPORT_SOURCES.forEach(s=>o[s]=0);R.customers.forEach(c=>{if(c.srcs)Object.entries(c.srcs).forEach(([k,v])=>{o[toReportSrc(k)]+=(+v||0)});else if(c.src)o[toReportSrc(c.src)]+=(+c.n||0)});return o}
+// 日報の「来店経緯」欄。ボタンと同じ並びで全部出し、今のボタンにない項目（以前の「その他」など）は人数がある日だけ後ろに足す
+function srcCounts(){const o={};sources().forEach(s=>o[s]=0);const add=(k,v)=>{o[k]=(o[k]||0)+(+v||0)};
+  R.customers.forEach(c=>{if(c.srcs)Object.entries(c.srcs).forEach(([k,v])=>add(k,v));else if(c.src)add(c.src,c.n)});return o}
 function prevCum(){
   const p=latestBefore(R.date);
   if(!p)return(R.cumBase===''||R.cumBase==null)?null:+R.cumBase; // 前の日報がない日は「前日までの累計」を使う
@@ -501,9 +509,9 @@ function renderQuick(){
 function renderSrc(){
   $('srcBtns').innerHTML='';
   const multi=Object.keys(qSrcs).length>1;
-  SOURCES.forEach(src=>{const b=document.createElement('button');
+  sources().forEach(src=>{const b=document.createElement('button');
     const on=src in qSrcs;const rg=on&&src==='リピーター'&&qReg?regById(qReg):null;
-    b.className=[src==='リピーター'?'rep':'',src==='その他'?'oth':'',on?'sel':''].join(' ').trim();
+    b.className=[src==='リピーター'?'rep':'',src===SRC_UNKNOWN?'oth':'',on?'sel':''].join(' ').trim();
     const sub=[rg?rg.name:'',multi&&on?'×'+qSrcs[src]:''].filter(Boolean).join(' ');
     b.innerHTML=esc(src)+(sub?'<small>'+esc(sub)+'</small>':'');
     b.onclick=()=>{
@@ -511,6 +519,9 @@ function renderSrc(){
       if(src==='リピーター'){openRegPicker(id=>{const m=tapSrc(qSrcs,qN,src);if(m){toast(m);return}qReg=id;renderSrc()});return}
       const m=tapSrc(qSrcs,qN,src);if(m)toast(m);renderSrc()};
     $('srcBtns').appendChild(b)});
+  const ad=document.createElement('button');ad.className='oth add';ad.textContent='＋追加';
+  ad.onclick=()=>{const w=addSourcePrompt();if(w&&!(w in qSrcs)){const m=tapSrc(qSrcs,qN,w);if(m)toast(m)}renderSrc()};
+  $('srcBtns').appendChild(ad);
   const sum=srcSum(qSrcs),keys=Object.keys(qSrcs);
   const note=$('srcNote');
   note.className='hint'+(sum&&sum!==qN?' warn':'');
@@ -559,9 +570,12 @@ function toggleChips(el,list,sel,limit){
 // 選んだ会計（複数可）の中身を「食べたもの」に入れる
 function applySq(){
   const ord={},other=[];
-  qSqs.forEach(id=>{const o=SQ&&SQ.orders.find(x=>x.id===id);if(!o)return;const m=mapItems(o.items);
+  let take=false;
+  qSqs.forEach(id=>{const o=SQ&&SQ.orders.find(x=>x.id===id);if(!o)return;const m=mapItems(o.items);if(o.takeout)take=true;
     Object.keys(m.ord).forEach(k=>ord[k]=(ord[k]||0)+m.ord[k]);if(m.other)other.push(m.other)});
-  qOrd=ord;qOther=other.join('・');renderOrdRow();
+  qOrd=ord;qOther=other.join('・');
+  if(qSqs.length){qTake=take;const tb=document.querySelector('#nRow .tk');if(tb)tb.classList.toggle('on',qTake)} // Squareでテイクアウトの会計なら、テイクアウトを自動でオン
+  renderOrdRow();
 }
 function toggleSq(id){qAuto=false;qNone=false;const i=qSqs.indexOf(id);if(i>=0)qSqs.splice(i,1);else qSqs.push(id);applySq();renderSqBox()}
 function unassigned(){if(!SQ)return[];const used=new Set();R.customers.forEach(c=>{(c.sqIds||[]).concat(c.sqId?[c.sqId]:[]).forEach(id=>used.add(id))});
@@ -577,7 +591,7 @@ function renderSqBox(){
   const wrap=document.createElement('div');wrap.className='orders';
   list.forEach(o=>{const m=mapItems(o.items);const b=document.createElement('button');b.className='ord'+(qSqs.includes(o.id)?' on':'');
     const txt=[MENU.filter(k=>m.ord[k]).map(k=>k+'×'+m.ord[k]).join(' '),m.other].filter(Boolean).join('・')||'（明細なし）';
-    b.innerHTML=`<b>${esc(o.time)}</b> ${yen(o.total)}<br>${esc(txt)}`;
+    b.innerHTML=`<b>${esc(o.time)}</b> ${yen(o.total)}${o.takeout?' <b class="to">TO</b>':''}<br>${esc(txt)}`;
     b.onclick=()=>toggleSq(o.id);wrap.appendChild(b)});
   const nb=document.createElement('button');nb.className='ord none'+(qNone?' on':'');nb.innerHTML='<b>会計なし</b><br>Squareと結びつけない';
   nb.onclick=()=>{qAuto=false;qNone=!qNone;if(qNone){qSqs=[];qOrd={};qOther='';renderOrdRow()}renderSqBox()};wrap.appendChild(nb);
@@ -761,7 +775,7 @@ function custTitle(c){
   const type=allRep?'リピーター':'新規';
   const parts=[];
   if(c.srcs)parts.push(Object.keys(c.srcs).map(k=>k+c.srcs[k]+'名').join('／'));
-  else if(c.src&&c.src!=='リピーター')parts.push(c.src+(['声かけ','通りがかり','その他'].includes(c.src)?'':'経由'));
+  else if(c.src&&c.src!=='リピーター'&&c.src!==SRC_UNKNOWN)parts.push(c.src+(['声かけ','通りがかり','その他'].includes(c.src)?'':'経由'));
   const rg=c.regId&&regById(c.regId);if(rg)parts.push(san(rg.name));
   if(!c.srcs)parts.push((+c.n||1)+'名');
   (c.sex||[]).concat(c.age||[]).forEach(x=>parts.push(x));
@@ -787,7 +801,7 @@ function renderCustomers(){
 }
 function renderCounts(){$('custCount').textContent=R.customers.length?R.customers.length+'組':'';
   $('guestTotal').textContent=guestTotal()+'人';const sc=srcCounts();
-  $('srcSum').innerHTML=REPORT_SOURCES.map(s=>`<span class="${sc[s]?'':'z'}">${s}：${sc[s]}人</span>`).join('');
+  $('srcSum').innerHTML=Object.keys(sc).filter(s=>sources().includes(s)||sc[s]).map(s=>`<span class="${sc[s]?'':'z'}">${esc(s)}：${sc[s]}人</span>`).join('');
 }
 function editor(c){
   const e=document.createElement('div');e.className='ed';
@@ -795,7 +809,7 @@ function editor(c){
   const ki=document.createElement('textarea');ki.style.minHeight='80px';ki.value=c.comment||'';
   ki.oninput=()=>{c.comment=ki.value;save()};k.appendChild(ki);
   k.appendChild(kwChips(KW_REACT,t=>addText(ki,t),'nippo_kw_react'));e.appendChild(k);
-  const l=document.createElement('div');l.innerHTML='<label class="t">見出しに足す一言（任意）</label>';
+  const l=document.createElement('div');l.innerHTML='<label class="t">どんなお客さん（見出しに入ります・任意）</label>';
   const li=document.createElement('input');li.type='text';li.placeholder='例：名古屋からの出張の方々';li.value=c.label||'';
   li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);
   // 見出しの言葉は「・」区切りで足す／もう一度押すと外す
@@ -805,8 +819,12 @@ function editor(c){
   const s=document.createElement('div');s.innerHTML='<label class="t">来店経緯（人ごとに違うときは、別のボタンも押します。同じボタンをもう一度押すと人数が増えます）</label>';
   const sc=document.createElement('div');sc.className='chips';
   const drawSrc=()=>{sc.innerHTML='';const m=srcMapOf(c);const multi=Object.keys(m).length>1;
-    SOURCES.forEach(x=>{const b=document.createElement('button');b.className='chip'+(x in m?' on':'');b.textContent=x+(multi&&x in m?' ×'+m[x]:'');
-      b.onclick=()=>{const mm=srcMapOf(c);const msg=tapSrc(mm,+c.n||1,x);fitMap(mm,+c.n||1,true);storeSrc(c,mm);save();drawSrc();renderCounts();if(msg)toast(msg)};sc.appendChild(b)})};
+    const tapX=x=>{const mm=srcMapOf(c);const msg=tapSrc(mm,+c.n||1,x);fitMap(mm,+c.n||1,true);storeSrc(c,mm);save();drawSrc();renderCounts();if(msg)toast(msg)};
+    const list=sources();Object.keys(m).forEach(x=>{if(!list.includes(x))list.push(x)}); // 以前の「その他」なども、付いていれば表示する
+    list.forEach(x=>{const b=document.createElement('button');b.className='chip'+(x in m?' on':'');b.textContent=x+(multi&&x in m?' ×'+m[x]:'');
+      b.onclick=()=>tapX(x);sc.appendChild(b)});
+    const ad=document.createElement('button');ad.className='chip add';ad.textContent='＋追加';
+    ad.onclick=()=>{const w=addSourcePrompt();if(w&&!(w in srcMapOf(c)))tapX(w);else drawSrc()};sc.appendChild(ad)};
   drawSrc();
   s.appendChild(sc);e.appendChild(s);
   const sa=document.createElement('div');sa.innerHTML='<label class="t">性別・年代</label>';
@@ -816,6 +834,7 @@ function editor(c){
     b.onclick=()=>{pickLimited(arr,t,+c.n||1);tog(el,list,arr);save()};el.appendChild(b)})};
   const drawSA=()=>{trimLimited(c.sex,+c.n||1);trimLimited(c.age,+c.n||1);tog(sr,SEXES,c.sex);tog(ar,AGES,c.age)};
   drawSA();sa.append(sr,ar);e.appendChild(sa);
+  e.prepend(s,sa,l,k); // 来店経緯 → 性別・年代 → どんなお客さん → 反応 の順に並べる
   // 常連カードとの紐付け（新規のお客さんも、ここで登録しておけば次回から選べる）
   const rgBox=document.createElement('div');const rg=c.regId&&regById(c.regId);
   rgBox.innerHTML=`<label class="t">常連カード</label>${rg?`<div class="hint" style="margin:0 0 6px"><b>${esc(rg.name)}</b>　${esc(rg.feature||'')}</div>`:''}`;
@@ -867,14 +886,16 @@ function reportText(){
     '▼実績',`① 本日売上：${yen(R.sales)}`,`② 累計売上：${yen(R.cum)}`,`③ 客数：${guestTotal()}人`,SEP,'▼来店経緯'];
   const sc=srcCounts();
   // 「：」の位置をそろえるため、名前を全角スペースで同じ幅（8文字）にそろえる（Xだけは全角のＸにする）
-  const W=Math.max(...REPORT_SOURCES.map(x=>[...x].length));
-  REPORT_SOURCES.forEach(s=>{const name=s==='X'?'Ｘ':s;L.push(name+'　'.repeat(W-[...name].length)+`：${sc[s]}人`)});
+  const RS=Object.keys(sc).filter(s=>sources().includes(s)||sc[s]);
+  const W=Math.max(...RS.map(x=>[...x].length));
+  const zen=t=>t.replace(/[!-~]/g,ch=>String.fromCharCode(ch.charCodeAt(0)+0xFEE0)).replace(/ /g,'　'); // 半角の英数字は全角にして幅をそろえる（X→Ｘ）
+  RS.forEach(s=>{const name=zen(s);L.push(name+'　'.repeat(W-[...name].length)+`：${sc[s]}人`)});
   L.push(SEP,'▼営業報告（お客様の反応）');
   const only=ls.get('nippo_repmode','all')==='detail';
   R.customers.slice().reverse()
     .filter(c=>!only||(c.comment||'').trim()||c.label||(c.sex||[]).length||(c.age||[]).length||c.regId)
     .forEach(c=>{const o=ordLine(c);L.push('',custTitle(c),((c.comment||'').trim()+(o?`（${o}）`:'')).trim())});
-  if((R.handover||'').trim())L.push('','申し送り',R.handover.trim());
+  L.push('','▼申し送り事項');if((R.handover||'').trim())L.push(R.handover.trim());
   L.push('','▼インバウンド');if((R.inbound||'').trim())L.push(R.inbound.trim());
   L.push('',`話せた方：${+R.talked||0}人`,`口コミ依頼できた人数：${+R.review||0}人`);
   return L.join('\n');

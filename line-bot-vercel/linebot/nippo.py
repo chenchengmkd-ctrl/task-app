@@ -36,6 +36,24 @@ def _items(order):
     return out
 
 
+TAKEOUT_WORDS = ('テイクアウト', '持ち帰り', '持帰', 'ﾃｲｸｱｳﾄ', 'to go', 'togo', 'take out', 'takeout', 'take-out')
+
+
+def _is_takeout(order):
+    """Squareの会計がテイクアウトかどうか。
+    商品名・バリエーション名・オプション（モディファイア）・伝票名に「テイクアウト」「持ち帰り」などが入っているか、
+    受け取り方法（fulfillment）が店頭受け取り・配達なら True。"""
+    texts = [order.get('ticket_name') or '']
+    for li in (order.get('line_items') or []):
+        texts += [li.get('name') or '', li.get('variation_name') or '']
+        texts += [m.get('name') or '' for m in (li.get('modifiers') or [])]
+    texts += [sc.get('name') or '' for sc in (order.get('service_charges') or [])]
+    blob = ' '.join(texts).lower()
+    if any(w in blob for w in TAKEOUT_WORDS):
+        return True
+    return any((f.get('type') or '') in ('PICKUP', 'DELIVERY') for f in (order.get('fulfillments') or []))
+
+
 def day_sales(date_iso):
     if not square.is_enabled():
         return {'ok': False, 'error': 'Squareが未設定です'}
@@ -54,6 +72,7 @@ def day_sales(date_iso):
                 'time': _jst_hm(o.get('closed_at') or o.get('created_at')),
                 'total': square._amount(o.get('total_money')),
                 'items': _items(o),
+                'takeout': _is_takeout(o),
             }
             for o in orders
         ],
