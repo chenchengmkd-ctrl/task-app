@@ -125,6 +125,10 @@
   .seg{display:flex;gap:4px;background:rgba(255,255,255,.7);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:12px}
   .seg button{flex:1;padding:8px 2px;border-radius:9px;font-size:14px;font-weight:700;color:var(--muted)}
   .seg button.on{background:var(--g);color:#fff}
+  .trnav{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+  .trnav button{flex:0 0 48px;height:46px;border-radius:12px;background:#fff;border:1px solid var(--line);color:var(--accent);font-size:15px}
+  .trnav button:disabled{opacity:.3}
+  .trnav select{flex:1;height:46px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:17px;font-weight:700;text-align:center;text-align-last:center;color:var(--ink);padding:0 8px;-webkit-appearance:none;appearance:none}
   .tra-h{display:flex;align-items:baseline;gap:8px}
   .tra-h b{font-size:15px}
   .tra-h small{font-size:12px;color:var(--muted);font-weight:600}
@@ -196,7 +200,7 @@
   <!-- 推移・累計 -->
   <button class="trtog" id="trTog" aria-expanded="false"><span>📈 残高の動きを見る</span><i>▾</i></button>
   <div class="viz" id="trWrap" style="display:none">
-    <div class="seg" id="trRange"></div>
+    <div class="trnav"><button id="trPrev" aria-label="前へ">◀</button><select id="trSel" aria-label="期間"></select><button id="trNext" aria-label="次へ">▶</button></div>
     <div class="seg" id="trView"></div>
     <div class="hint" style="margin:-6px 4px 10px">グラフを指でなぞると、その日の数字が出ます。</div>
     <div id="trAccts"></div>
@@ -832,14 +836,21 @@ function series(){
       const b=p+inn-out;row[id]={prev:p,bal:b,in:inn,out};last[id]=b;tp+=p;tb+=b});
     row.total={prev:tp,bal:tb};return row});
 }
-const TR_RANGES=[['w0','今週'],['w1','先週'],['m0','今月'],['m1','先月'],['d90','3か月']];
+// 期間は1つの切り替えで選ぶ：今週・先週・各月（m:YYYY-MM）・直近3か月
+const ymOf=d=>d.getFullYear()+'-'+pad(d.getMonth()+1);
+function trOptions(){const t=new Date(),cur=ymOf(t),ks=Object.keys(allReports()).sort(),first=ks.length?ks[0].slice(0,7):cur,o=[['w0','今週'],['w1','先週']];
+  for(let d=new Date(t.getFullYear(),t.getMonth(),1);ymOf(d)>=first;d.setMonth(d.getMonth()-1)){const k=ymOf(d);
+    o.push(['m:'+k,(d.getFullYear()!==t.getFullYear()?d.getFullYear()+'年':'')+(d.getMonth()+1)+'月'+(k===cur?'（今月）':'')])}
+  o.push(['d90','直近3か月']);return o}
 const TR_VIEWS=[['bal','残高'],['in','入金'],['out','出金'],['net','差し引き']];
 let trOpen=!!ls.get('teiki_tr_open',false),trRange=ls.get('teiki_tr_range','m0'),trView=ls.get('teiki_tr_view','bal');
-if(!TR_RANGES.some(x=>x[0]===trRange))trRange='m0';if(!TR_VIEWS.some(x=>x[0]===trView))trView='bal';
+{const t=new Date();if(trRange==='m0')trRange='m:'+ymOf(t);if(trRange==='m1')trRange='m:'+ymOf(new Date(t.getFullYear(),t.getMonth()-1,1));
+  if(!/^(w0|w1|d90|m:\d{4}-\d{2})$/.test(trRange))trRange='m:'+ymOf(t)}
+if(!TR_VIEWS.some(x=>x[0]===trView))trView='bal';
 const monday=x=>{const d=new Date(x);d.setDate(d.getDate()-(d.getDay()+6)%7);return d};
 function rangeOf(k){const t=new Date(),y=t.getFullYear(),m=t.getMonth();
   if(k==='w0'||k==='w1'){const a=monday(t);if(k==='w1')a.setDate(a.getDate()-7);const b=new Date(a);b.setDate(b.getDate()+6);return [dstr(a),dstr(b)]}
-  if(k==='m1')return [dstr(new Date(y,m-1,1)),dstr(new Date(y,m,0))];
+  if(k.startsWith('m:')){const yy=+k.slice(2,6),mm=+k.slice(7,9)-1;return [dstr(new Date(yy,mm,1)),dstr(new Date(yy,mm+1,0))]}
   if(k==='d90'){const f=new Date(t);f.setDate(f.getDate()-89);return [dstr(f),dstr(t)]}
   return [dstr(new Date(y,m,1)),dstr(new Date(y,m+1,0))]}
 const sgn=n=>(n>0?'＋':n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString('ja-JP');
@@ -847,7 +858,13 @@ const sgn=n=>(n>0?'＋':n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString('ja
 function segBtns(box,list,cur,on){box.innerHTML='';list.forEach(([k,n])=>{const b=document.createElement('button');b.className=k===cur?'on':'';b.textContent=n;b.onclick=()=>on(k);box.appendChild(b)})}
 function renderTrend(){
   const C=cfg(),[from,to]=rangeOf(trRange),rows=series().filter(r=>r.date>=from&&r.date<=to);
-  segBtns($('trRange'),TR_RANGES,trRange,k=>{trRange=k;ls.set('teiki_tr_range',k);renderTrend()});
+  const opts=trOptions(),sel=$('trSel'),setR=k=>{trRange=k;ls.set('teiki_tr_range',k);renderTrend()};
+  if(!opts.some(o=>o[0]===trRange))opts.splice(2,0,[trRange,trRange.replace(/^m:(\d{4})-0?(\d+)$/,'$1年$2月')]);
+  sel.innerHTML=opts.map(([k,n])=>`<option value="${k}">${n}</option>`).join('');sel.value=trRange;sel.onchange=()=>setR(sel.value);
+  // ◀▶：月なら前後の月、週なら先週⇔今週
+  const ms=opts.filter(o=>o[0].startsWith('m:')).map(o=>o[0]),mi=ms.indexOf(trRange);
+  const prev=trRange==='w0'?'w1':mi>=0&&mi<ms.length-1?ms[mi+1]:null,next=trRange==='w1'?'w0':mi>0?ms[mi-1]:null;
+  $('trPrev').disabled=!prev;$('trNext').disabled=!next;$('trPrev').onclick=()=>prev&&setR(prev);$('trNext').onclick=()=>next&&setR(next);
   segBtns($('trView'),TR_VIEWS,trView,k=>{trView=k;ls.set('teiki_tr_view',k);renderTrend()});
   const box=$('trAccts');box.innerHTML='';
   if(!rows.length){box.innerHTML='<div class="card"><div class="hint" style="margin:0">この期間の報告はありません</div></div>';return}
@@ -865,7 +882,7 @@ function renderTrend(){
     else bars(c.querySelector('.mini'),c.querySelector('.tra-tip'),buckets(rows,id,wk),trView)});
   if(trView!=='bal')box.insertAdjacentHTML('beforeend',`<div class="hint" style="margin:-4px 4px 12px">${wk?'1本が1週間（月〜日）の合計です。':'1本が1日分です。'}現金は、入金が現金売上、出金が銀行入金と出金です。</div>`);
   // お金の出入り（3つの合計）。現金を口座に入れた分は移しただけなので入れない
-  const per=({w0:'今週',w1:'先週',m0:'今月',m1:'先月',d90:'この3か月'})[trRange];
+  const per=({w0:'今週',w1:'先週',d90:'この3か月'})[trRange]||opts.find(o=>o[0]===trRange)[1].replace('（今月）','');
   let inT=0,outT=0;const used={},use=(k,v)=>{v=num(v);if(!v)return;k=(k||'').trim()||'（内容なし）';used[k]=(used[k]||0)+v};
   rows.forEach(r=>{const o=r.o;
     inT+=sum(o.corp.ins.filter(x=>!/現金/.test(x.k||'')))+sum(o.pers.ins)+num(o.cash.sales);
