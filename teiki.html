@@ -1077,8 +1077,12 @@ function renderPlan(){
 }
 // 自分の予定：月のカレンダー。日にちを押すと、下にその日の入力欄が開く
 let plYM=null;
+// 定期報告で送った「明日の予定」（前の日の報告に書いたもの）を日付ごとに
+function repSched(){const m={};Object.values(allReports()).forEach(o=>{const l=(o.sched||[]).filter(x=>x.s||(x.t||'').trim());if(l.length)m[nextDay(o.date)]=l.map(x=>({s:x.s||'',e:x.e||'',t:x.t||''}))});return m}
 function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getFullYear(),now.getMonth()];if(!plDay)plDay=t;
-  const [y,m]=plYM,all=plGet(),box=$('plDays');box.innerHTML='';
+  const [y,m]=plYM,box=$('plDays'),rs=repSched(),all=plGet();box.innerHTML='';
+  // 予定タブで入れていない日は、報告の「明日の予定」を出す
+  Object.entries(rs).forEach(([d,l])=>{if(!(all[d]||[]).some(x=>x.s||(x.t||'').trim()))all[d]=l});
   const card=document.createElement('div');card.className='card';
   card.innerHTML=`<div class="trnav"><button aria-label="前の月">◀</button><div class="calm">${(y!==now.getFullYear()?y+'年':'')+(m+1)}月</div><button aria-label="次の月">▶</button></div><div class="calg"></div>`;
   const [pv,nx]=card.querySelectorAll('.trnav button');
@@ -1096,8 +1100,9 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
   // 選んだ日の入力欄
   const d=plDay,dt=new Date(d+'T00:00'),wd=dt.getDay(),blk=document.createElement('div');blk.className='pld on';
   blk.innerHTML=`<div class="pld-h"><span class="${wd===0?'su':wd===6?'sa':''}">${md(d)}（${WD[wd]}）</span>${d===t?'<span class="td">今日</span>':''}</div>`;
-  const a=plGet(),l=a[d]=a[d]||[],save2=()=>{plPut(a)};
-  if(!l.length)blk.insertAdjacentHTML('beforeend','<div class="hint">下の「時間」「予定」を押すと入ります</div>');
+  const a=plGet(),fromRep=!(a[d]||[]).some(x=>x.s||(x.t||'').trim())&&rs[d],l=a[d]=fromRep?rs[d]:(a[d]||[]),save2=()=>{plPut(a)};
+  if(fromRep)blk.insertAdjacentHTML('beforeend','<div class="hint">定期報告で送った予定です。直すとこちらの予定として保存されます。</div>');
+  else if(!l.length)blk.insertAdjacentHTML('beforeend','<div class="hint">下の「時間」「予定」を押すと入ります</div>');
   l.forEach((x,i)=>{const r=document.createElement('div');r.className='srow';
     const s1=timeSel(x.s,v=>{x.s=v;save2();refreshCal()}),til=document.createElement('span');til.className='til';til.textContent='〜';const s2=timeSel(x.e,v=>{x.e=v;save2()});
     const del=document.createElement('button');del.className='x';del.textContent='×';del.onclick=()=>{l.splice(i,1);save2();renderPlan()};
@@ -1113,7 +1118,7 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
   add.onclick=()=>{l.push({s:'',e:'',t:'',_new:1});ls.set('teiki_plan',a);renderPlan();const ts=$('plDays').querySelectorAll('.pld.on input.t');if(ts.length)ts[ts.length-1].focus()};
   blk.appendChild(add);box.appendChild(blk);
   // 手で書き換えたときは、カレンダーのマスだけ書き直す（入力中の欄はそのまま）
-  function refreshCal(){const l2=(plGet()[d]||[]).filter(x=>x.s||(x.t||'').trim()),c=card.querySelector(`[data-d="${d}"]`);if(!c)return;
+  function refreshCal(){const l2=(plGet()[d]||rs[d]||[]).filter(x=>x.s||(x.t||'').trim()),c=card.querySelector(`[data-d="${d}"]`);if(!c)return;
     c.innerHTML=`<span class="n">${dt.getDate()}</span>`+l2.slice(0,3).map(x=>`<span class="e" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`).join('')+(l2.length>3?`<span class="more">+${l2.length-3}</span>`:'')}
 }
 
