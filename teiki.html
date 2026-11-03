@@ -125,6 +125,7 @@
   .rrow select{flex:0 0 74px;border:1px solid var(--line);border-radius:10px;padding:9px 4px;background:#fff;font-size:15px}
   .rrow .x{flex:0 0 34px;height:34px;border-radius:9px;background:var(--soft);color:var(--neg);font-weight:700}
   .kwsel{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px;font-weight:700;padding:0 12px;margin-bottom:10px;color:var(--ink)}
+  #p-plan{--c-sc:#6250d6}
   #p-cf{--c-sh:#e87ba4;--c-pay:#e8853d;--c-inc:#0e7c86;--c-sc:#6250d6;--c-rep:#9aa5a2}
   .calm{flex:1;height:46px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:17px;font-weight:700}
   .callg{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:var(--muted);margin:2px 0 8px}
@@ -1067,36 +1068,53 @@ function plDates(k){const t=new Date();if(k==='m1'){const y=t.getFullYear(),m=t.
 function renderPlan(){
   segBtns($('plMode'),PL_MODES,plMode,k=>{plMode=k;ls.set('teiki_pl_mode',k);plDay=null;renderPlan()});
   segBtns($('plSeg'),PL_TABS,plTab,k=>{plTab=k;plDay=null;renderPlan()});
+  if(plMode==='me'&&plDay===null)plDay=todayStr();
   $('stCard').style.display=$('shPaste').style.display=plMode==='shop'?'':'none';
-  $('plHint').textContent=plMode==='shop'?'日にちを押すと、スタッフの名前が出ます。出勤する人を押してください。':'日にちを押すと、時間と予定のボタンが出ます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
+  $('plHint').textContent=plMode==='shop'?'日にちを押すと、スタッフの名前が出ます。出勤する人を押してください。':'日にちを押すと、下にその日の入力欄が開きます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
+  $('plSeg').style.display=plMode==='shop'?'':'none';
   if(plMode==='shop'){renderShift();renderStaff();return}
-  const days=plDates(plTab),all=plGet(),t=todayStr(),box=$('plDays');box.innerHTML='';
-  if(plTab!=='m1'){const prev=plDates('w'+(+plTab.slice(1)-1)),has=prev.some(d=>(all[d]||[]).length);
-    const b=document.createElement('button');b.className='small-btn';b.style.marginBottom='8px';b.textContent='前の週と同じにする（空いている日だけ）';b.disabled=!has;b.style.opacity=has?1:.4;
-    b.onclick=()=>{const a=plGet();let n=0;days.forEach((d,i)=>{if((a[d]||[]).length||!(a[prev[i]]||[]).length)return;a[d]=a[prev[i]].map(x=>({s:x.s,e:x.e,t:x.t}));n++});plPut(a);renderPlan();toast(n?`${n}日分を写しました`:'写せる日がありませんでした')};
-    box.appendChild(b)}
-  days.forEach(d=>{const dt=new Date(d+'T00:00'),wd=dt.getDay(),list=all[d]||[],on=plDay===d;
-    const blk=document.createElement('div');blk.className='pld'+(d<t?' past':'')+(on?' on':'');
-    const sum=list.filter(x=>x.s||(x.t||'').trim()).map(x=>`${x.s?tm(x.s)+'〜 ':''}${(x.t||'').trim()}`).join('、');
-    const h=document.createElement('button');h.className='pld-h';
-    h.innerHTML=`<span class="${wd===0?'su':wd===6?'sa':''}">${md(d)}（${WD[wd]}）</span>${d===t?'<span class="td">今日</span>':''}<span class="sm">${on?'':esc(sum||'＋ 予定を入れる')}</span>`;
-    h.onclick=()=>{plDay=on?null:d;renderPlan()};blk.appendChild(h);
-    if(on){const a=plGet(),l=a[d]=a[d]||[],save2=()=>{plPut(a)};
-      l.forEach((x,i)=>{const r=document.createElement('div');r.className='srow';
-        const s1=timeSel(x.s,v=>{x.s=v;save2()}),til=document.createElement('span');til.className='til';til.textContent='〜';const s2=timeSel(x.e,v=>{x.e=v;save2()});
-        const del=document.createElement('button');del.className='x';del.textContent='×';del.onclick=()=>{l.splice(i,1);save2();renderPlan()};
-        r.append(s1,til,s2,del);const r2=document.createElement('div');r2.className='srow';
-        const ti=document.createElement('input');ti.type='text';ti.className='t';ti.placeholder='内容';ti.value=x.t||'';ti.oninput=()=>{x.t=ti.value;save2()};r2.appendChild(ti);
-        const w=document.createElement('div');w.style.marginTop=i?'10px':'4px';w.append(r,r2);blk.appendChild(w)});
-      // 時間と予定のボタン（明日の予定と同じもの）。空いている行に入れ、なければ行を足す
-      const slot=empty=>{let x=l.find(empty);if(!x){x={s:'',e:'',t:''};l.push(x)}return x};
-      const mk=(lab,k,on2)=>{const c=document.createElement('div');c.className='chl';c.textContent=lab;const ch=document.createElement('div');ch.className='chips';chipRow(ch,k,on2);blk.append(c,ch)};
-      mk('時間','kw_time',w=>{const m=w.match(TIME_RE)||[];const x=slot(z=>!z.s&&!z.e);x.s=hhmm(m[1]);x.e=hhmm(m[2]);save2();renderPlan()});
-      mk('予定','kw_sched',w=>{const x=slot(z=>!(z.t||'').trim());x.t=w;save2();renderPlan()});
-      const add=document.createElement('button');add.className='small-btn addrow';add.textContent='＋ 行を追加';
-      add.onclick=()=>{l.push({s:'',e:'',t:'',_new:1});ls.set('teiki_plan',a);renderPlan();const ts=box.querySelectorAll('.pld.on input.t');if(ts.length)ts[ts.length-1].focus()};
-      blk.appendChild(add)}
-    box.appendChild(blk)});
+  renderMyCal();
+}
+// 自分の予定：月のカレンダー。日にちを押すと、下にその日の入力欄が開く
+let plYM=null;
+function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getFullYear(),now.getMonth()];if(!plDay)plDay=t;
+  const [y,m]=plYM,all=plGet(),box=$('plDays');box.innerHTML='';
+  const card=document.createElement('div');card.className='card';
+  card.innerHTML=`<div class="trnav"><button aria-label="前の月">◀</button><div class="calm">${(y!==now.getFullYear()?y+'年':'')+(m+1)}月</div><button aria-label="次の月">▶</button></div><div class="calg"></div>`;
+  const [pv,nx]=card.querySelectorAll('.trnav button');
+  pv.onclick=()=>{const d=new Date(y,m-1,1);plYM=[d.getFullYear(),d.getMonth()];renderPlan()};nx.onclick=()=>{const d=new Date(y,m+1,1);plYM=[d.getFullYear(),d.getMonth()];renderPlan()};
+  const start=new Date(y,m,1-new Date(y,m,1).getDay());
+  let h=[...WD].map((w,i)=>`<div class="wd${i===0?' su':i===6?' sa':''}">${w}</div>`).join('');
+  for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);if(i>=35&&d.getMonth()!==m)break;
+    const ds=dstr(d),out=d.getMonth()!==m,wd=d.getDay(),l=(all[ds]||[]).filter(x=>x.s||(x.t||'').trim());
+    const lab=l.slice(0,3).map(x=>`<span class="e" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`).join('');
+    h+=`<button class="c${out?' out':''}${ds===t?' td':''}${ds===plDay?' sel':''}${wd===0?' su':wd===6?' sa':''}" data-d="${ds}"><span class="n">${d.getDate()}</span>${lab}${l.length>3?`<span class="more">+${l.length-3}</span>`:''}</button>`}
+  card.querySelector('.calg').innerHTML=h;
+  card.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const d=b.dataset.d,dd=new Date(d+'T00:00');plDay=d;if(dd.getMonth()!==m||dd.getFullYear()!==y)plYM=[dd.getFullYear(),dd.getMonth()];renderPlan();
+    const ed=$('plDays').querySelector('.pld.on');if(ed)ed.scrollIntoView({behavior:'smooth',block:'nearest'})});
+  box.appendChild(card);
+  // 選んだ日の入力欄
+  const d=plDay,dt=new Date(d+'T00:00'),wd=dt.getDay(),blk=document.createElement('div');blk.className='pld on';
+  blk.innerHTML=`<div class="pld-h"><span class="${wd===0?'su':wd===6?'sa':''}">${md(d)}（${WD[wd]}）</span>${d===t?'<span class="td">今日</span>':''}</div>`;
+  const a=plGet(),l=a[d]=a[d]||[],save2=()=>{plPut(a)};
+  if(!l.length)blk.insertAdjacentHTML('beforeend','<div class="hint">下の「時間」「予定」を押すと入ります</div>');
+  l.forEach((x,i)=>{const r=document.createElement('div');r.className='srow';
+    const s1=timeSel(x.s,v=>{x.s=v;save2();refreshCal()}),til=document.createElement('span');til.className='til';til.textContent='〜';const s2=timeSel(x.e,v=>{x.e=v;save2()});
+    const del=document.createElement('button');del.className='x';del.textContent='×';del.onclick=()=>{l.splice(i,1);save2();renderPlan()};
+    r.append(s1,til,s2,del);const r2=document.createElement('div');r2.className='srow';
+    const ti=document.createElement('input');ti.type='text';ti.className='t';ti.placeholder='内容';ti.value=x.t||'';ti.oninput=()=>{x.t=ti.value;save2()};ti.onchange=()=>refreshCal();r2.appendChild(ti);
+    const w=document.createElement('div');w.style.marginTop=i?'10px':'4px';w.append(r,r2);blk.appendChild(w)});
+  // 時間と予定のボタン（明日の予定と同じもの）。空いている行に入れ、なければ行を足す
+  const slot=empty=>{let x=l.find(empty);if(!x){x={s:'',e:'',t:''};l.push(x)}return x};
+  const mk=(lab,k,on2)=>{const c=document.createElement('div');c.className='chl';c.textContent=lab;const ch=document.createElement('div');ch.className='chips';chipRow(ch,k,on2);blk.append(c,ch)};
+  mk('時間','kw_time',w=>{const m2=w.match(TIME_RE)||[];const x=slot(z=>!z.s&&!z.e);x.s=hhmm(m2[1]);x.e=hhmm(m2[2]);save2();renderPlan()});
+  mk('予定','kw_sched',w=>{const x=slot(z=>!(z.t||'').trim());x.t=w;save2();renderPlan()});
+  const add=document.createElement('button');add.className='small-btn addrow';add.textContent='＋ 行を追加';
+  add.onclick=()=>{l.push({s:'',e:'',t:'',_new:1});ls.set('teiki_plan',a);renderPlan();const ts=$('plDays').querySelectorAll('.pld.on input.t');if(ts.length)ts[ts.length-1].focus()};
+  blk.appendChild(add);box.appendChild(blk);
+  // 手で書き換えたときは、カレンダーのマスだけ書き直す（入力中の欄はそのまま）
+  function refreshCal(){const l2=(plGet()[d]||[]).filter(x=>x.s||(x.t||'').trim()),c=card.querySelector(`[data-d="${d}"]`);if(!c)return;
+    c.innerHTML=`<span class="n">${dt.getDate()}</span>`+l2.slice(0,3).map(x=>`<span class="e" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`).join('')+(l2.length>3?`<span class="more">+${l2.length-3}</span>`:'')}
 }
 
 // 貼り付けたシフトの文章を読む。1行＝1日：「11/5 山田 10:00-15:00、佐藤 17:00-23:00」
