@@ -999,12 +999,31 @@ function afterSent(){
   load(allReports()[nd]||blank(nd));go('start');
   toast(`送信しました。${+nd.slice(5,7)}/${+nd.slice(8,10)}の開始画面です`,()=>{SQ=null;load(allReports()[sentDate]);R.sent=false;save();go('form')});
 }
-$('btnShare').onclick=async()=>{
-  if(!check())return;const t=reportText();
+// 「LINEで送る」：勤怠Botから、スタッフのLINEグループに直接投稿する（iPadにLINEが無くても送れる）。
+// 合言葉が未設定の端末や、Botで送れなかったときは、これまでどおり共有メニューで送る
+const SEND_API='https://task-app-nine-liard.vercel.app/api/nippo_send';
+async function shareSend(t){
   if(navigator.share){
     let ok=false;try{await navigator.share({text:t});ok=true}catch(e){}
     if(ok)afterSent();
   }else{afterSent();location.href='https://line.me/R/share?text='+encodeURIComponent(t)}
+}
+let sending=false;
+$('btnShare').onclick=async()=>{
+  if(sending||!check())return;const t=reportText();
+  const key=ls.get('nippo_sqkey','');
+  if(!key){shareSend(t);return}
+  if(!confirm('勤怠Botから、スタッフのLINEグループにこの日報を送ります。よろしいですか？'))return;
+  sending=true;const btn=$('btnShare');btn.textContent='送信中…';btn.disabled=true;
+  let err='';
+  try{
+    const res=await fetch(SEND_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify({text:t,date:R.date,writers:whosOf()})});
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok||!j.ok)err=j.error||('エラー '+res.status);
+  }catch(e){err='通信エラー（電波を確認してください）'}
+  sending=false;btn.textContent='LINEで送る';btn.disabled=false;
+  if(!err){afterSent();return}
+  if(confirm('勤怠Botで送れませんでした：'+err+'\n\n共有メニュー（メール・コピーなど）で送りますか？'))shareSend(t);
 };
 $('btnExport').onclick=()=>{
   const blob=new Blob([JSON.stringify(allReports(),null,1)],{type:'application/json'});
