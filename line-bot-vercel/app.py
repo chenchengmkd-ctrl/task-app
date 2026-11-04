@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 89
+APP_VERSION = 90
 
 
 def _respond(start_response, status, body, cors=False):
@@ -452,32 +452,6 @@ def _handle_nippo_sales(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
-def _handle_nippo_send(environ, start_response):
-    """日報アプリの「LINEで送る」。勤怠botに渡して、勤怠botからスタッフのグループに投稿してもらう（iPadにLINEが無いため）。"""
-    if not config.NIPPO_TOKEN:
-        return _respond(start_response, '503 Service Unavailable', {'ok': False, 'error': 'NIPPO_TOKEN が未設定です'}, cors=True)
-    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
-        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
-    if not (config.KINTAI_BOT_URL and config.NIPPO_POST_SECRET):
-        return _respond(start_response, '503 Service Unavailable',
-                        {'ok': False, 'setup': True,
-                         'error': 'タスク管理botのVercelに KINTAI_BOT_URL と NIPPO_POST_SECRET が未設定です'}, cors=True)
-    body = _read_json_body(environ)
-    if not body or not (body.get('text') or '').strip():
-        return _respond(start_response, '400 Bad Request', {'ok': False, 'error': '本文がありません'}, cors=True)
-    import requests
-    try:
-        res = requests.post(f'{config.KINTAI_BOT_URL}/api/nippo_post', timeout=45,
-                            headers={'X-Nippo-Secret': config.NIPPO_POST_SECRET},
-                            json={'text': body['text'], 'date': body.get('date'), 'writers': body.get('writers') or []})
-        out = res.json()
-    except Exception as e:
-        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': f'勤怠botにつながりません（{e.__class__.__name__}）'}, cors=True)
-    if res.status_code == 401:
-        out = {'ok': False, 'error': '勤怠botの NIPPO_POST_SECRET と値が違います'}
-    return _respond(start_response, '200 OK' if out.get('ok') else '502 Bad Gateway', out, cors=True)
-
-
 def _handle_nippo_sync(environ, start_response):
     """日報アプリ（nippo.html）の端末間同期。iPadとスマホで同じ日報を編集・送信できるようにする。"""
     if not config.NIPPO_TOKEN:
@@ -510,12 +484,6 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_sales(environ, start_response)
-
-    if path == '/api/nippo_send':
-        if method == 'OPTIONS':
-            return _respond(start_response, '204 No Content', {}, cors=True)
-        if method == 'POST':
-            return _handle_nippo_send(environ, start_response)
 
     if path == '/api/nippo_sync':
         if method == 'OPTIONS':

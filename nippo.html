@@ -999,9 +999,9 @@ function afterSent(){
   load(allReports()[nd]||blank(nd));go('start');
   toast(`送信しました。${+nd.slice(5,7)}/${+nd.slice(8,10)}の開始画面です`,()=>{SQ=null;load(allReports()[sentDate]);R.sent=false;save();go('form')});
 }
-// 「LINEで送る」：勤怠Botから、スタッフのLINEグループに直接投稿する（iPadにLINEが無くても送れる）。
-// 合言葉が未設定の端末や、Botで送れなかったときは、これまでどおり共有メニューで送る
-const SEND_API='https://task-app-nine-liard.vercel.app/api/nippo_send';
+// 「LINEで送る」：勤怠Botに直接渡して、勤怠Botからスタッフのグループに投稿する（iPadにLINEが無くても送れる）。
+// 合言葉（勤怠Botの NIPPO_TOKEN と同じ）が未設定の端末や、Botで送れなかったときは、これまでどおり共有メニューで送る
+const SEND_API='https://line-kintai-vercel.vercel.app/api/nippo_post';
 async function shareSend(t){
   if(navigator.share){
     let ok=false;try{await navigator.share({text:t});ok=true}catch(e){}
