@@ -106,7 +106,14 @@ def _amount(money):
         return 0
 
 
-def fetch_payments(date_iso, location_id=None):
+def month_total(date_iso, location_id=None):
+    """その月の1日から date_iso の終わりまでの売上合計（返金差し引き済み・税込み）。失敗時はNone。
+    日報の「累計売上（月ごと）」に使う。前日の日報の累計に足していくと、
+    日報を送った後に入った会計の分がずれたまま残るため、毎回Squareから数え直す。"""
+    return summarize(date_iso, location_id, begin_date=date_iso[:8] + '01')
+
+
+def fetch_payments(date_iso, location_id=None, begin_date=None):
     """指定日の決済を全件取得する（ページングを最後までたどる）。失敗時はNone。
 
     location_id を省略すると設定済み（またはACTIVEな最初の1件）を使う。
@@ -115,8 +122,10 @@ def fetch_payments(date_iso, location_id=None):
     if not location_id:
         return None
     begin, end = _day_range(date_iso)
+    if begin_date:
+        begin = _day_range(begin_date)[0]
     payments, cursor = [], None
-    for _ in range(20):  # 念のための上限（1日2000件まで）
+    for _ in range(50 if begin_date else 20):  # 念のための上限（1日2000件・1か月5000件まで）
         params = {
             'begin_time': begin,
             'end_time': end,
@@ -136,9 +145,10 @@ def fetch_payments(date_iso, location_id=None):
     return payments
 
 
-def summarize(date_iso, location_id=None):
-    """1日分の売上を集計する。戻り値 {total, count, by_source, refunded}。取得できなければNone。"""
-    payments = fetch_payments(date_iso, location_id)
+def summarize(date_iso, location_id=None, begin_date=None):
+    """1日分（begin_date を渡すとその日から date_iso まで）の売上を集計する。
+    戻り値 {total, count, by_source, refunded}。取得できなければNone。"""
+    payments = fetch_payments(date_iso, location_id, begin_date)
     if payments is None:
         return None
 

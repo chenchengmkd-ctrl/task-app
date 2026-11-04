@@ -61,10 +61,12 @@ def day_sales(date_iso):
     orders = square.fetch_orders(date_iso)
     if s is None or orders is None:
         return {'ok': False, 'error': 'Squareからデータを取得できませんでした'}
+    m = square.month_total(date_iso)
     return {
         'ok': True,
         'date': date_iso,
         'total': s['total'],
+        'month_total': m['total'] if m else None,  # その月の1日からこの日までの合計（累計売上に使う）
         'count': s['count'],
         'orders': [
             {

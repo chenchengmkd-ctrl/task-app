@@ -430,7 +430,11 @@ function prevCum(){
   if(ls.get('nippo_cummode','month')==='month'&&p.date.slice(0,7)!==R.date.slice(0,7))return 0;
   return +p.cum;
 }
-function autoCum(){const pc=prevCum();if(pc==null||cumTouched)return;R.cum=String(pc+(+R.sales||0));$('cum').value=R.cum}
+// 「月ごと」のときは、Squareの今月1日からの合計をそのまま使う（前日の日報に足していくと、送信後に入った会計の分がずれたまま残るため）
+const sqMonth=()=>ls.get('nippo_cummode','month')==='month'&&SQ&&SQ.date===R.date&&SQ.month!=null?+SQ.month:null;
+function autoCum(){if(cumTouched)return;const m=sqMonth();
+  if(m!=null){R.cum=String(m);$('cum').value=R.cum;return}
+  const pc=prevCum();if(pc==null)return;R.cum=String(pc+(+R.sales||0));$('cum').value=R.cum}
 // Squareの品名 → 特上/上/並（鰻重だけ数える。それ以外は「他」として表示だけ）
 function mapItems(items){
   const ord={},other=[];
@@ -711,7 +715,7 @@ async function fetchSquare(manual){
     const res=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify({date:R.date})});
     const j=await res.json();
     if(!res.ok||!j.ok)throw new Error(j.error||res.status);
-    SQ={total:j.total,count:j.count,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};
+    SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};
     R.sales=String(j.total);$('sales').value=R.sales;autoCum();save();
     sqErr='';if(manual)toast('Squareから更新しました');
   }catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Squareを読めませんでした：'+sqErr)}
@@ -872,10 +876,11 @@ function renderSales(){
     h.innerHTML=esc(h.textContent)+(left?`<div class="gap">来店経緯が未記録の会計が ${left}件 あります</div>`:'');
   }else h.textContent=ls.get('nippo_sqkey','')?'':'設定で合言葉を入れるとSquareから自動で入ります';
   autoCum();
-  const pc=prevCum(),first=!latestBefore(R.date);
-  $('cumBaseBox').style.display=first?'':'none';
+  const pc=prevCum(),first=!latestBefore(R.date),sm=sqMonth();
+  $('cumBaseBox').style.display=first&&sm==null?'':'none';
   if(first)$('cumBase').value=R.cumBase||'';
-  $('cumHint').textContent=pc==null?'下の「前日までの累計」を入れると、本日売上と足して自動で出ます'
+  $('cumHint').textContent=sm!=null?`Squareの${+R.date.slice(5,7)}/1〜${+R.date.slice(5,7)}/${+R.date.slice(8,10)}の合計から自動`+(cumTouched?'（手入力中）':'')
+    :pc==null?'下の「前日までの累計」を入れると、本日売上と足して自動で出ます'
     :`${first?'前日までの累計':'前回の累計'} ${yen(pc)} ＋ 本日売上 で自動計算`+(cumTouched?'（手入力中）':'');
 }
 
@@ -955,11 +960,11 @@ $('sqKey').oninput=()=>{ls.set('nippo_sqkey',$('sqKey').value.trim());SQ=null;sq
 /* ---------- 入力イベント ---------- */
 TEXT.forEach(f=>$(f).addEventListener('input',()=>{
   R[f]=$(f).value;
-  if(f==='cum')cumTouched=$('cum').value!=='';
+  if(f==='cum'){cumTouched=$('cum').value!=='';R.cumManual=cumTouched}
   if(f==='sales')autoCum();
   save();if(f==='sales'||f==='cum')renderSales();
 }));
-$('cumBase').addEventListener('input',()=>{R.cumBase=$('cumBase').value;cumTouched=false;save();renderSales()});
+$('cumBase').addEventListener('input',()=>{R.cumBase=$('cumBase').value;cumTouched=false;R.cumManual=false;save();renderSales()});
 $('date').addEventListener('change',()=>{
   const o=allReports()[$('date').value];SQ=null;autoToday=$('date').value===todayStr();
   if(o)load(o);else{const keep={who:R.who,whos:R.whos||[],weather:R.weather};load(Object.assign(blank($('date').value),keep))}
@@ -1006,7 +1011,9 @@ $('btnExport').onclick=()=>{
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nippo-backup.json';a.click()};
 
 function load(o){R=JSON.parse(JSON.stringify(o));R.customers=R.customers||[];if(R.who&&!R.whos)R.whos=R.who.split('・');if(R.who&&R.weather)R.started=true;openId=null;cumTouched=false;UNDO=[];REDO=[];
-  const pc=prevCum();if(R.cum!==''&&R.cum!=null&&pc!=null&&+R.cum!==pc+(+R.sales||0))cumTouched=true;
+  // 累計を手で直した日報は、そのまま残す（以前の日報は印が無いので、「ずっと足し続ける」のときだけ計算と違うかで判断する）
+  if(R.cumManual!=null)cumTouched=!!R.cumManual;
+  else if(ls.get('nippo_cummode','month')!=='month'){const pc=prevCum();if(R.cum!==''&&R.cum!=null&&pc!=null&&+R.cum!==pc+(+R.sales||0))cumTouched=true}
   renderAll();save()}
 
 // アプリを開き直したとき・1分ごとにSquareを読み直す（会計直後に開けば最新の会計が出る）
