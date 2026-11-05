@@ -127,7 +127,10 @@
   .kwsel{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px;font-weight:700;padding:0 12px;margin-bottom:10px;color:var(--ink)}
   #p-plan{--c-sc:#6250d6}
   #p-plan{--c-sh:#e87ba4;--c-sc:#6250d6}
-  #p-cf{--c-sh:#e87ba4;--c-pay:#e8853d;--c-inc:#0e7c86;--c-sc:#6250d6;--c-rep:#9aa5a2}
+  .tk .dueb{font-size:11px;font-weight:700;margin-left:6px;color:var(--muted)}.tk .dueb.late{color:var(--neg)}.tk .dueb.soon{color:var(--warn)}
+  .tk .drow{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px;color:var(--muted)}.tk .drow input{flex:0 0 150px;padding:6px 8px;font-size:13px}
+  #calF{margin-bottom:8px}
+  #p-cf{--c-tk:#2f855a;--c-sh:#e87ba4;--c-pay:#e8853d;--c-inc:#0e7c86;--c-sc:#6250d6;--c-rep:#9aa5a2}
   .calm{flex:1;height:46px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:17px;font-weight:700}
   .callg{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:var(--muted);margin:2px 0 8px}
   .callg i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:3px;vertical-align:0}
@@ -325,7 +328,8 @@
   <div class="card">
     <h2>カレンダー</h2>
     <div class="trnav"><button id="calPrev" aria-label="前の月">◀</button><div class="calm" id="calM"></div><button id="calNext" aria-label="次の月">▶</button></div>
-    <div class="callg"><span><i style="background:var(--c-pay)"></i>支払い</span><span><i style="background:var(--c-inc)"></i>入金予定</span><span><i style="background:var(--c-sc)"></i>予定</span><span><i style="background:var(--c-sh)"></i>シフト</span><span><i style="background:var(--c-rep)"></i>報告</span></div>
+    <div class="seg" id="calF"></div>
+    <div class="callg"><span><i style="background:var(--c-pay)"></i>支払い</span><span><i style="background:var(--c-inc)"></i>入金予定</span><span><i style="background:var(--c-sc)"></i>予定</span><span><i style="background:var(--c-sh)"></i>シフト</span><span><i style="background:var(--c-tk)"></i>タスク期限</span><span><i style="background:var(--c-rep)"></i>報告</span></div>
     <div class="calg" id="calG"></div>
     <div id="calDay"></div>
   </div>
@@ -1050,7 +1054,10 @@ function renderOnce(){const t=todayStr(),old=dstr(new Date(Date.now()-60*864e5))
 $('upEdit').onclick=()=>{upOpen=!upOpen;renderUp()};
 
 /* ---------- カレンダー（支払い・入金予定・明日の予定・過去の報告） ---------- */
-let calYM=null,calSel=null;
+let calYM=null,calSel=null,calF=ls.get('teiki_cal_f','all');
+// カレンダーに出すものを切り替える（すべて／支払い・入金／予定／シフト／タスク期限／報告）
+const CAL_F=[['all','すべて'],['pay','支払い'],['sc','予定'],['sh','シフト'],['tk','タスク'],['rep','報告']];
+const calOk=x=>calF==='all'||x.c===calF||(calF==='pay'&&x.c==='inc');
 // その月の日付ごとの項目。支払い・入金予定は今日から先だけ、報告は今日まで
 function calItems(y,m){const t=todayStr(),first=dstr(new Date(y,m,1)),last=dstr(new Date(y,m+1,0)),by={},add=(d,x)=>{(by[d]=by[d]||[]).push(x)};
   const inM=d=>d&&d>=first&&d<=last;
@@ -1070,12 +1077,16 @@ function calItems(y,m){const t=todayStr(),first=dstr(new Date(y,m,1)),last=dstr(
   Object.entries(ls.get('teiki_shift',{})).forEach(([d,l])=>{if(inM(d)&&l.length)add(d,{c:'sh',k:l.map(x=>x.n).join('・'),t:'シフト'})});
   // 報告の「明日の予定」がまだない日は、「予定」タブで決めた予定を出す
   Object.entries(ls.get('teiki_plan',{})).forEach(([d,l])=>{if(inM(d)&&!scDone[d])l.forEach(x=>{if((x.t||'').trim()||x.s)add(d,{c:'sc',k:(x.t||'').trim(),t:x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜'):''})})});
-  // 時間のある予定（明日の予定）を時間順に、そのあと支払い・入金予定・報告
-  const ord={sc:0,sh:1,pay:2,inc:3,rep:4},key=x=>x.c==='sh'?'!':ord[x.c]?'z'+ord[x.c]:(x.t==='終日'?'00:00':hhmm(x.t)||'99');Object.values(by).forEach(l=>l.sort((a,b)=>key(a).localeCompare(key(b))));
+  // タスクの期限（終わっていないもの）
+  T.forEach(x=>{if(!x.done&&inM(x.due))add(x.due,{c:'tk',k:x.t,t:'タスク期限',late:x.due<t})});
+  // 時間のある予定（明日の予定）を時間順に、そのあと支払い・入金予定・タスク・報告
+  const ord={sc:0,sh:1,pay:2,inc:3,tk:4,rep:5},key=x=>x.c==='sh'?'!':ord[x.c]?'z'+ord[x.c]:(x.t==='終日'?'00:00':hhmm(x.t)||'99');Object.values(by).forEach(l=>l.sort((a,b)=>key(a).localeCompare(key(b))));
   return by}
 function renderCal(){const now=new Date();if(!calYM)calYM=[now.getFullYear(),now.getMonth()];const [y,m]=calYM,t=todayStr();if(!calSel)calSel=t;
   $('calM').textContent=(y!==now.getFullYear()?y+'年':'')+(m+1)+'月';
+  segBtns($('calF'),CAL_F,calF,k=>{calF=k;ls.set('teiki_cal_f',k);renderCal()});
   const by=calItems(y,m),g=$('calG'),start=new Date(y,m,1-new Date(y,m,1).getDay()),cells=[];
+  Object.keys(by).forEach(d=>{by[d]=by[d].filter(calOk)});
   let h=[...WD].map((w,i)=>`<div class="wd${i===0?' su':i===6?' sa':''}">${w}</div>`).join('');
   for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);if(i>=35&&d.getMonth()!==m)break;
     const ds=dstr(d),l=by[ds]||[],out=d.getMonth()!==m,wd=d.getDay();
@@ -1086,9 +1097,9 @@ function renderCal(){const now=new Date();if(!calYM)calYM=[now.getFullYear(),now
   // 選んだ日の中身
   const sd=new Date(calSel+'T00:00'),l=by[calSel]||[],box=$('calDay');
   let dh=`<div class="cday"><h3>${sd.getMonth()+1}/${sd.getDate()}（${WD[sd.getDay()]}）${calSel===t?' 今日':''}</h3>`;
-  if(!l.length)dh+='<div class="hint">この日の予定・記録はありません</div>';
+  if(!l.length)dh+=`<div class="hint">この日の${calF==='all'?'予定・記録':CAL_F.find(f=>f[0]===calF)[1]}はありません</div>`;
   l.forEach(x=>{const v=x.c==='rep'?`<span class="v">入 ＋${fmt(x.v2[0])}／出 −${fmt(x.v2[1])}</span>`:x.c==='pay'||x.c==='inc'?(x.v==null?'<span class="v" style="color:var(--muted);font-weight:600">金額未定</span>':`<span class="v">${x.c==='inc'?'＋':'−'}${x.est?'約':''}${fmt(x.v)}</span>`):'';
-    const nm=({sh:'シフト',sc:'予定',pay:'支払い',inc:'入金予定',rep:'報告'})[x.c];
+    const nm=({sh:'シフト',sc:'予定',pay:'支払い',inc:'入金予定',tk:'タスク期限',rep:'報告'})[x.c];
     dh+=`<div class="ci"><i style="background:var(--c-${x.c})"></i><span class="t">${esc(x.t||nm)}</span><span class="k">${esc(x.sub||x.k||'')}${x.tag?`<span class="tag" style="font-size:11px;color:var(--muted);margin-left:4px">${esc(x.tag)}</span>`:''}</span>${v}</div>`});
   box.innerHTML=dh+'</div>';
 }
@@ -1388,12 +1399,18 @@ function renderTasks(){
   if(!T.length)box.innerHTML='<div class="hint" style="margin-top:12px">まだタスクがありません</div>';
   T.forEach((x,i)=>{const e=document.createElement('div');e.className='tk'+(x.done?' done':'');
     const old=!x.done&&x.added<tToday?`<span class="old">${md(x.added)}から</span>`:'';
-    e.innerHTML=`<div class="top">${i?'<button class="mv">▲</button>':''}<span class="ttl">${esc(x.t)}${old}</span><button class="ck">${x.done?'✓ 完了':'完了'}</button><button class="x">×</button></div>`;
+    const dl=!x.done&&x.due?(x.due<tToday?' late':x.due<=nextDay(tToday)?' soon':''):'',dueb=!x.done&&x.due?`<span class="dueb${dl}">期限${md(x.due)}${x.due<tToday?'（過ぎています）':''}</span>`:'';
+    e.innerHTML=`<div class="top">${i?'<button class="mv">▲</button>':''}<span class="ttl">${esc(x.t)}${old}${dueb}</span><button class="ck">${x.done?'✓ 完了':'完了'}</button><button class="x">×</button></div>`;
     e.querySelector('.ck').onclick=()=>{x.done=!x.done;x.doneDate=x.done?tToday:'';saveT();renderTasks()};
     e.querySelector('.x').onclick=()=>{if(!confirm(`「${x.t}」を消しますか？`))return;T.splice(i,1);saveT();renderTasks()};
     if(i)e.querySelector('.mv').onclick=()=>{T.splice(i-1,0,T.splice(i,1)[0]);saveT();renderTasks()};
     if(!x.done){const m=document.createElement('input');m.type='text';m.className='memo';m.placeholder='途中なら一言（例：本人確認完了、次はオーナー確認）';m.value=x.memo||'';
-      m.oninput=()=>{x.memo=m.value;saveT()};e.appendChild(m)}
+      m.oninput=()=>{x.memo=m.value;saveT()};e.appendChild(m);
+      // 期限（任意）。資金繰りのカレンダーにも出る
+      const dr=document.createElement('div');dr.className='drow';dr.innerHTML='<span>期限（任意）</span>';
+      const di=document.createElement('input');di.type='date';di.value=x.due||'';di.onchange=()=>{x.due=di.value;saveT();renderTasks()};dr.appendChild(di);
+      if(x.due){const cl=document.createElement('button');cl.className='small-btn';cl.textContent='消す';cl.onclick=()=>{x.due='';saveT();renderTasks()};dr.appendChild(cl)}
+      e.appendChild(dr)}
     box.appendChild(e)});
   renderRecent();
 }
