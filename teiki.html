@@ -247,24 +247,6 @@
   </div>
   <div id="accts"></div>
 
-  <!-- レジ金（使ったとき・戻したときだけ記録。報告にも入る） -->
-  <div class="card" id="rjCard">
-    <h2>レジ金<span class="sub" id="rjBaseTxt"></span></h2>
-    <div class="rj-big" id="rjNow"></div>
-    <div class="rj-bar"><i id="rjBar"></i></div>
-    <div class="hint" id="rjState" style="font-size:14px;margin-top:8px"></div>
-    <div class="chl" style="margin-top:14px">使ったとき・戻したときだけ記録します</div>
-    <div class="seg" id="rjType"></div>
-    <div class="srow"><input type="date" id="rjDate"><span id="rjAmtBox" style="flex:1;display:flex"></span></div>
-    <div class="srow"><input type="text" class="t" id="rjMemo" placeholder="内容（例：鰻代金の支払い）"></div>
-    <div class="chips" id="rjChips"></div>
-    <button class="commit2 b3" id="rjSave" style="width:100%;margin-top:12px">記録する</button>
-    <div class="chl" style="margin-top:16px">経過</div>
-    <div id="rjLog"></div>
-    <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">基本の金額（ふだんのレジ金）を変える</summary>
-      <span id="rjBaseBox" style="display:flex;margin-top:8px"></span></details>
-  </div>
-
   <div class="card">
     <h2>入出金予定<span class="sub">日付が過ぎたものは翌日から自動で消えます</span></h2>
     <div id="plans"></div>
@@ -282,6 +264,7 @@
     <textarea id="note" placeholder="例：明日の鰻代金は現金で賄える予定です"></textarea>
   </div>
   <div class="hint" style="margin:4px 4px 14px">入力できたら下の「LINEで送る」を押します。送信したあと、翌日の報告に進みます。</div>
+  <button class="small-btn addrow" id="rjOpen" style="margin:0 0 14px"></button>
   <!-- 推移・累計 -->
   <button class="trtog" id="trTog" aria-expanded="false"><span>📈 入出金の動きを見る</span><i>▾</i></button>
   <div class="viz" id="trWrap" style="display:none">
@@ -289,6 +272,27 @@
     <div class="seg" id="trView"></div>
     <div class="hint" style="margin:-6px 4px 10px">グラフを指でなぞると、その日までの累計が出ます。</div>
     <div id="trAccts"></div>
+  </div>
+</div>
+
+<!-- ===== レジ金（月に数回なので、資金報告の下のボタンから開く） ===== -->
+<div class="page" id="p-reji">
+  <button class="small-btn" id="rjBack" style="margin:0 0 12px">‹ 資金報告に戻る</button>
+  <div class="card" id="rjCard">
+    <h2>レジ金<span class="sub" id="rjBaseTxt"></span></h2>
+    <div class="rj-big" id="rjNow"></div>
+    <div class="rj-bar"><i id="rjBar"></i></div>
+    <div class="hint" id="rjState" style="font-size:14px;margin-top:8px"></div>
+    <div class="chl" style="margin-top:14px">使ったとき・戻したときだけ記録します</div>
+    <div class="seg" id="rjType"></div>
+    <div class="srow"><input type="date" id="rjDate"><span id="rjAmtBox" style="flex:1;display:flex"></span></div>
+    <div class="srow"><input type="text" class="t" id="rjMemo" placeholder="内容（例：鰻代金の支払い）"></div>
+    <div class="chips" id="rjChips"></div>
+    <button class="commit2 b3" id="rjSave" style="width:100%;margin-top:12px">記録する</button>
+    <div class="chl" style="margin-top:16px">経過</div>
+    <div id="rjLog"></div>
+    <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">基本の金額（ふだんのレジ金）を変える</summary>
+      <span id="rjBaseBox" style="display:flex;margin-top:8px"></span></details>
   </div>
 </div>
 
@@ -681,7 +685,7 @@ let page='form',lastMain='form';
 const TABS=['form','task','cf','plan'];
 function go(p){
   page=p;if(TABS.includes(p))lastMain=p;
-  ['form','prev','cf','task','tsend','hist','set','plan'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  ['form','prev','cf','task','tsend','hist','set','plan','reji'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('tbar').style.display=p==='task'?'flex':'none';
   $('tabs').style.display=TABS.includes(p)?'flex':'none';
@@ -694,7 +698,8 @@ function go(p){
   if(p==='set')renderSettings();
   if(p==='cf')renderCf();
   if(p==='plan')renderPlan();
-  if(p==='form'){renderAll();renderReji()}
+  if(p==='form'){renderAll();rjLink()}
+  if(p==='reji')renderReji();
   scrollTo(0,0);
 }
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(page===b.dataset.go?lastMain:b.dataset.go));
@@ -1263,6 +1268,9 @@ function renderReji(){const st=rjState(),o=rjGet();
   if(eps.length>3){const b=document.createElement('button');b.className='small-btn addrow';b.textContent=`前の記録も見る（${eps.length-3}回分）`;b.onclick=()=>{box.querySelectorAll('.rj-ep').forEach(x=>x.style.display='');b.remove()};box.appendChild(b)}
   if(!$('rjBase')){const bi=moneyInput(o.base,'30,000',v=>{const o2=rjGet();o2.base=num(v)||30000;rjPut(o2)});bi.id='rjBase';bi.style.flex='1';bi.addEventListener('change',()=>renderReji());$('rjBaseBox').appendChild(bi)}
 }
+// 資金報告の下のボタン。戻し中は残りを出して、戻し忘れに気づけるようにする
+function rjLink(){const st=rjState();$('rjOpen').textContent=st.now!==st.base?`レジ金　残り ${fmt(st.now)}（基本 ${fmt(st.base)}）›`:'レジ金を使った・戻したときはこちら ›'}
+$('rjOpen').onclick=()=>go('reji');$('rjBack').onclick=()=>go('form');
 $('rjSave').onclick=()=>{const v=num($('rjAmt').value),d=$('rjDate').value||todayStr();if(!v){toast('金額を入れてください');$('rjAmt').focus();return}
   const o=rjGet();o.log.push({id:Date.now(),d,type:rjTypeSel,v,k:$('rjMemo').value.trim()});rjPut(o);
   $('rjAmt').value='';$('rjMemo').value='';const st=rjState();
