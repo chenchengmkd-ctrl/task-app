@@ -155,6 +155,26 @@
   .pld-h .td{font-size:11px;background:var(--g);color:#fff;border-radius:6px;padding:1px 6px}
   .pld-h .sm{margin-left:auto;font-weight:400;font-size:13px;color:var(--muted);text-align:right;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pld .srow input.t{flex:1}
+  .rj-big{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+  .rj-bar{height:12px;border-radius:6px;background:var(--soft);overflow:hidden;margin-top:6px}
+  .rj-bar i{display:block;height:100%;border-radius:6px;background:var(--g)}
+  .rj-bar i.low{background:#e8853d}
+  .rj-ep{margin-top:6px;border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+  .rj-ep+.rj-ep{margin-top:10px}
+  .rj-eh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--muted);margin-bottom:2px}
+  .rj-eh span{margin-left:auto;white-space:nowrap}
+  .rj-i{display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:14px;font-variant-numeric:tabular-nums}
+  .rj-i:first-of-type{border-top:none}
+  .rj-i .d{flex:0 0 46px;color:var(--muted);font-size:13px}
+  .rj-i .k{flex:1;min-width:0;word-break:break-all}
+  .rj-i .v{font-weight:700;white-space:nowrap}
+  .rj-i .v.use{color:#c2410c}.rj-i .v.back{color:#047857}
+  .rj-i{flex-wrap:wrap;row-gap:0}
+  .rj-i .k{font-weight:600}
+  .rj-i .s2{flex:0 0 100%;display:flex;gap:8px;padding-left:54px;font-size:12px;color:var(--muted)}
+  .rj-i .s2 span:first-child{flex:1;min-width:0;word-break:break-all}
+  .rj-i .r{white-space:nowrap;padding-right:34px}
+  .rj-i .x{flex:0 0 26px;height:26px;border-radius:7px;color:var(--muted);font-size:15px;background:none}
   .chip.ed{color:var(--muted);border-style:dashed}
   .srow select{flex:0 0 92px;border:1px solid var(--line);border-radius:10px;padding:9px 6px;background:#fff;font-size:16px;min-width:0}
   .th{padding:12px 2px;border-bottom:1px solid var(--line)}
@@ -218,6 +238,7 @@
   <button data-tab="task">タスク</button>
   <button data-tab="cf">資金繰り</button>
   <button data-tab="plan">予定</button>
+  <button data-tab="reji">レジ金</button>
 </nav>
 <!-- ===== 入力 ===== -->
 <div class="page" id="p-form">
@@ -256,6 +277,40 @@
 
 <!-- ===== プレビュー ===== -->
 <div class="page" id="p-prev"><div class="card"><pre class="prev" id="prevText"></pre></div></div>
+
+<!-- ===== レジ金 ===== -->
+<div class="page" id="p-reji">
+  <div class="card">
+    <h2>いまのレジ金<span class="sub" id="rjBaseTxt"></span></h2>
+    <div class="rj-big" id="rjNow"></div>
+    <div class="rj-bar"><i id="rjBar"></i></div>
+    <div class="hint" id="rjState" style="font-size:14px;margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <h2>記録する<span class="sub">使ったときと、戻したときだけ</span></h2>
+    <div class="seg" id="rjType"></div>
+    <div class="srow"><input type="date" id="rjDate"><span id="rjAmtBox" style="flex:1;display:flex"></span></div>
+    <div class="srow"><input type="text" class="t" id="rjMemo" placeholder="内容（例：鰻代金の支払い）"></div>
+    <div class="chips" id="rjChips"></div>
+    <button class="commit2 b3" id="rjSave" style="width:100%;margin-top:12px">記録する</button>
+  </div>
+  <div class="card">
+    <h2>経過<span class="sub">使ったあと、どう戻したか</span></h2>
+    <div id="rjLog"></div>
+  </div>
+  <div class="card">
+    <h2>レジ金の報告<span class="sub">送る前にここで直せます</span><button class="small-btn" id="rjReset" style="margin-left:auto">作り直す</button></h2>
+    <textarea id="rjText" style="min-height:150px;font-size:14px;line-height:1.7"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="commit2 b2" id="rjCopy">コピー</button>
+      <button class="commit2 b3" id="rjShare">LINEで送る</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>基本の金額<span class="sub">ふだんのレジ金</span></h2>
+    <span id="rjBaseBox" style="display:flex"></span>
+  </div>
+</div>
 
 <!-- ===== 予定を決める ===== -->
 <div class="page" id="p-plan">
@@ -614,6 +669,8 @@ function reportText(){
   if(plans.length){L.push('','▼入出金予定');plans.forEach(p=>L.push(`${p.d?md(p.d)+' ':''}${(p.k||'').trim()}${p.v!==''?fmt(num(p.v)):''}`))}
   const sc=R.sched.filter(s=>s.s||s.e||(s.t||'').trim());
   if(sc.length){L.push('','▼明日の予定');sc.forEach(s=>L.push(`${tm(s.s)}${s.e?'〜'+tm(s.e):(s.s?'〜':'')} ${(s.t||'').trim()}`.trim()))}
+  // レジ金は、使って基本の金額に戻っていない間だけ載せる
+  {const rj=rjState(R.date);if(rj.has&&rj.now!==rj.base)L.push('','▼レジ金',`残り　${fmt(rj.now)}`,rj.now<rj.base?`（${fmt(rj.base)}まであと${fmt(rj.base-rj.now)}）`:`（${fmt(rj.base)}より${fmt(rj.now-rj.base)}多い）`)}
   if((R.note||'').trim())L.push('',R.note.trim());
   return L.join('\n');
 }
@@ -632,10 +689,10 @@ function check(){
 
 /* ---------- 画面切替 ---------- */
 let page='form',lastMain='form';
-const TABS=['form','task','cf','plan'];
+const TABS=['form','task','cf','plan','reji'];
 function go(p){
   page=p;if(TABS.includes(p))lastMain=p;
-  ['form','prev','cf','task','tsend','hist','set','plan'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  ['form','prev','cf','task','tsend','hist','set','plan','reji'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('tbar').style.display=p==='task'?'flex':'none';
   $('tabs').style.display=TABS.includes(p)?'flex':'none';
@@ -648,6 +705,7 @@ function go(p){
   if(p==='set')renderSettings();
   if(p==='cf')renderCf();
   if(p==='plan')renderPlan();
+  if(p==='reji')renderReji();
   if(p==='form')renderAll();
   scrollTo(0,0);
 }
@@ -717,7 +775,7 @@ $('btnExport').onclick=()=>{
   const blob=new Blob([JSON.stringify({reports:allReports(),cfg:ls.get('teiki_cfg',{}),cf:ls.get('teiki_cf',{}),tasks:{t:ls.get('shin_tasks',[]),d:ls.get('shin_days',{}),r:ls.get('shin_recent',[])},extra:Object.fromEntries(BK_KEYS.map(k=>[k,ls.get(k,null)]))},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='teiki-backup.json';a.click()};
 // 予定・シフト・支払いなどもバックアップに入れる
-const BK_KEYS=['teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once'];
+const BK_KEYS=['teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once','teiki_reji'];
 $('btnImport').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
   try{const o=JSON.parse(await f.text());if(!o.reports)throw 0;
@@ -1176,6 +1234,63 @@ function renderShift(){
       blk.insertAdjacentHTML('beforeend','<div class="hint" style="margin-top:4px">出勤する人を押します（もう一度押すと外れます）</div>');blk.appendChild(ch)}
     box.appendChild(blk)});
 }
+
+/* ---------- レジ金（使ったとき・戻したときだけ記録） ---------- */
+// teiki_reji：{base:30000, log:[{id,d,type:'use'|'back',v,k}]}
+const rjGet=()=>Object.assign({base:30000,log:[]},ls.get('teiki_reji',{})),rjPut=o=>ls.set('teiki_reji',o);
+let rjTypeSel='use',rjEdited=false;
+// 日付順に並べて、各記録のあとの残りを出す（同じ日は記録した順）
+function rjRows(o){let run=o.base;return o.log.map((x,i)=>({...x,i})).sort((a,b)=>a.d.localeCompare(b.d)||a.id-b.id).map(x=>{run+=x.type==='use'?-x.v:x.v;return {...x,after:run}})}
+function rjState(upto){const o=rjGet(),rows=rjRows(o).filter(x=>!upto||x.d<=upto);return {base:o.base,now:rows.length?rows[rows.length-1].after:o.base,has:rows.length>0,rows}}
+// 使い始めてから基本の金額に戻るまでを1つのまとまりにする
+function rjEpisodes(rows,base){const eps=[];let cur=null;
+  rows.forEach(x=>{if(!cur){cur={rows:[],use:0,back:0}}cur.rows.push(x);if(x.type==='use')cur.use+=x.v;else cur.back+=x.v;
+    if(x.after>=base){cur.done=true;eps.push(cur);cur=null}});if(cur)eps.push(cur);return eps}
+function rjText(){const st=rjState(),t=todayStr(),eps=rjEpisodes(st.rows,st.base),ep=eps[eps.length-1];
+  const L=[`■${md(t)}レジ金報告`,'',`基本　${fmt(st.base)}`];
+  if(ep&&!ep.done){L.push('');ep.rows.forEach(x=>L.push(`${md(x.d)} ${x.type==='use'?'使用':'戻し'}　${x.type==='use'?'−':'＋'}${fmt(x.v)}${x.k?'（'+x.k+'）':''}　→ 残り${fmt(x.after)}`))}
+  L.push('',`現在　${fmt(st.now)}`);
+  L.push(st.now<st.base?`${fmt(st.base)}まであと${fmt(st.base-st.now)}です。`:st.now>st.base?`${fmt(st.base)}より${fmt(st.now-st.base)}多いです。`:`${fmt(st.base)}に戻っています。`);
+  return L.join('\n')}
+function renderReji(){const st=rjState(),o=rjGet();
+  $('rjBaseTxt').textContent=`基本 ${fmt(st.base)}`;$('rjNow').textContent=fmt(st.now);$('rjNow').classList.toggle('neg',st.now<0);
+  const pct=Math.max(0,Math.min(100,st.now/st.base*100));$('rjBar').style.width=pct+'%';$('rjBar').classList.toggle('low',st.now<st.base);
+  $('rjState').innerHTML=st.now<st.base?`あと <b>${fmt(st.base-st.now)}</b> 戻すと元どおりです`:st.now>st.base?`基本より <b>${fmt(st.now-st.base)}</b> 多いです`:'元どおりです';
+  segBtns($('rjType'),[['use','使った'],['back','戻した']],rjTypeSel,k=>{rjTypeSel=k;renderReji()});
+  if(!$('rjDate').value)$('rjDate').value=todayStr();
+  if(!$('rjAmt')){const a=moneyInput('','金額',()=>{});a.id='rjAmt';a.style.flex='1';$('rjAmtBox').appendChild(a)}
+  $('rjMemo').placeholder=rjTypeSel==='use'?'内容（例：鰻代金の支払い）':'内容（例：現金売上から）';
+  const ch=$('rjChips');ch.innerHTML='';
+  // 今までの記録でよく使った内容を先に
+  const cnt={};o.log.filter(x=>x.type===rjTypeSel&&x.k).forEach(x=>cnt[x.k]=(cnt[x.k]||0)+1);
+  const base=rjTypeSel==='use'?['支払い','両替','仕入れ','立替']:['現金売上から','個人から','両替から','口座から'];
+  [...new Set([...Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(x=>x[0]),...base])].slice(0,8).forEach(w=>{const b=document.createElement('button');b.className='chip';b.textContent=w;b.onclick=()=>{$('rjMemo').value=w};ch.appendChild(b)});
+  $('rjSave').textContent=rjTypeSel==='use'?'使ったを記録する':'戻したを記録する';
+  // 経過（新しいまとまりから）
+  const eps=rjEpisodes(st.rows,st.base).reverse(),box=$('rjLog');
+  box.innerHTML=eps.length?'':'<div class="hint">まだ記録はありません。レジ金を使ったら、上で「使った」を記録します。</div>';
+  eps.forEach((ep,ei)=>{const e=document.createElement('div');e.className='rj-ep';
+    const first=ep.rows[0].d,last=ep.rows[ep.rows.length-1].d;
+    e.innerHTML=`<div class="rj-eh">${md(first)}${last!==first?'〜'+md(last):''}　使った ${fmt(ep.use)}・戻した ${fmt(ep.back)}<span>${ep.done?'✓ 戻した':'戻し中'}</span></div>`;
+    ep.rows.slice().reverse().forEach(x=>{const r=document.createElement('div');r.className='rj-i';
+      r.innerHTML=`<span class="d">${md(x.d)}</span><span class="k">${x.type==='use'?'使った':'戻した'}</span><span class="v ${x.type}">${x.type==='use'?'−':'＋'}${fmt(x.v)}</span><button class="x" aria-label="消す">×</button><div class="s2"><span>${esc(x.k||'')}</span><span class="r">残り ${fmt(x.after)}</span></div>`;
+      r.querySelector('.x').onclick=()=>{const o2=rjGet(),k=o2.log.findIndex(y=>y.id===x.id);if(k<0)return;const old=o2.log.splice(k,1)[0];rjPut(o2);renderReji();
+        toast('記録を消しました',()=>{const o3=rjGet();o3.log.push(old);rjPut(o3);renderReji()})};
+      e.appendChild(r)});
+    if(ei>0&&ei>=3)e.style.display='none';box.appendChild(e)});
+  if(eps.length>3){const b=document.createElement('button');b.className='small-btn addrow';b.textContent=`前の記録も見る（${eps.length-3}回分）`;b.onclick=()=>{box.querySelectorAll('.rj-ep').forEach(x=>x.style.display='');b.remove()};box.appendChild(b)}
+  if(!rjEdited)$('rjText').value=rjText();
+  if(!$('rjBase')){const bi=moneyInput(o.base,'30,000',v=>{const o2=rjGet();o2.base=num(v)||30000;rjPut(o2)});bi.id='rjBase';bi.style.flex='1';bi.addEventListener('change',()=>renderReji());$('rjBaseBox').appendChild(bi)}
+}
+$('rjSave').onclick=()=>{const v=num($('rjAmt').value),d=$('rjDate').value||todayStr();if(!v){toast('金額を入れてください');$('rjAmt').focus();return}
+  const o=rjGet();o.log.push({id:Date.now(),d,type:rjTypeSel,v,k:$('rjMemo').value.trim()});rjPut(o);
+  $('rjAmt').value='';$('rjMemo').value='';rjEdited=false;const st=rjState();
+  // 使ったら次は戻す側、戻して元どおりになったら使う側に切り替えておく
+  rjTypeSel=st.now<st.base?'back':'use';renderReji();toast(`記録しました。残り ${fmt(st.now)}`)};
+$('rjText').oninput=()=>{rjEdited=true};
+$('rjReset').onclick=()=>{rjEdited=false;$('rjText').value=rjText()};
+$('rjCopy').onclick=()=>copy($('rjText').value);
+$('rjShare').onclick=async()=>{const t=$('rjText').value;if(navigator.share){try{await navigator.share({text:t})}catch(e){}}else location.href='https://line.me/R/share?text='+encodeURIComponent(t)};
 
 /* ---------- 推移・累計 ---------- */
 // 報告を日付順にたどって、各日の昨日残・残高・入出金を出す（bal() と同じ計算を一度に）
