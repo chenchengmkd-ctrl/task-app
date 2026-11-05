@@ -1031,8 +1031,10 @@ function renderRecur(){const list=ls.get('teiki_recur',[]),box=$('upRows'),put=(
     const x=document.createElement('button');x.className='x';x.textContent='×';x.onclick=()=>{list.splice(i,1);put()};
     row2.append(d,vt,x);blk.append(row,row2);box.appendChild(blk)});
   const ch=$('upChips');ch.innerHTML='';const have=list.map(r=>r.k);
-  ['家賃','給与','光熱費','スマホ料金','薙刀返済'].filter(w=>!have.includes(w)).concat(['＋ 自由に書く']).forEach(w=>{const b=document.createElement('button');b.className='chip';b.textContent=w;
-    b.onclick=()=>{list.push({k:w.startsWith('＋')?'':w,day:'25',v:'',vary:w==='光熱費'});ls.set('teiki_recur',list);renderUp();const bs=$('upRows').querySelectorAll('.rblk');bs[bs.length-1].querySelector(w.startsWith('＋')?'.k':'.a').focus()};ch.appendChild(b)});
+  // 通話料などで金額が月によって変わるものは、最初から「変動」にしておく
+  const VARY=['光熱費','03plus','Square'];
+  ['家賃','給与','光熱費','スマホ料金','UQモバイル','03plus','Square','薙刀返済'].filter(w=>!have.includes(w)).concat(['＋ 自由に書く']).forEach(w=>{const b=document.createElement('button');b.className='chip';b.textContent=w;
+    b.onclick=()=>{list.push({k:w.startsWith('＋')?'':w,day:'25',v:'',vary:VARY.includes(w)});ls.set('teiki_recur',list);renderUp();const bs=$('upRows').querySelectorAll('.rblk');bs[bs.length-1].querySelector(w.startsWith('＋')?'.k':'.a').focus()};ch.appendChild(b)});
 }
 function renderOnce(){const t=todayStr(),old=dstr(new Date(Date.now()-60*864e5));
   let list=ls.get('teiki_once',[]).filter(o=>!o.d||o.d>=old);ls.set('teiki_once',list);// 2か月より前のものは片付ける
