@@ -95,6 +95,34 @@
   .tk .x{flex:0 0 32px;height:32px;border-radius:9px;color:var(--muted);font-size:18px}
   .tk .mv{flex:0 0 28px;height:32px;border-radius:9px;color:var(--muted);font-size:14px}
   .tk .memo{margin-top:8px;font-size:14px;padding:8px 10px}
+  .td-i{display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid var(--line)}
+  .td-i:first-child{border-top:none}
+  .td-i .cb{flex:0 0 28px;height:28px;border-radius:8px;border:2px solid var(--line);background:#fff;color:#fff;font-weight:800;font-size:15px}
+  .td-i.on .cb{background:#047857;border-color:#047857}
+  .td-i .tx{flex:1;min-width:0;font-size:15px;font-weight:600;word-break:break-word}
+  .td-i.on .tx{color:#047857;text-decoration:line-through;text-decoration-color:rgba(4,120,87,.4)}
+  .td-i .tx small{display:block;font-weight:400;font-size:12px;color:var(--muted);text-decoration:none}
+  .td-i .tag{font-size:11px;font-weight:700;border-radius:6px;padding:1px 6px;background:var(--soft);color:var(--muted);white-space:nowrap}
+  .td-i .tag.late{background:#fde8e8;color:var(--neg)}
+  .rt{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line)}
+  .rt:first-child{border-top:none}
+  .rt .n{flex:1;font-weight:600;font-size:14px}
+  .rt .dots{font-size:11px;letter-spacing:2px;color:#047857;white-space:nowrap}
+  .rt .dots i{font-style:normal;color:#cfd8d6}
+  .rt .x{flex:0 0 28px;height:28px;border-radius:8px;color:var(--muted);background:none;font-size:16px}
+  .tk .meta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted);margin-top:4px}
+  .tk .pbar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin-top:6px}
+  .tk .pbar i{display:block;height:100%;background:#047857;border-radius:3px}
+  .tk .steps{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+  .st{display:flex;align-items:center;gap:6px;margin-top:6px}
+  .st .cb{flex:0 0 26px;height:26px;border-radius:7px;border:2px solid var(--line);background:#fff;color:#fff;font-weight:800;font-size:13px}
+  .st.on .cb{background:#047857;border-color:#047857}
+  .st input.n{flex:1;min-width:0;padding:7px 8px;font-size:14px}
+  .st.on input.n{color:#047857;text-decoration:line-through}
+  .st input[type=date]{flex:0 0 128px;padding:7px 4px;font-size:13px}
+  .st .x{flex:0 0 26px;height:26px;border-radius:7px;color:var(--muted);background:none;font-size:15px}
+  .st-w{font-size:11px;color:var(--warn);font-weight:700;padding-left:32px}
+  .tk .tg{width:100%;text-align:left}
   .tk .old{font-size:11px;color:var(--warn);font-weight:700;margin-left:4px}
   .ln-h{display:flex;align-items:center;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);font-weight:700;font-size:14px}
   .ln-i{padding:9px 2px;border-bottom:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
@@ -390,12 +418,21 @@
     <input type="time" id="dueTime">
   </div>
   <div class="card">
-    <h2>今日のタスク<span class="sub">終わったら「完了」。途中のものは一言書いておきます</span></h2>
-    <div class="tadd"><input type="text" id="newTask" placeholder="タスクを書く（例：インフルエンサー進捗更新）" enterkeyhint="done"><button id="btnAdd">追加</button></div>
+    <h2>今日やること<span class="sub" id="tdSub"></span></h2>
+    <div id="today"></div>
+  </div>
+  <div class="card">
+    <h2>毎日やること<span class="sub">今日やることにチェック欄が出ます</span></h2>
+    <div id="routines"></div>
+    <div class="tadd" style="margin-top:8px"><input type="text" id="newRt" placeholder="例：チラシ配り、インスタ投稿" enterkeyhint="done"><button id="btnRt">追加</button></div>
+  </div>
+  <div class="card">
+    <h2>タスク<span class="sub">期限と、それまでにやる細かいこと</span></h2>
+    <div class="tadd"><input type="text" id="newTask" placeholder="タスクを書く（例：チラシ完成）" enterkeyhint="done"><button id="btnAdd">追加</button></div>
     <div class="chips" id="recent"></div>
     <div id="tasks"></div>
   </div>
-  <div class="hint" style="margin:4px 4px 14px">やる前に「予定を送る」、終わったら「進捗を送る」。終わらなかったタスクは翌日にそのまま残ります。</div>
+  <div class="hint" style="margin:4px 4px 14px">朝に「予定を送る」、終わったら「進捗を送る」。細かいことにやる日を入れておくと、その日の「今日やること」に自動で出ます。</div>
 </div>
 <div class="page" id="p-tsend">
   <div class="card">
@@ -794,7 +831,7 @@ $('btnExport').onclick=()=>{
   const blob=new Blob([JSON.stringify({reports:allReports(),cfg:ls.get('teiki_cfg',{}),cf:ls.get('teiki_cf',{}),tasks:{t:ls.get('shin_tasks',[]),d:ls.get('shin_days',{}),r:ls.get('shin_recent',[])},extra:Object.fromEntries(BK_KEYS.map(k=>[k,ls.get(k,null)]))},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='teiki-backup.json';a.click()};
 // 予定・シフト・支払いなどもバックアップに入れる
-const BK_KEYS=['teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once','teiki_reji','teiki_plan_rule','teiki_plan_none'];
+const BK_KEYS=['teiki_rt','teiki_rtlog','teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once','teiki_reji','teiki_plan_rule','teiki_plan_none'];
 $('btnImport').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
   try{const o=JSON.parse(await f.text());if(!o.reports)throw 0;
@@ -1437,29 +1474,81 @@ function rollover(){tToday=todayStr();const n=T.length;T=T.filter(x=>!x.done||x.
 function remember(t){const r=ls.get('shin_recent',[]).filter(x=>x!==t);r.unshift(t);ls.set('shin_recent',r.slice(0,30))}
 function addTask(t){t=t.trim();if(!t)return;
   if(T.some(x=>x.t===t&&!x.done)){toast('同じタスクがもうあります');return}
-  T.push({id:Date.now(),t,done:false,doneDate:'',memo:'',added:tToday});remember(t);saveT();renderTasks()}
+  const id=Date.now();T.push({id,t,done:false,doneDate:'',memo:'',added:tToday,due:'',steps:[]});remember(t);saveT();tkOpen=id;renderTasks()}// 追加したタスクは開いて、期限と細かいことを入れられるように
 function renderRecent(){
   const box=$('recent');box.innerHTML='';const open=new Set(T.map(x=>x.t));
   ls.get('shin_recent',[]).filter(t=>!open.has(t)).slice(0,12).forEach(t=>{const b=document.createElement('button');b.className='chip';b.textContent='＋ '+t;
     b.onclick=()=>addTask(t);box.appendChild(b)});
 }
+// タスク：{id,t,due,memo,done,doneDate,added,d(ステップなしのときのやる日),steps:[{id,t,d,done,doneDate}]}
+// 毎日やること teiki_rt：[{id,t}]、チェック teiki_rtlog：{日付:[id]}
+const rts=()=>ls.get('teiki_rt',[]),rtLog=()=>ls.get('teiki_rtlog',{});
+let tkOpen=null;
+const tkSteps=x=>x.steps||(x.steps=[]);
+const tkProg=x=>{const st=tkSteps(x);return st.length?[st.filter(y=>y.done).length,st.length]:[x.done?1:0,1]};
+// 今日やること：毎日やること＋やる日が今日まで（過ぎて終わっていないもの含む）の細かいこと＋ステップのないタスク
+function todayItems(){const t=tToday,out=[],lg=rtLog()[t]||[];
+  rts().forEach(r=>out.push({kind:'rt',id:r.id,t:r.t,on:lg.includes(r.id)}));
+  T.forEach(x=>{const st=tkSteps(x);
+    if(st.length)st.forEach(y=>{if((y.d&&y.d<=t&&!y.done)||(y.done&&y.doneDate===t))out.push({kind:'st',x,y,t:y.t,sub:x.t,on:y.done,late:!y.done&&y.d<t?y.d:''})});
+    else if(!x.done&&(!x.d||x.d<=t)||x.done&&x.doneDate===t)out.push({kind:'tk',x,t:x.t,sub:x.due?`期限 ${md(x.due)}`:'',on:x.done,late:!x.done&&x.d&&x.d<t?x.d:''})});
+  return out}
+function renderToday(){const box=$('today'),items=todayItems();box.innerHTML='';
+  const n=items.filter(x=>x.on).length;$('tdSub').textContent=items.length?`${n}/${items.length} できた`:'';
+  if(!items.length){box.innerHTML='<div class="hint">今日やることはありません。下の「タスク」で細かいことにやる日を入れると、ここに出ます。</div>';return}
+  items.forEach(it=>{const e=document.createElement('div');e.className='td-i'+(it.on?' on':'');
+    e.innerHTML=`<button class="cb" aria-label="できた">${it.on?'✓':''}</button><span class="tx">${esc(it.t)}${it.sub?`<small>${esc(it.sub)}</small>`:''}</span>${it.kind==='rt'?'<span class="tag">毎日</span>':''}${it.late?`<span class="tag late">${md(it.late)}から</span>`:''}`;
+    e.querySelector('.cb').onclick=()=>{
+      if(it.kind==='rt'){const lg=rtLog(),l=lg[tToday]=lg[tToday]||[],k=l.indexOf(it.id);if(k>=0)l.splice(k,1);else l.push(it.id);
+        Object.keys(lg).forEach(d=>{if(d<dstr(new Date(Date.now()-60*864e5)))delete lg[d]});ls.set('teiki_rtlog',lg)}
+      else if(it.kind==='st'){it.y.done=!it.y.done;it.y.doneDate=it.y.done?tToday:'';saveT()}
+      else{it.x.done=!it.x.done;it.x.doneDate=it.x.done?tToday:'';saveT()}
+      renderTasks()};
+    box.appendChild(e)})}
+function renderRoutines(){const box=$('routines'),l=rts(),lg=rtLog();box.innerHTML=l.length?'':'<div class="hint">まだありません</div>';
+  l.forEach((r,i)=>{const e=document.createElement('div');e.className='rt';
+    // 直近7日（左が古い、右が今日）
+    const dots=[...Array(7)].map((_,k)=>{const d=dstr(new Date(Date.now()-(6-k)*864e5));return (lg[d]||[]).includes(r.id)?'●':'<i>●</i>'}).join('');
+    e.innerHTML=`<span class="n"></span><span class="dots" title="直近7日">${dots}</span><button class="x" aria-label="消す">×</button>`;e.querySelector('.n').textContent=r.t;
+    e.querySelector('.x').onclick=()=>{const a=rts();a.splice(i,1);ls.set('teiki_rt',a);renderTasks();toast(`「${r.t}」を消しました`,()=>{const b=rts();b.splice(i,0,r);ls.set('teiki_rt',b);renderTasks()})};
+    box.appendChild(e)})}
+function rtAdd(){const v=$('newRt').value.trim();if(!v)return;const a=rts();if(!a.some(x=>x.t===v))a.push({id:Date.now(),t:v});ls.set('teiki_rt',a);$('newRt').value='';renderTasks()}
+$('btnRt').onclick=rtAdd;$('newRt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing)rtAdd()});
 function renderTasks(){
+  renderToday();renderRoutines();
   const box=$('tasks');box.innerHTML='';
   if(!T.length)box.innerHTML='<div class="hint" style="margin-top:12px">まだタスクがありません</div>';
-  T.forEach((x,i)=>{const e=document.createElement('div');e.className='tk'+(x.done?' done':'');
-    const old=!x.done&&x.added<tToday?`<span class="old">${md(x.added)}から</span>`:'';
-    const dl=!x.done&&x.due?(x.due<tToday?' late':x.due<=nextDay(tToday)?' soon':''):'',dueb=!x.done&&x.due?`<span class="dueb${dl}">期限${md(x.due)}${x.due<tToday?'（過ぎています）':''}</span>`:'';
-    e.innerHTML=`<div class="top">${i?'<button class="mv">▲</button>':''}<span class="ttl">${esc(x.t)}${old}${dueb}</span><button class="ck">${x.done?'✓ 完了':'完了'}</button><button class="x">×</button></div>`;
+  T.forEach((x,i)=>{const st=tkSteps(x),[dn,all]=tkProg(x),open=tkOpen===x.id,e=document.createElement('div');e.className='tk'+(x.done?' done':'');
+    const dl=!x.done&&x.due?(x.due<tToday?' late':x.due<=nextDay(tToday)?' soon':''):'';
+    const next=st.filter(y=>!y.done).sort((a,b)=>(a.d||'9').localeCompare(b.d||'9'))[0],nodate=st.filter(y=>!y.done&&!y.d).length,over=x.due?st.filter(y=>!y.done&&y.d&&y.d>x.due).length:0;
+    e.innerHTML=`<div class="top">${i?'<button class="mv">▲</button>':''}<button class="tg"><span class="ttl">${esc(x.t)}</span></button><button class="ck">${x.done?'✓ 完了':'完了'}</button><button class="x">×</button></div>
+      <div class="meta">${x.due?`<span class="dueb${dl}" style="margin:0">期限 ${md(x.due)}${x.due<tToday&&!x.done?'（過ぎています）':''}</span>`:'<span>期限なし</span>'}${st.length?`<span>${dn}/${all} できた</span>`:''}${next?`<span>次：${esc(next.t)}${next.d?'（'+md(next.d)+'）':'（いつやるか未定）'}</span>`:''}${nodate?`<span style="color:var(--warn)">やる日未定 ${nodate}</span>`:''}${over?`<span style="color:var(--neg)">⚠ 期限より後 ${over}</span>`:''}</div>
+      ${st.length?`<div class="pbar"><i style="width:${dn/all*100}%"></i></div>`:''}`;
+    e.querySelector('.tg').onclick=()=>{tkOpen=open?null:x.id;renderTasks()};
     e.querySelector('.ck').onclick=()=>{x.done=!x.done;x.doneDate=x.done?tToday:'';saveT();renderTasks()};
     e.querySelector('.x').onclick=()=>{if(!confirm(`「${x.t}」を消しますか？`))return;T.splice(i,1);saveT();renderTasks()};
     if(i)e.querySelector('.mv').onclick=()=>{T.splice(i-1,0,T.splice(i,1)[0]);saveT();renderTasks()};
-    if(!x.done){const m=document.createElement('input');m.type='text';m.className='memo';m.placeholder='途中なら一言（例：本人確認完了、次はオーナー確認）';m.value=x.memo||'';
-      m.oninput=()=>{x.memo=m.value;saveT()};e.appendChild(m);
-      // 期限（任意）。資金繰りのカレンダーにも出る
-      const dr=document.createElement('div');dr.className='drow';dr.innerHTML='<span>期限（任意）</span>';
-      const di=document.createElement('input');di.type='date';di.value=x.due||'';di.onchange=()=>{x.due=di.value;saveT();renderTasks()};dr.appendChild(di);
-      if(x.due){const cl=document.createElement('button');cl.className='small-btn';cl.textContent='消す';cl.onclick=()=>{x.due='';saveT();renderTasks()};dr.appendChild(cl)}
-      e.appendChild(dr)}
+    if(open){
+      const dr=document.createElement('div');dr.className='drow';dr.innerHTML='<span>期限</span>';
+      const di=document.createElement('input');di.type='date';di.value=x.due||'';di.onchange=()=>{x.due=di.value;saveT();renderTasks()};dr.appendChild(di);e.appendChild(dr);
+      // 細かいこと（やる日つき）
+      const sb=document.createElement('div');sb.className='steps';sb.innerHTML='<div class="chl" style="margin-top:0">細かいこと（いつやるか）</div>';
+      st.forEach((y,k)=>{const r=document.createElement('div');r.className='st'+(y.done?' on':'');
+        r.innerHTML=`<button class="cb">${y.done?'✓':''}</button><input type="text" class="n" placeholder="やること"><input type="date"><button class="x">×</button>`;
+        const [n,d]=r.querySelectorAll('input');n.value=y.t||'';d.value=y.d||'';
+        n.onchange=()=>{y.t=n.value;saveT();renderToday()};d.onchange=()=>{y.d=d.value;saveT();renderTasks()};
+        r.querySelector('.cb').onclick=()=>{y.done=!y.done;y.doneDate=y.done?tToday:'';saveT();renderTasks()};
+        r.querySelector('.x').onclick=()=>{st.splice(k,1);saveT();renderTasks()};sb.appendChild(r);
+        if(!y.done&&!y.d)sb.insertAdjacentHTML('beforeend','<div class="st-w">いつやるか決めてください</div>');
+        else if(!y.done&&x.due&&y.d>x.due)sb.insertAdjacentHTML('beforeend','<div class="st-w" style="color:var(--neg)">期限より後になっています</div>')});
+      const ad=document.createElement('div');ad.className='tadd';ad.style.marginTop='8px';ad.innerHTML='<input type="text" placeholder="細かいことを追加（例：文面を決める）" enterkeyhint="done"><button>追加</button>';
+      const ai=ad.querySelector('input'),addS=()=>{const v=ai.value.trim();if(!v)return;st.push({id:Date.now(),t:v,d:'',done:false,doneDate:''});saveT();renderTasks();
+        const ns=$('tasks').querySelectorAll('.tk .st input[type=date]');if(ns.length)ns[ns.length-1].focus()};
+      ad.querySelector('button').onclick=addS;ai.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&!ev.isComposing)addS()});sb.appendChild(ad);
+      if(!st.length){const nd=document.createElement('div');nd.className='drow';nd.innerHTML='<span>細かいことがないときのやる日</span>';const ni=document.createElement('input');ni.type='date';ni.value=x.d||'';ni.onchange=()=>{x.d=ni.value;saveT();renderTasks()};nd.appendChild(ni);sb.appendChild(nd)}
+      e.appendChild(sb);
+      const m=document.createElement('input');m.type='text';m.className='memo';m.placeholder='報告に書く一言（例：本人確認完了、次はオーナー確認）';m.value=x.memo||'';m.oninput=()=>{x.memo=m.value;saveT()};e.appendChild(m)}
+    else if(!x.done&&!st.length&&!x.memo)e.insertAdjacentHTML('beforeend','<div class="meta"><span>押すと、期限や細かいことを入れられます</span></div>');
     box.appendChild(e)});
   renderRecent();
 }
@@ -1479,15 +1568,27 @@ function renderDue(){
   else{if(left<=30)box.classList.add('soon');$('dueTxt').textContent=`あと ${hh(left)}`}
 }
 $('dueTime').onchange=()=>{tDay().deadline=$('dueTime').value;saveTD();renderDue()};
-function planText(){const d=tDay();
-  return [`本日行う予定のタスクです。${d.deadline?tm(d.deadline)+'までに':'また'}進捗報告いたします。`,...T.filter(x=>!x.done).map(x=>'・'+x.t)].join('\n')}
-function progText(){const L=['本日のタスク進捗です'];
-  T.filter(x=>x.done).forEach(x=>L.push('・'+x.t,'→完了'));
-  T.filter(x=>!x.done).forEach(x=>L.push('・'+x.t,'→'+((x.memo||'').trim()||'未着手')));
+// 朝の報告：今日やること（細かいことはタスク名つき）と毎日やること
+function planText(){const d=tDay(),it=todayItems().filter(x=>!x.on);
+  const L=[`本日行う予定のタスクです。${d.deadline?tm(d.deadline)+'までに':'また'}進捗報告いたします。`];
+  it.filter(x=>x.kind!=='rt').forEach(x=>L.push('・'+x.t+(x.kind==='st'?`（${x.sub}）`:'')+(x.late?`※${md(x.late)}予定分`:'')));
+  const r=it.filter(x=>x.kind==='rt');if(r.length)L.push('','【毎日やること】',...r.map(x=>'・'+x.t));
+  return L.join('\n')}
+// 進捗報告：タスクごとに今日やったこと・進み具合・次にやること・期限、最後に毎日やることの✓
+function progText(){const t=tToday,L=['本日のタスク進捗です'];
+  T.forEach(x=>{const st=tkSteps(x),[dn,all]=tkProg(x);
+    const doneT=st.filter(y=>y.done&&y.doneDate===t),left=st.filter(y=>!y.done&&y.d&&y.d<=t),next=st.filter(y=>!y.done).sort((a,b)=>(a.d||'9').localeCompare(b.d||'9'))[0];
+    const touched=doneT.length||left.length||(x.done&&x.doneDate===t)||(!st.length&&!x.done&&(!x.d||x.d<=t));if(!touched)return;
+    L.push('',`■${x.t}${x.due?`（期限${md(x.due)}）`:''}`);
+    if(!st.length){L.push(x.done?'→完了':'→'+((x.memo||'').trim()||'未着手'));return}
+    doneT.forEach(y=>L.push(`・${y.t} →完了`));left.forEach(y=>L.push(`・${y.t} →未完了${y.d<t?`（${md(y.d)}予定分）`:''}`));
+    L.push(`進み具合 ${dn}/${all}${dn===all?'（すべて完了）':''}`);
+    if(next)L.push(`次：${next.t}${next.d?`（${md(next.d)}）`:''}`);
+    if((x.memo||'').trim())L.push(x.memo.trim())});
+  const r=rts(),lg=rtLog()[t]||[];if(r.length)L.push('','【毎日やること】',...r.map(x=>`・${x.t} ${lg.includes(x.id)?'✓':'未'}`));
   return L.join('\n')}
 function openTSend(m){
-  if(!T.length){toast('タスクを入れてください');return}
-  if(m==='plan'&&!T.some(x=>!x.done)){toast('未完了のタスクがありません');return}
+  if(!T.length&&!rts().length){toast('タスクか毎日やることを入れてください');return}
   tMode=m;$('tsendTitle').textContent=m==='plan'?'予定を送る':'進捗を送る';
   $('tsendText').value=m==='plan'?planText():progText();go('tsend')}
 $('btnPlan').onclick=()=>openTSend('plan');
