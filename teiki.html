@@ -238,7 +238,6 @@
   <button data-tab="task">タスク</button>
   <button data-tab="cf">資金繰り</button>
   <button data-tab="plan">予定</button>
-  <button data-tab="reji">レジ金</button>
 </nav>
 <!-- ===== 入力 ===== -->
 <div class="page" id="p-form">
@@ -247,6 +246,24 @@
     <div class="hint">「昨日残」は前回の報告の残高から自動で入ります。</div>
   </div>
   <div id="accts"></div>
+
+  <!-- レジ金（使ったとき・戻したときだけ記録。報告にも入る） -->
+  <div class="card" id="rjCard">
+    <h2>レジ金<span class="sub" id="rjBaseTxt"></span></h2>
+    <div class="rj-big" id="rjNow"></div>
+    <div class="rj-bar"><i id="rjBar"></i></div>
+    <div class="hint" id="rjState" style="font-size:14px;margin-top:8px"></div>
+    <div class="chl" style="margin-top:14px">使ったとき・戻したときだけ記録します</div>
+    <div class="seg" id="rjType"></div>
+    <div class="srow"><input type="date" id="rjDate"><span id="rjAmtBox" style="flex:1;display:flex"></span></div>
+    <div class="srow"><input type="text" class="t" id="rjMemo" placeholder="内容（例：鰻代金の支払い）"></div>
+    <div class="chips" id="rjChips"></div>
+    <button class="commit2 b3" id="rjSave" style="width:100%;margin-top:12px">記録する</button>
+    <div class="chl" style="margin-top:16px">経過</div>
+    <div id="rjLog"></div>
+    <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">基本の金額（ふだんのレジ金）を変える</summary>
+      <span id="rjBaseBox" style="display:flex;margin-top:8px"></span></details>
+  </div>
 
   <div class="card">
     <h2>入出金予定<span class="sub">日付が過ぎたものは翌日から自動で消えます</span></h2>
@@ -277,40 +294,6 @@
 
 <!-- ===== プレビュー ===== -->
 <div class="page" id="p-prev"><div class="card"><pre class="prev" id="prevText"></pre></div></div>
-
-<!-- ===== レジ金 ===== -->
-<div class="page" id="p-reji">
-  <div class="card">
-    <h2>いまのレジ金<span class="sub" id="rjBaseTxt"></span></h2>
-    <div class="rj-big" id="rjNow"></div>
-    <div class="rj-bar"><i id="rjBar"></i></div>
-    <div class="hint" id="rjState" style="font-size:14px;margin-top:8px"></div>
-  </div>
-  <div class="card">
-    <h2>記録する<span class="sub">使ったときと、戻したときだけ</span></h2>
-    <div class="seg" id="rjType"></div>
-    <div class="srow"><input type="date" id="rjDate"><span id="rjAmtBox" style="flex:1;display:flex"></span></div>
-    <div class="srow"><input type="text" class="t" id="rjMemo" placeholder="内容（例：鰻代金の支払い）"></div>
-    <div class="chips" id="rjChips"></div>
-    <button class="commit2 b3" id="rjSave" style="width:100%;margin-top:12px">記録する</button>
-  </div>
-  <div class="card">
-    <h2>経過<span class="sub">使ったあと、どう戻したか</span></h2>
-    <div id="rjLog"></div>
-  </div>
-  <div class="card">
-    <h2>レジ金の報告<span class="sub">送る前にここで直せます</span><button class="small-btn" id="rjReset" style="margin-left:auto">作り直す</button></h2>
-    <textarea id="rjText" style="min-height:150px;font-size:14px;line-height:1.7"></textarea>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="commit2 b2" id="rjCopy">コピー</button>
-      <button class="commit2 b3" id="rjShare">LINEで送る</button>
-    </div>
-  </div>
-  <div class="card">
-    <h2>基本の金額<span class="sub">ふだんのレジ金</span></h2>
-    <span id="rjBaseBox" style="display:flex"></span>
-  </div>
-</div>
 
 <!-- ===== 予定を決める ===== -->
 <div class="page" id="p-plan">
@@ -669,8 +652,10 @@ function reportText(){
   if(plans.length){L.push('','▼入出金予定');plans.forEach(p=>L.push(`${p.d?md(p.d)+' ':''}${(p.k||'').trim()}${p.v!==''?fmt(num(p.v)):''}`))}
   const sc=R.sched.filter(s=>s.s||s.e||(s.t||'').trim());
   if(sc.length){L.push('','▼明日の予定');sc.forEach(s=>L.push(`${tm(s.s)}${s.e?'〜'+tm(s.e):(s.s?'〜':'')} ${(s.t||'').trim()}`.trim()))}
-  // レジ金は、使って基本の金額に戻っていない間だけ載せる
-  {const rj=rjState(R.date);if(rj.has&&rj.now!==rj.base)L.push('','▼レジ金',`残り　${fmt(rj.now)}`,rj.now<rj.base?`（${fmt(rj.base)}まであと${fmt(rj.base-rj.now)}）`:`（${fmt(rj.base)}より${fmt(rj.now-rj.base)}多い）`)}
+  // レジ金：その日に使った・戻した記録と、その日の終わりの残り（基本の金額との差）
+  {const rj=rjState(R.date);L.push('','▼レジ金');
+    rj.rows.filter(x=>x.d===R.date).forEach(x=>L.push(`${x.type==='use'?'使用':'戻し'}　${x.type==='use'?'−':'＋'}${fmt(x.v)}${x.k?'（'+x.k+'）':''}`));
+    L.push(`残り　${fmt(rj.now)}`+(rj.now<rj.base?`（${fmt(rj.base)}まであと${fmt(rj.base-rj.now)}）`:rj.now>rj.base?`（${fmt(rj.base)}より${fmt(rj.now-rj.base)}多い）`:''))}
   if((R.note||'').trim())L.push('',R.note.trim());
   return L.join('\n');
 }
@@ -689,10 +674,10 @@ function check(){
 
 /* ---------- 画面切替 ---------- */
 let page='form',lastMain='form';
-const TABS=['form','task','cf','plan','reji'];
+const TABS=['form','task','cf','plan'];
 function go(p){
   page=p;if(TABS.includes(p))lastMain=p;
-  ['form','prev','cf','task','tsend','hist','set','plan','reji'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  ['form','prev','cf','task','tsend','hist','set','plan'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('tbar').style.display=p==='task'?'flex':'none';
   $('tabs').style.display=TABS.includes(p)?'flex':'none';
@@ -705,8 +690,7 @@ function go(p){
   if(p==='set')renderSettings();
   if(p==='cf')renderCf();
   if(p==='plan')renderPlan();
-  if(p==='reji')renderReji();
-  if(p==='form')renderAll();
+  if(p==='form'){renderAll();renderReji()}
   scrollTo(0,0);
 }
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(page===b.dataset.go?lastMain:b.dataset.go));
@@ -1238,7 +1222,7 @@ function renderShift(){
 /* ---------- レジ金（使ったとき・戻したときだけ記録） ---------- */
 // teiki_reji：{base:30000, log:[{id,d,type:'use'|'back',v,k}]}
 const rjGet=()=>Object.assign({base:30000,log:[]},ls.get('teiki_reji',{})),rjPut=o=>ls.set('teiki_reji',o);
-let rjTypeSel='use',rjEdited=false;
+let rjTypeSel='use';
 // 日付順に並べて、各記録のあとの残りを出す（同じ日は記録した順）
 function rjRows(o){let run=o.base;return o.log.map((x,i)=>({...x,i})).sort((a,b)=>a.d.localeCompare(b.d)||a.id-b.id).map(x=>{run+=x.type==='use'?-x.v:x.v;return {...x,after:run}})}
 function rjState(upto){const o=rjGet(),rows=rjRows(o).filter(x=>!upto||x.d<=upto);return {base:o.base,now:rows.length?rows[rows.length-1].after:o.base,has:rows.length>0,rows}}
@@ -1246,18 +1230,12 @@ function rjState(upto){const o=rjGet(),rows=rjRows(o).filter(x=>!upto||x.d<=upto
 function rjEpisodes(rows,base){const eps=[];let cur=null;
   rows.forEach(x=>{if(!cur){cur={rows:[],use:0,back:0}}cur.rows.push(x);if(x.type==='use')cur.use+=x.v;else cur.back+=x.v;
     if(x.after>=base){cur.done=true;eps.push(cur);cur=null}});if(cur)eps.push(cur);return eps}
-function rjText(){const st=rjState(),t=todayStr(),eps=rjEpisodes(st.rows,st.base),ep=eps[eps.length-1];
-  const L=[`■${md(t)}レジ金報告`,'',`基本　${fmt(st.base)}`];
-  if(ep&&!ep.done){L.push('');ep.rows.forEach(x=>L.push(`${md(x.d)} ${x.type==='use'?'使用':'戻し'}　${x.type==='use'?'−':'＋'}${fmt(x.v)}${x.k?'（'+x.k+'）':''}　→ 残り${fmt(x.after)}`))}
-  L.push('',`現在　${fmt(st.now)}`);
-  L.push(st.now<st.base?`${fmt(st.base)}まであと${fmt(st.base-st.now)}です。`:st.now>st.base?`${fmt(st.base)}より${fmt(st.now-st.base)}多いです。`:`${fmt(st.base)}に戻っています。`);
-  return L.join('\n')}
 function renderReji(){const st=rjState(),o=rjGet();
   $('rjBaseTxt').textContent=`基本 ${fmt(st.base)}`;$('rjNow').textContent=fmt(st.now);$('rjNow').classList.toggle('neg',st.now<0);
   const pct=Math.max(0,Math.min(100,st.now/st.base*100));$('rjBar').style.width=pct+'%';$('rjBar').classList.toggle('low',st.now<st.base);
   $('rjState').innerHTML=st.now<st.base?`あと <b>${fmt(st.base-st.now)}</b> 戻すと元どおりです`:st.now>st.base?`基本より <b>${fmt(st.now-st.base)}</b> 多いです`:'元どおりです';
   segBtns($('rjType'),[['use','使った'],['back','戻した']],rjTypeSel,k=>{rjTypeSel=k;renderReji()});
-  if(!$('rjDate').value)$('rjDate').value=todayStr();
+  if(!$('rjDate').value)$('rjDate').value=R&&R.date||todayStr();
   if(!$('rjAmt')){const a=moneyInput('','金額',()=>{});a.id='rjAmt';a.style.flex='1';$('rjAmtBox').appendChild(a)}
   $('rjMemo').placeholder=rjTypeSel==='use'?'内容（例：鰻代金の支払い）':'内容（例：現金売上から）';
   const ch=$('rjChips');ch.innerHTML='';
@@ -1279,18 +1257,13 @@ function renderReji(){const st=rjState(),o=rjGet();
       e.appendChild(r)});
     if(ei>0&&ei>=3)e.style.display='none';box.appendChild(e)});
   if(eps.length>3){const b=document.createElement('button');b.className='small-btn addrow';b.textContent=`前の記録も見る（${eps.length-3}回分）`;b.onclick=()=>{box.querySelectorAll('.rj-ep').forEach(x=>x.style.display='');b.remove()};box.appendChild(b)}
-  if(!rjEdited)$('rjText').value=rjText();
   if(!$('rjBase')){const bi=moneyInput(o.base,'30,000',v=>{const o2=rjGet();o2.base=num(v)||30000;rjPut(o2)});bi.id='rjBase';bi.style.flex='1';bi.addEventListener('change',()=>renderReji());$('rjBaseBox').appendChild(bi)}
 }
 $('rjSave').onclick=()=>{const v=num($('rjAmt').value),d=$('rjDate').value||todayStr();if(!v){toast('金額を入れてください');$('rjAmt').focus();return}
   const o=rjGet();o.log.push({id:Date.now(),d,type:rjTypeSel,v,k:$('rjMemo').value.trim()});rjPut(o);
-  $('rjAmt').value='';$('rjMemo').value='';rjEdited=false;const st=rjState();
+  $('rjAmt').value='';$('rjMemo').value='';const st=rjState();
   // 使ったら次は戻す側、戻して元どおりになったら使う側に切り替えておく
   rjTypeSel=st.now<st.base?'back':'use';renderReji();toast(`記録しました。残り ${fmt(st.now)}`)};
-$('rjText').oninput=()=>{rjEdited=true};
-$('rjReset').onclick=()=>{rjEdited=false;$('rjText').value=rjText()};
-$('rjCopy').onclick=()=>copy($('rjText').value);
-$('rjShare').onclick=async()=>{const t=$('rjText').value;if(navigator.share){try{await navigator.share({text:t})}catch(e){}}else location.href='https://line.me/R/share?text='+encodeURIComponent(t)};
 
 /* ---------- 推移・累計 ---------- */
 // 報告を日付順にたどって、各日の昨日残・残高・入出金を出す（bal() と同じ計算を一度に）
