@@ -179,6 +179,8 @@
   .rj-i .s2 span:first-child{flex:1;min-width:0;word-break:break-all}
   .rj-i .r{white-space:nowrap;padding-right:34px}
   .rj-i .x{flex:0 0 26px;height:26px;border-radius:7px;color:var(--muted);font-size:15px;background:none}
+  .calg .c .e.rl{opacity:.7;border-left-style:dashed}
+  .calg .c .n .hol{font-size:8px;margin-left:2px;color:#c2410c}
   .chip.ed{color:var(--muted);border-style:dashed}
   .srow select{flex:0 0 92px;border:1px solid var(--line);border-radius:10px;padding:9px 6px;background:#fff;font-size:16px;min-width:0}
   .th{padding:12px 2px;border-bottom:1px solid var(--line)}
@@ -637,8 +639,29 @@ function renderSched(){
     const w=document.createElement('div');w.style.marginTop=i?'12px':'0';w.append(r,r2);box.appendChild(w)});
 }
 function renderAll(){$('hDate').textContent=md(R.date);$('date').value=R.date;$('note').value=R.note||'';schedFromPlan();renderAccts();renderPlans();renderSched();trShow()}
-// 「予定」タブで決めた翌日の予定を、明日の予定が空なら1回だけ入れる（入れたあとは自由に直せる）
-function schedFromPlan(){const nd=nextDay(R.date),pl=(ls.get('teiki_plan',{})[nd]||[]).filter(x=>x.s||(x.t||'').trim());
+/* ---------- 日本の祝日（振替休日・国民の休日も） ---------- */
+const HOL={};
+function jpHol(y){if(HOL[y])return HOL[y];const s=new Set(),add=(m,d)=>s.add(dstr(new Date(y,m-1,d)));
+  const nthMon=(m,n)=>1+(8-new Date(y,m-1,1).getDay())%7+7*(n-1),eq=b=>Math.floor(b+0.242194*(y-1980)-Math.floor((y-1980)/4));
+  add(1,1);add(1,nthMon(1,2));add(2,11);add(2,23);add(3,eq(20.8431));add(4,29);add(5,3);add(5,4);add(5,5);add(7,nthMon(7,3));add(8,11);
+  add(9,nthMon(9,3));add(9,eq(23.2488));add(10,nthMon(10,2));add(11,3);add(11,23);
+  [...s].forEach(d=>{const mid=new Date(d+'T00:00');mid.setDate(mid.getDate()+1);const a=new Date(mid);a.setDate(a.getDate()+1);if(s.has(dstr(a))&&!s.has(dstr(mid))&&mid.getDay()!==0)s.add(dstr(mid))});
+  [...s].sort().forEach(d=>{const x=new Date(d+'T00:00');if(x.getDay()===0){do{x.setDate(x.getDate()+1)}while(s.has(dstr(x)));s.add(dstr(x))}});
+  return HOL[y]=s}
+const isHol=d=>jpHol(+d.slice(0,4)).has(d);
+/* ---------- 定期の予定（毎週の曜日・祝日） ---------- */
+// teiki_plan_rule：[{id, days:[0〜6], hol:true/false, s, e, t}]、その日だけ定期の予定なし：teiki_plan_none [日付]
+const rules=()=>ls.get('teiki_plan_rule',[]);
+function ruleFor(d){const wd=new Date(d+'T00:00').getDay(),h=isHol(d);
+  return rules().filter(r=>((r.days||[]).includes(wd)||(r.hol&&h))&&(r.s||(r.t||'').trim())).map(r=>({s:r.s||'',e:r.e||'',t:r.t||''})).sort((a,b)=>(a.s||'99').localeCompare(b.s||'99'))}
+const noneSet=()=>new Set(ls.get('teiki_plan_none',[]));
+const filled=l=>(l||[]).filter(x=>x.s||(x.t||'').trim());
+// その日の予定：自分で入れたもの → 定期報告の明日の予定 → 定期の予定 の順
+function effPlan(d,rs,all){const me=filled((all||plGet())[d]);if(me.length)return {l:me,src:'me'};
+  if(rs&&rs[d])return {l:rs[d],src:'rep'};if(noneSet().has(d))return {l:[],src:'none'};
+  const r=ruleFor(d);return r.length?{l:r,src:'rule'}:{l:[],src:''}}
+// 「予定」タブで決めた翌日の予定（定期の予定も）を、明日の予定が空なら1回だけ入れる（入れたあとは自由に直せる）
+function schedFromPlan(){const nd=nextDay(R.date),pl=effPlan(nd).l;
   if(R.sched.length||R.schedFilled||!pl.length)return;R.sched=pl.map(x=>({s:x.s||'',e:x.e||'',t:x.t||''}));R.schedFilled=true;save()}
 
 /* ---------- 報告の文章 ---------- */
@@ -771,7 +794,7 @@ $('btnExport').onclick=()=>{
   const blob=new Blob([JSON.stringify({reports:allReports(),cfg:ls.get('teiki_cfg',{}),cf:ls.get('teiki_cf',{}),tasks:{t:ls.get('shin_tasks',[]),d:ls.get('shin_days',{}),r:ls.get('shin_recent',[])},extra:Object.fromEntries(BK_KEYS.map(k=>[k,ls.get(k,null)]))},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='teiki-backup.json';a.click()};
 // 予定・シフト・支払いなどもバックアップに入れる
-const BK_KEYS=['teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once','teiki_reji'];
+const BK_KEYS=['teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once','teiki_reji','teiki_plan_rule','teiki_plan_none'];
 $('btnImport').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
   try{const o=JSON.parse(await f.text());if(!o.reports)throw 0;
@@ -1078,7 +1101,8 @@ function calItems(y,m){const t=todayStr(),first=dstr(new Date(y,m,1)),last=dstr(
   // お店のシフト（1日1行にまとめる）
   Object.entries(ls.get('teiki_shift',{})).forEach(([d,l])=>{if(inM(d)&&l.length)add(d,{c:'sh',k:l.map(x=>x.n).join('・'),t:'シフト'})});
   // 報告の「明日の予定」がまだない日は、「予定」タブで決めた予定を出す
-  Object.entries(ls.get('teiki_plan',{})).forEach(([d,l])=>{if(inM(d)&&!scDone[d])l.forEach(x=>{if((x.t||'').trim()||x.s)add(d,{c:'sc',k:(x.t||'').trim(),t:x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜'):''})})});
+  {const pa=plGet();for(let i=1;i<=new Date(y,m+1,0).getDate();i++){const d=dstr(new Date(y,m,i));if(scDone[d])continue;
+    effPlan(d,null,pa).l.forEach(x=>add(d,{c:'sc',k:(x.t||'').trim(),t:x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜'):''}))}}
   // タスクの期限（終わっていないもの）
   T.forEach(x=>{if(!x.done&&inM(x.due))add(x.due,{c:'tk',k:x.t,t:'タスク期限',late:x.due<t})});
   // 時間のある予定（明日の予定）を時間順に、そのあと支払い・入金予定・タスク・報告
@@ -1093,7 +1117,7 @@ function renderCal(){const now=new Date();if(!calYM)calYM=[now.getFullYear(),now
   for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);if(i>=35&&d.getMonth()!==m)break;
     const ds=dstr(d),l=by[ds]||[],out=d.getMonth()!==m,wd=d.getDay();
     const lab=l.slice(0,3).map(x=>`<span class="e" style="border-color:var(--c-${x.c})">${esc(x.c==='rep'?'報告':x.k||'予定')}</span>`).join('');
-    h+=`<button class="c${out?' out':''}${ds===t?' td':''}${ds===calSel?' sel':''}${wd===0?' su':wd===6?' sa':''}" data-d="${ds}"><span class="n">${d.getDate()}</span>${out?'':lab}${!out&&l.length>3?`<span class="more">+${l.length-3}</span>`:''}</button>`}
+    h+=`<button class="c${out?' out':''}${ds===t?' td':''}${ds===calSel?' sel':''}${wd===0||isHol(ds)?' su':wd===6?' sa':''}" data-d="${ds}"><span class="n">${d.getDate()}${isHol(ds)&&!out?'<small class="hol">祝</small>':''}</span>${out?'':lab}${!out&&l.length>3?`<span class="more">+${l.length-3}</span>`:''}</button>`}
   g.innerHTML=h;
   g.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const d=b.dataset.d,dd=new Date(d+'T00:00');calSel=d;if(dd.getMonth()!==m||dd.getFullYear()!==y){calYM=[dd.getFullYear(),dd.getMonth()]}renderCal()});
   // 選んだ日の中身
@@ -1134,18 +1158,34 @@ function renderPlan(){
   renderMyCal();renderStaff();
 }
 // カレンダーの1マス：お店のシフト（ピンク）と予定（紫）
-function plCell(ds,dayNum,l,sh){const items=[];
+function plCell(ds,dayNum,l,sh,src,hol){const items=[];
   if(sh.length)items.push(`<span class="e" style="border-color:var(--c-sh)">${esc(shSum(sh))}</span>`);
-  l.forEach(x=>items.push(`<span class="e" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`));
-  return `<span class="n">${dayNum}</span>${items.slice(0,3).join('')}${items.length>3?`<span class="more">+${items.length-3}</span>`:''}`}
+  l.forEach(x=>items.push(`<span class="e${src==='rule'?' rl':''}" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`));
+  return `<span class="n">${dayNum}${hol?'<small class="hol">祝</small>':''}</span>${items.slice(0,3).join('')}${items.length>3?`<span class="more">+${items.length-3}</span>`:''}`}
 // 自分の予定：月のカレンダー。日にちを押すと、下にその日の入力欄が開く
 let plYM=null;
+let rlOpen=false;
+function rulesCard(){const card=document.createElement('div');card.className='card';const list=rules(),put=()=>{ls.set('teiki_plan_rule',list);renderPlan()};
+  const sumOf=r=>{const dd=(r.days||[]).slice().sort().map(i=>WD[i]);if(r.hol)dd.push('祝');return `${dd.join('・')||'曜日なし'}　${r.s?tm(r.s)+(r.e?'〜'+tm(r.e):'〜')+' ':''}${(r.t||'').trim()}`};
+  card.innerHTML=`<h2>定期の予定<span class="sub">毎週の決まった予定。カレンダーに自動で出ます</span></h2>`+(list.length?list.map(r=>`<div class="up-i" style="font-size:14px"><span class="k">${esc(sumOf(r))}</span></div>`).join(''):'<div class="hint">まだありません。例：日・祝　鰻いち</div>');
+  const tg=document.createElement('button');tg.className='small-btn addrow';tg.textContent=rlOpen?'閉じる':'＋ 定期の予定を登録・編集';tg.onclick=()=>{rlOpen=!rlOpen;renderPlan()};card.appendChild(tg);
+  if(!rlOpen)return card;
+  const dl=document.createElement('datalist');dl.id='rlWords';dl.innerHTML=chipWords('kw_sched').map(w=>`<option value="${esc(w)}">`).join('');card.appendChild(dl);
+  list.forEach((r,i)=>{const blk=document.createElement('div');blk.className='rblk';
+    const ch=document.createElement('div');ch.className='chips';ch.style.marginTop='0';
+    [...WD].map((w,j)=>[j,w]).concat([['hol','祝']]).forEach(([j,w])=>{const on=j==='hol'?!!r.hol:(r.days||[]).includes(j),b=document.createElement('button');b.className='chip'+(on?' on':'');b.textContent=w;b.style.cssText='min-width:0;width:34px;padding:6px 0;text-align:center';
+      b.onclick=()=>{if(j==='hol')r.hol=!r.hol;else{r.days=r.days||[];const k=r.days.indexOf(j);if(k>=0)r.days.splice(k,1);else r.days.push(j)}put()};ch.appendChild(b)});
+    const row=document.createElement('div');row.className='srow';
+    const s1=timeSel(r.s,v=>{r.s=v;put()}),til=document.createElement('span');til.className='til';til.textContent='〜';const s2=timeSel(r.e,v=>{r.e=v;put()});
+    const x=document.createElement('button');x.className='x';x.textContent='×';x.onclick=()=>{list.splice(i,1);put()};row.append(s1,til,s2,x);
+    const row2=document.createElement('div');row2.className='srow';const ti=document.createElement('input');ti.type='text';ti.className='t';ti.placeholder='内容（例：鰻いち）';ti.value=r.t||'';ti.setAttribute('list','rlWords');ti.onchange=()=>{r.t=ti.value;put()};row2.appendChild(ti);
+    blk.append(ch,row,row2);card.appendChild(blk)});
+  const add=document.createElement('button');add.className='small-btn addrow';add.textContent='＋ 追加';add.onclick=()=>{list.push({id:Date.now(),days:[],hol:false,s:'',e:'',t:''});ls.set('teiki_plan_rule',list);renderPlan()};card.appendChild(add);
+  return card}
 // 定期報告で送った「明日の予定」（前の日の報告に書いたもの）を日付ごとに
 function repSched(){const m={};Object.values(allReports()).forEach(o=>{const l=(o.sched||[]).filter(x=>x.s||(x.t||'').trim());if(l.length)m[nextDay(o.date)]=l.map(x=>({s:x.s||'',e:x.e||'',t:x.t||''}))});return m}
 function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getFullYear(),now.getMonth()];if(!plDay)plDay=t;
-  const [y,m]=plYM,box=$('plDays'),rs=repSched(),all=plGet(),shAll=shGet();box.innerHTML='';
-  // 予定タブで入れていない日は、報告の「明日の予定」を出す
-  Object.entries(rs).forEach(([d,l])=>{if(!(all[d]||[]).some(x=>x.s||(x.t||'').trim()))all[d]=l});
+  const [y,m]=plYM,box=$('plDays'),rs=repSched(),pa=plGet(),shAll=shGet();box.innerHTML='';
   const card=document.createElement('div');card.className='card';
   card.innerHTML=`<div class="trnav"><button aria-label="前の月">◀</button><div class="calm">${(y!==now.getFullYear()?y+'年':'')+(m+1)}月</div><button aria-label="次の月">▶</button></div><div class="calg"></div>`;
   const [pv,nx]=card.querySelectorAll('.trnav button');
@@ -1153,8 +1193,8 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
   const start=new Date(y,m,1-new Date(y,m,1).getDay());
   let h=[...WD].map((w,i)=>`<div class="wd${i===0?' su':i===6?' sa':''}">${w}</div>`).join('');
   for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);if(i>=35&&d.getMonth()!==m)break;
-    const ds=dstr(d),out=d.getMonth()!==m,wd=d.getDay(),l=(all[ds]||[]).filter(x=>x.s||(x.t||'').trim());
-    h+=`<button class="c${out?' out':''}${ds===t?' td':''}${ds===plDay?' sel':''}${wd===0?' su':wd===6?' sa':''}" data-d="${ds}">${plCell(ds,d.getDate(),l,shAll[ds]||[])}</button>`}
+    const ds=dstr(d),out=d.getMonth()!==m,wd=d.getDay(),ep=effPlan(ds,rs,pa),hol=isHol(ds);
+    h+=`<button class="c${out?' out':''}${ds===t?' td':''}${ds===plDay?' sel':''}${wd===0||hol?' su':wd===6?' sa':''}" data-d="${ds}">${plCell(ds,d.getDate(),ep.l,shAll[ds]||[],ep.src,hol&&!out)}</button>`}
   card.querySelector('.calg').innerHTML=h;
   card.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const d=b.dataset.d,dd=new Date(d+'T00:00');plDay=d;if(dd.getMonth()!==m||dd.getFullYear()!==y)plYM=[dd.getFullYear(),dd.getMonth()];renderPlan();
     const ed=$('plDays').querySelector('.pld.on');if(ed)ed.scrollIntoView({behavior:'smooth',block:'nearest'})});
@@ -1171,9 +1211,15 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
         b.onclick=()=>{const k=sl.findIndex(x=>x.n===n);if(k>=0)sl.splice(k,1);else sl.push({n});sl.sort((x,y)=>names.indexOf(x.n)-names.indexOf(y.n));shPut(sa);renderPlan()};ch.appendChild(b)});
       blk.appendChild(ch)}
     const c2=document.createElement('div');c2.className='chl';c2.style.marginTop='14px';c2.textContent='自分の予定';blk.appendChild(c2)}
-  const a=plGet(),fromRep=!(a[d]||[]).some(x=>x.s||(x.t||'').trim())&&rs[d],l=a[d]=fromRep?rs[d]:(a[d]||[]),save2=()=>{plPut(a)};
-  if(fromRep)blk.insertAdjacentHTML('beforeend','<div class="hint">定期報告で送った予定です。直すとこちらの予定として保存されます。</div>');
-  else if(!l.length)blk.insertAdjacentHTML('beforeend','<div class="hint">下の「時間」「予定」を押すと入ります</div>');
+  const a=plGet(),ep=effPlan(d,rs,a),l=a[d]=ep.src==='me'?a[d]:ep.l.map(x=>({...x}));
+  // 保存のたびに、定期の予定がある日を空にしたら「この日はなし」として覚える
+  const save2=()=>{plPut(a);const ns=noneSet();if(!filled(l).length&&ruleFor(d).length)ns.add(d);else ns.delete(d);ls.set('teiki_plan_none',[...ns])};
+  if(isHol(d))blk.querySelector('.pld-h').insertAdjacentHTML('beforeend','<span class="td" style="background:#c2410c">祝日</span>');
+  const hint=t2=>blk.insertAdjacentHTML('beforeend',`<div class="hint">${t2}</div>`);
+  if(ep.src==='rep')hint('定期報告で送った予定です。直すとこちらの予定として保存されます。');
+  else if(ep.src==='rule'){hint('定期の予定です。直すと、この日だけの予定になります。');const b=document.createElement('button');b.className='small-btn';b.style.margin='4px 0';b.textContent='この日は定期の予定なし';b.onclick=()=>{l.length=0;save2();renderPlan()};blk.appendChild(b)}
+  else if(ep.src==='none'){hint('この日は定期の予定をなしにしています。');const b=document.createElement('button');b.className='small-btn';b.style.margin='4px 0';b.textContent='定期の予定に戻す';b.onclick=()=>{const ns=noneSet();ns.delete(d);ls.set('teiki_plan_none',[...ns]);const a2=plGet();delete a2[d];ls.set('teiki_plan',a2);renderPlan()};blk.appendChild(b)}
+  else if(!l.length)hint('下の「時間」「予定」を押すと入ります');
   l.forEach((x,i)=>{const r=document.createElement('div');r.className='srow';
     const s1=timeSel(x.s,v=>{x.s=v;save2();refreshCal()}),til=document.createElement('span');til.className='til';til.textContent='〜';const s2=timeSel(x.e,v=>{x.e=v;save2()});
     const del=document.createElement('button');del.className='x';del.textContent='×';del.onclick=()=>{l.splice(i,1);save2();renderPlan()};
@@ -1189,8 +1235,9 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
   add.onclick=()=>{l.push({s:'',e:'',t:'',_new:1});ls.set('teiki_plan',a);renderPlan();const ts=$('plDays').querySelectorAll('.pld.on input.t');if(ts.length)ts[ts.length-1].focus()};
   blk.appendChild(add);box.appendChild(blk);
   // 手で書き換えたときは、カレンダーのマスだけ書き直す（入力中の欄はそのまま）
-  function refreshCal(){const l2=(plGet()[d]||rs[d]||[]).filter(x=>x.s||(x.t||'').trim()),c=card.querySelector(`[data-d="${d}"]`);if(!c)return;
-    c.innerHTML=plCell(d,dt.getDate(),l2,shGet()[d]||[])}
+  function refreshCal(){const ep2=effPlan(d,rs),c=card.querySelector(`[data-d="${d}"]`);if(c)c.innerHTML=plCell(d,dt.getDate(),ep2.l,shGet()[d]||[],ep2.src,isHol(d))}
+  // 定期の予定の登録・編集
+  box.appendChild(rulesCard());
 }
 
 // 貼り付けたシフトの文章を読む。1行＝1日：「11/5 山田 10:00-15:00、佐藤 17:00-23:00」
