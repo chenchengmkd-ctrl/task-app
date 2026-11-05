@@ -648,14 +648,14 @@ function reportText(){
   if(num(c.bank))L.push(`銀行入金　−${fmt(num(c.bank))}`);
   if(c.outs.length)L.push(`出金　−${fmt(sum(c.outs))}`,...items(c.outs));
   L.push(`残高　${fmt(bal(R,'cash'))}`);
+  // レジ金（屋台現金のすぐ下）：その日に使った・戻した記録と、その日の終わりの残り（基本の金額との差）
+  {const rj=rjState(R.date);L.push('','▼レジ金');
+    rj.rows.filter(x=>x.d===R.date).forEach(x=>L.push(`${x.type==='use'?'使用':'戻し'}　${x.type==='use'?'−':'＋'}${fmt(x.v)}${x.k?'（'+x.k+'）':''}`));
+    L.push(`残り　${fmt(rj.now)}`+(rj.now<rj.base?`（${fmt(rj.base)}まであと${fmt(rj.base-rj.now)}）`:rj.now>rj.base?`（${fmt(rj.base)}より${fmt(rj.now-rj.base)}多い）`:''))}
   const plans=R.plans.filter(p=>(p.k||'').trim()||num(p.v)).slice().sort((x,y)=>(x.d||'9').localeCompare(y.d||'9'));
   if(plans.length){L.push('','▼入出金予定');plans.forEach(p=>L.push(`${p.d?md(p.d)+' ':''}${(p.k||'').trim()}${p.v!==''?fmt(num(p.v)):''}`))}
   const sc=R.sched.filter(s=>s.s||s.e||(s.t||'').trim());
   if(sc.length){L.push('','▼明日の予定');sc.forEach(s=>L.push(`${tm(s.s)}${s.e?'〜'+tm(s.e):(s.s?'〜':'')} ${(s.t||'').trim()}`.trim()))}
-  // レジ金：その日に使った・戻した記録と、その日の終わりの残り（基本の金額との差）
-  {const rj=rjState(R.date);L.push('','▼レジ金');
-    rj.rows.filter(x=>x.d===R.date).forEach(x=>L.push(`${x.type==='use'?'使用':'戻し'}　${x.type==='use'?'−':'＋'}${fmt(x.v)}${x.k?'（'+x.k+'）':''}`));
-    L.push(`残り　${fmt(rj.now)}`+(rj.now<rj.base?`（${fmt(rj.base)}まであと${fmt(rj.base-rj.now)}）`:rj.now>rj.base?`（${fmt(rj.base)}より${fmt(rj.now-rj.base)}多い）`:''))}
   if((R.note||'').trim())L.push('',R.note.trim());
   return L.join('\n');
 }
