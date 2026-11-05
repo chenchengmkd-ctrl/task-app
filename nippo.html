@@ -142,6 +142,7 @@
 <div class="page" id="p-form">
 
   <button class="sumline" id="btnStart"></button>
+  <div class="hint warn" id="syncBar" style="display:none;margin:-4px 4px 10px"></div>
 
   <div class="card quick">
     <h2>会計を記録<span class="sub">1組ぶん選んで、いちばん下の「記録する」を押すと完了です</span>
@@ -284,6 +285,8 @@ function onLsSet(k){if(syncApplying||!SHARED_KEYS.includes(k))return;ls.set('nip
 function markDirty(d){const q=ls.get('nippo_dirty',[]);if(!q.includes(d)){q.push(d);ls.set('nippo_dirty',q)}syncSoon()}
 function syncSoon(){clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,1500)}
 const uOf=o=>+((o&&o._u)||0);
+// 人が書いた中身があるか（記入者・天気・記録・申し送りなど）。中身のある日報を、空の日報で上書きしないために使う
+const hasContent=o=>!!(o&&((o.customers||[]).length||o.who||o.weather||(o.handover||'').trim()||(o.inbound||'').trim()||+o.talked||+o.review));
 // サーバーから来た日報・共有データを取り込む。今開いている日報が変わったら onRemote で画面を描き直す
 function applyRemote(reports,shared){
   let touched=[];
@@ -291,7 +294,8 @@ function applyRemote(reports,shared){
     Object.entries(reports).forEach(([d,rem])=>{if(!rem)return;const loc=a[d];
       if(rem._del){if(loc&&uOf(loc)<=uOf(rem)){delete a[d];touched.push(d)}if(!dels[d]||uOf(dels[d])<uOf(rem))dels[d]=rem;return}
       if(dels[d]&&uOf(dels[d])>=uOf(rem))return;
-      if(!loc||uOf(rem)>uOf(loc)){a[d]=rem;touched.push(d)}});
+      if(hasContent(loc)&&!hasContent(rem)){markDirty(d);return} // 空の日報は、こちらの中身のある日報に勝たせない（こちらを送り直す）
+      if(!loc||uOf(rem)>uOf(loc)||(!hasContent(loc)&&hasContent(rem))){a[d]=rem;touched.push(d)}});
     syncApplying=true;ls.set('nippo_all',a);ls.set('nippo_dels',dels);syncApplying=false}
   let sharedChanged=false;
   if(shared&&shared.data&&uOf(shared)>+ls.get('nippo_shared_u',0)){
@@ -342,6 +346,7 @@ async function syncNow(){
   }catch(e){syncMsg='⚠️ 同期できませんでした（'+(e.message||'通信エラー')+'）。電波が戻ったら自動で送り直します'}
   syncBusy=false;
   const st=document.getElementById('syncState');if(st)st.textContent=syncMsg;
+  const sb=document.getElementById('syncBar');if(sb){const bad=syncMsg.startsWith('⚠️');sb.style.display=bad?'':'none';sb.textContent=bad?syncMsg:''}
   if(syncAgain){syncAgain=false;syncSoon()}
 }
 // 来店経緯のボタン。「＋追加」で足した項目（nippo_src_custom）は「聞けなかった」の前に並ぶ
@@ -413,8 +418,11 @@ function allReports(){return ls.get('nippo_all',{})}
 function latestBefore(date){const a=allReports();const k=Object.keys(a).filter(x=>x<date&&a[x].cum!==''&&a[x].cum!=null).sort().pop();return k?a[k]:null}
 const sameRep=(x,y)=>{const f=o=>JSON.stringify(Object.assign({},o,{_u:0}));return f(x)===f(y)};
 const isBlankRep=r=>sameRep(r,blank(r.date));
-function save(){if(!R.date)return;const a=allReports(),old=a[R.date];
+// auto=true はSquareの売上・累計の自動更新。人の入力ではないので更新時刻を進めない（どの端末でも同じ値になるため、
+// 中身の少ない端末がSquareを読み直しただけで、ほかの端末の入力を上書きしてしまうのを防ぐ）
+function save(auto){if(!R.date)return;const a=allReports(),old=a[R.date];
   if(old&&sameRep(old,R)){R._u=old._u;return} // 開いただけ・中身が同じなら更新時刻を進めない（他の端末の変更を上書きしないため）
+  if(auto&&old){R._u=old._u;a[R.date]=R;ls.set('nippo_all',a);return}
   if(!old&&isBlankRep(R)){R._u=0}            // まだ何も書いていない日は、他の端末の日報に負けるようにする
   else{R._u=Date.now();markDirty(R.date);const dl=ls.get('nippo_dels',{});if(dl[R.date]){delete dl[R.date];ls.set('nippo_dels',dl)}}
   a[R.date]=R;ls.set('nippo_all',a)}
@@ -716,7 +724,7 @@ async function fetchSquare(manual){
     const j=await res.json();
     if(!res.ok||!j.ok)throw new Error(j.error||res.status);
     SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};
-    R.sales=String(j.total);$('sales').value=R.sales;autoCum();save();
+    R.sales=String(j.total);$('sales').value=R.sales;autoCum();save(true);
     sqErr='';if(manual)toast('Squareから更新しました');
   }catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Squareを読めませんでした：'+sqErr)}
   sqBusy=false;$('btnSq').textContent='Square更新';

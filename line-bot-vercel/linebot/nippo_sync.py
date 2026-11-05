@@ -28,6 +28,14 @@ def _u(v):
         return 0
 
 
+def _has_content(v):
+    """人が書いた中身があるか。中身のある日報を、空の日報で上書きしないために使う。"""
+    if not isinstance(v, dict) or v.get('_del'):
+        return False
+    return bool(v.get('customers') or v.get('who') or v.get('weather') or (v.get('handover') or '').strip()
+                or (v.get('inbound') or '').strip() or v.get('talked') or v.get('review'))
+
+
 def _upsert(rows):
     if not rows:
         return True
@@ -64,7 +72,10 @@ def push(reports, shared):
         if not isinstance(rep, dict) or not isinstance(d, str) or len(d) != 10:
             continue
         old = cur.get(PREFIX + d)
-        if old and _u(old) > _u(rep):
+        if _has_content(old) and not _has_content(rep) and not rep.get('_del'):
+            newer[d] = old  # 空の日報で、中身のある日報を上書きしない
+            continue
+        if old and _u(old) > _u(rep) and not (_has_content(rep) and not _has_content(old)):
             newer[d] = old
             continue
         rows.append({'key': PREFIX + d, 'value': rep})
