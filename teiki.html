@@ -126,6 +126,7 @@
   .rrow .x{flex:0 0 34px;height:34px;border-radius:9px;background:var(--soft);color:var(--neg);font-weight:700}
   .kwsel{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px;font-weight:700;padding:0 12px;margin-bottom:10px;color:var(--ink)}
   #p-plan{--c-sc:#6250d6}
+  #p-plan{--c-sh:#e87ba4;--c-sc:#6250d6}
   #p-cf{--c-sh:#e87ba4;--c-pay:#e8853d;--c-inc:#0e7c86;--c-sc:#6250d6;--c-rep:#9aa5a2}
   .calm{flex:1;height:46px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:17px;font-weight:700}
   .callg{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:var(--muted);margin:2px 0 8px}
@@ -301,24 +302,22 @@
 
 <!-- ===== 予定を決める ===== -->
 <div class="page" id="p-plan">
-  <div class="seg" id="plMode"></div>
-  <div class="seg" id="plSeg"></div>
-  <div class="hint" id="plHint" style="margin:-4px 4px 10px"></div>
-  <div class="card" id="shPaste" style="display:none">
-    <button class="small-btn" id="shPasteTog" style="width:100%">📋 シフトを貼り付けて登録</button>
+  <div class="hint" id="plHint" style="margin:0 4px 10px"></div>
+  <div class="card" id="shPaste">
+    <button class="small-btn" id="shPasteTog" style="width:100%">📋 お店のシフトを貼り付けて登録</button>
     <div id="shPasteBody" style="display:none;margin-top:10px">
       <div class="hint" style="margin:0 0 6px">チャットで読み取ったシフトの文章を貼り付けます。1日1行で「11/5 かな、江夏」の形です（休みの日は「11/8 なし」）。</div>
       <textarea id="shText" style="min-height:140px;font-size:14px" placeholder="11/5 かな、江夏&#10;11/6 上原、江夏&#10;11/8 なし"></textarea>
       <button class="small-btn addrow" id="shRead">読み取る</button>
       <div id="shPrev"></div>
+      <div id="stCard" style="margin-top:16px">
+        <div class="chl">スタッフ（シフトに出てくる名前。貼り付けると自動で増えます）</div>
+        <div id="stList"></div>
+        <div class="tadd" style="margin-top:10px"><input type="text" id="stNew" placeholder="名前を書く" enterkeyhint="done"><button id="stAdd">追加</button></div>
+      </div>
     </div>
   </div>
   <div id="plDays"></div>
-  <div class="card" id="stCard" style="display:none">
-    <h2>スタッフ<span class="sub">シフトに出てくる名前です</span></h2>
-    <div id="stList"></div>
-    <div class="tadd" style="margin-top:10px"><input type="text" id="stNew" placeholder="名前を書く" enterkeyhint="done"><button id="stAdd">追加</button></div>
-  </div>
 </div>
 
 <!-- ===== 資金繰り（支払い日前の報告）===== -->
@@ -1099,8 +1098,7 @@ $('calNext').onclick=()=>{const [y,m]=calYM,d=new Date(y,m+1,1);calYM=[d.getFull
 /* ---------- 予定を決める（今週・来週・再来週・来月） ---------- */
 // teiki_plan：{YYYY-MM-DD: [{s,e,t}]}
 const PL_TABS=[['w0','今週'],['w1','来週'],['w2','再来週'],['m1','来月']];
-const PL_MODES=[['me','自分の予定'],['shop','お店のシフト']];
-let plTab='w0',plDay=null,plMode=ls.get('teiki_pl_mode','me');
+let plTab='w0',plDay=null;
 // お店のシフト teiki_shift：{YYYY-MM-DD: [{n, s, e}]}、スタッフ teiki_staff：[名前]
 const shGet=()=>ls.get('teiki_shift',{}),shPut=a=>{const old=dstr(new Date(Date.now()-62*864e5));Object.keys(a).forEach(d=>{if(!a[d].length||d<old)delete a[d]});ls.set('teiki_shift',a)};
 const staff=()=>ls.get('teiki_staff',[]);
@@ -1116,22 +1114,23 @@ const plGet=()=>ls.get('teiki_plan',{}),plPut=a=>{// 空の日と、2か月よ�
   const old=dstr(new Date(Date.now()-62*864e5));Object.keys(a).forEach(d=>{a[d]=a[d].filter(x=>x.s||x.e||(x.t||'').trim()||(x._new&&d===plDay));if(!a[d].length||d<old)delete a[d]});ls.set('teiki_plan',a)};
 function plDates(k){const t=new Date();if(k==='m1'){const y=t.getFullYear(),m=t.getMonth()+1,n=new Date(y,m+1,0).getDate();return [...Array(n)].map((_,i)=>dstr(new Date(y,m,i+1)))}
   const a=monday(t);a.setDate(a.getDate()+7*+k.slice(1));return [...Array(7)].map((_,i)=>{const d=new Date(a);d.setDate(a.getDate()+i);return dstr(d)})}
+// 自分の予定とお店のシフトを1つのカレンダーで見る（シフトは写真を読み取った文章を貼るだけなので、別の画面にしない）
 function renderPlan(){
-  segBtns($('plMode'),PL_MODES,plMode,k=>{plMode=k;ls.set('teiki_pl_mode',k);plDay=null;renderPlan()});
-  segBtns($('plSeg'),PL_TABS,plTab,k=>{plTab=k;plDay=null;renderPlan()});
-  if(plMode==='me'&&plDay===null)plDay=todayStr();
-  $('stCard').style.display=$('shPaste').style.display=plMode==='shop'?'':'none';
-  $('plHint').textContent=plMode==='shop'?'日にちを押すと、スタッフの名前が出ます。出勤する人を押してください。':'日にちを押すと、下にその日の入力欄が開きます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
-  $('plSeg').style.display=plMode==='shop'?'':'none';
-  if(plMode==='shop'){renderShift();renderStaff();return}
-  renderMyCal();
+  if(plDay===null)plDay=todayStr();
+  $('plHint').textContent='日にちを押すと、下にその日の予定とお店のシフトが開きます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
+  renderMyCal();renderStaff();
 }
+// カレンダーの1マス：お店のシフト（ピンク）と予定（紫）
+function plCell(ds,dayNum,l,sh){const items=[];
+  if(sh.length)items.push(`<span class="e" style="border-color:var(--c-sh)">${esc(shSum(sh))}</span>`);
+  l.forEach(x=>items.push(`<span class="e" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`));
+  return `<span class="n">${dayNum}</span>${items.slice(0,3).join('')}${items.length>3?`<span class="more">+${items.length-3}</span>`:''}`}
 // 自分の予定：月のカレンダー。日にちを押すと、下にその日の入力欄が開く
 let plYM=null;
 // 定期報告で送った「明日の予定」（前の日の報告に書いたもの）を日付ごとに
 function repSched(){const m={};Object.values(allReports()).forEach(o=>{const l=(o.sched||[]).filter(x=>x.s||(x.t||'').trim());if(l.length)m[nextDay(o.date)]=l.map(x=>({s:x.s||'',e:x.e||'',t:x.t||''}))});return m}
 function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getFullYear(),now.getMonth()];if(!plDay)plDay=t;
-  const [y,m]=plYM,box=$('plDays'),rs=repSched(),all=plGet();box.innerHTML='';
+  const [y,m]=plYM,box=$('plDays'),rs=repSched(),all=plGet(),shAll=shGet();box.innerHTML='';
   // 予定タブで入れていない日は、報告の「明日の予定」を出す
   Object.entries(rs).forEach(([d,l])=>{if(!(all[d]||[]).some(x=>x.s||(x.t||'').trim()))all[d]=l});
   const card=document.createElement('div');card.className='card';
@@ -1142,8 +1141,7 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
   let h=[...WD].map((w,i)=>`<div class="wd${i===0?' su':i===6?' sa':''}">${w}</div>`).join('');
   for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);if(i>=35&&d.getMonth()!==m)break;
     const ds=dstr(d),out=d.getMonth()!==m,wd=d.getDay(),l=(all[ds]||[]).filter(x=>x.s||(x.t||'').trim());
-    const lab=l.slice(0,3).map(x=>`<span class="e" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`).join('');
-    h+=`<button class="c${out?' out':''}${ds===t?' td':''}${ds===plDay?' sel':''}${wd===0?' su':wd===6?' sa':''}" data-d="${ds}"><span class="n">${d.getDate()}</span>${lab}${l.length>3?`<span class="more">+${l.length-3}</span>`:''}</button>`}
+    h+=`<button class="c${out?' out':''}${ds===t?' td':''}${ds===plDay?' sel':''}${wd===0?' su':wd===6?' sa':''}" data-d="${ds}">${plCell(ds,d.getDate(),l,shAll[ds]||[])}</button>`}
   card.querySelector('.calg').innerHTML=h;
   card.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const d=b.dataset.d,dd=new Date(d+'T00:00');plDay=d;if(dd.getMonth()!==m||dd.getFullYear()!==y)plYM=[dd.getFullYear(),dd.getMonth()];renderPlan();
     const ed=$('plDays').querySelector('.pld.on');if(ed)ed.scrollIntoView({behavior:'smooth',block:'nearest'})});
@@ -1151,6 +1149,15 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
   // 選んだ日の入力欄
   const d=plDay,dt=new Date(d+'T00:00'),wd=dt.getDay(),blk=document.createElement('div');blk.className='pld on';
   blk.innerHTML=`<div class="pld-h"><span class="${wd===0?'su':wd===6?'sa':''}">${md(d)}（${WD[wd]}）</span>${d===t?'<span class="td">今日</span>':''}</div>`;
+  // お店のシフト：押すと出勤／休みが切り替わる。スタッフ一覧にない名前（消した人）も、入っていれば出す
+  {const sa=shGet(),sl=sa[d]=sa[d]||[],st=staff(),names=[...st,...sl.map(x=>x.n).filter(n=>!st.includes(n))];
+    const c=document.createElement('div');c.className='chl';c.textContent='お店のシフト（出勤する人を押します）';blk.appendChild(c);
+    if(!names.length)blk.insertAdjacentHTML('beforeend','<div class="hint">上の「お店のシフトを貼り付けて登録」から入れます</div>');
+    else{const ch=document.createElement('div');ch.className='chips';
+      names.forEach(n=>{const b=document.createElement('button'),inn=sl.some(x=>x.n===n);b.className='chip'+(inn?' on':'');b.textContent=n;
+        b.onclick=()=>{const k=sl.findIndex(x=>x.n===n);if(k>=0)sl.splice(k,1);else sl.push({n});sl.sort((x,y)=>names.indexOf(x.n)-names.indexOf(y.n));shPut(sa);renderPlan()};ch.appendChild(b)});
+      blk.appendChild(ch)}
+    const c2=document.createElement('div');c2.className='chl';c2.style.marginTop='14px';c2.textContent='自分の予定';blk.appendChild(c2)}
   const a=plGet(),fromRep=!(a[d]||[]).some(x=>x.s||(x.t||'').trim())&&rs[d],l=a[d]=fromRep?rs[d]:(a[d]||[]),save2=()=>{plPut(a)};
   if(fromRep)blk.insertAdjacentHTML('beforeend','<div class="hint">定期報告で送った予定です。直すとこちらの予定として保存されます。</div>');
   else if(!l.length)blk.insertAdjacentHTML('beforeend','<div class="hint">下の「時間」「予定」を押すと入ります</div>');
@@ -1170,7 +1177,7 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
   blk.appendChild(add);box.appendChild(blk);
   // 手で書き換えたときは、カレンダーのマスだけ書き直す（入力中の欄はそのまま）
   function refreshCal(){const l2=(plGet()[d]||rs[d]||[]).filter(x=>x.s||(x.t||'').trim()),c=card.querySelector(`[data-d="${d}"]`);if(!c)return;
-    c.innerHTML=`<span class="n">${dt.getDate()}</span>`+l2.slice(0,3).map(x=>`<span class="e" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`).join('')+(l2.length>3?`<span class="more">+${l2.length-3}</span>`:'')}
+    c.innerHTML=plCell(d,dt.getDate(),l2,shGet()[d]||[])}
 }
 
 // 貼り付けたシフトの文章を読む。1行＝1日：「11/5 山田 10:00-15:00、佐藤 17:00-23:00」
@@ -1202,32 +1209,11 @@ function renderShPrev(){const box=$('shPrev');box.innerHTML='';if(!SHP)return;co
     if(newN.length)ls.set('teiki_staff',[...staff(),...newN]);
     SHP=null;$('shText').value='';$('shPasteBody').style.display='none';
     // 登録した週を開く
-    const w0=monday(new Date()),dd=new Date(days[0].date+'T00:00'),wk=Math.round((monday(dd)-w0)/(7*864e5));plTab=wk>=0&&wk<=2?'w'+wk:plTab;plDay=null;renderPlan();
+    const dd=new Date(days[0].date+'T00:00');plYM=[dd.getFullYear(),dd.getMonth()];plDay=days[0].date;renderPlan();
     toast(`${days.length}日分のシフトを登録しました`,()=>{ls.set('teiki_shift',before);ls.set('teiki_staff',beforeSt);renderPlan()})};
   box.appendChild(b)}
 $('shPasteTog').onclick=()=>{const b=$('shPasteBody');b.style.display=b.style.display==='none'?'':'none'};
 $('shRead').onclick=()=>{SHP=shParse($('shText').value);renderShPrev()};
-function renderShift(){
-  const days=plDates(plTab),all=shGet(),t=todayStr(),box=$('plDays'),st=staff();box.innerHTML='';
-  if(!st.length)box.insertAdjacentHTML('beforeend','<div class="hint warn" style="margin:0 4px 10px">まずページの下の「スタッフ」で名前を登録してください。</div>');
-  if(plTab!=='m1'){const prev=plDates('w'+(+plTab.slice(1)-1)),has=prev.some(d=>(all[d]||[]).length);
-    const b=document.createElement('button');b.className='small-btn';b.style.marginBottom='8px';b.textContent='前の週と同じにする（空いている日だけ）';b.disabled=!has;b.style.opacity=has?1:.4;
-    b.onclick=()=>{const a=shGet();let n=0;days.forEach((d,i)=>{if((a[d]||[]).length||!(a[prev[i]]||[]).length)return;a[d]=a[prev[i]].map(x=>({n:x.n}));n++});shPut(a);renderPlan();toast(n?`${n}日分を写しました`:'写せる日がありませんでした')};
-    box.appendChild(b)}
-  days.forEach(d=>{const dt=new Date(d+'T00:00'),wd=dt.getDay(),list=all[d]||[],on=plDay===d;
-    const blk=document.createElement('div');blk.className='pld'+(d<t?' past':'')+(on?' on':'');
-    const h=document.createElement('button');h.className='pld-h';
-    h.innerHTML=`<span class="${wd===0?'su':wd===6?'sa':''}">${md(d)}（${WD[wd]}）</span>${d===t?'<span class="td">今日</span>':''}<span class="sm">${on?'':esc(list.length?shSum(list):'＋ シフトを入れる')}</span>`;
-    h.onclick=()=>{plDay=on?null:d;renderPlan()};blk.appendChild(h);
-    if(on){const a=shGet(),l=a[d]=a[d]||[];
-      // 押すと出勤／休みが切り替わる。スタッフ一覧にない名前（消した人）も、入っていれば出す
-      const names=[...st,...l.map(x=>x.n).filter(n=>!st.includes(n))],ch=document.createElement('div');ch.className='chips';
-      names.forEach(n=>{const b=document.createElement('button'),inn=l.some(x=>x.n===n);b.className='chip'+(inn?' on':'');b.textContent=n;
-        b.onclick=()=>{const k=l.findIndex(x=>x.n===n);if(k>=0)l.splice(k,1);else l.push({n});l.sort((x,y)=>names.indexOf(x.n)-names.indexOf(y.n));shPut(a);renderPlan()};ch.appendChild(b)});
-      blk.insertAdjacentHTML('beforeend','<div class="hint" style="margin-top:4px">出勤する人を押します（もう一度押すと外れます）</div>');blk.appendChild(ch)}
-    box.appendChild(blk)});
-}
-
 /* ---------- レジ金（使ったとき・戻したときだけ記録） ---------- */
 // teiki_reji：{base:30000, log:[{id,d,type:'use'|'back',v,k}]}
 const rjGet=()=>Object.assign({base:30000,log:[]},ls.get('teiki_reji',{})),rjPut=o=>ls.set('teiki_reji',o);
