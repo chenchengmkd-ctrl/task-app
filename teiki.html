@@ -1599,9 +1599,8 @@ function tomorrowSched(){const nd=nextDay(tToday),r=allReports()[tToday];if(r&&f
 function tomorrowTasks(){const nd=nextDay(tToday),out=[];
   T.forEach(x=>{const st=tkSteps(x);if(st.length)st.forEach(y=>{if(!y.done&&y.d===nd)out.push(`${y.t}（${x.t}）`)});else if(!x.done&&x.d===nd)out.push(x.t)});return out}
 const itemLabel=it=>it.t+(it.kind==='st'?`（${it.sub}）`:'');
-function planText(){const d=tDay(),it=todayItems(),tasks=it.filter(x=>x.kind!=='rt'&&!x.on),r=it.filter(x=>x.kind==='rt'),sc=schedLines(todaySched()),ask=(d.ask||'').trim();
-  const L=['おはようございます。',`本日の予定とタスクです。${d.deadline?tm(d.deadline)+'までに進捗を報告いたします。':''}`];
-  if(sc.length)L.push('','【本日の予定】',...sc);
+function planText(){const d=tDay(),it=todayItems(),tasks=it.filter(x=>x.kind!=='rt'&&!x.on),r=it.filter(x=>x.kind==='rt'),ask=(d.ask||'').trim();
+  const L=['おはようございます。',`本日のタスクです。${d.deadline?tm(d.deadline)+'までに進捗を報告いたします。':''}`];
   L.push('',`【本日のタスク】${tasks.length}件`);
   tasks.forEach((x,i)=>{const due=x.x&&x.x.due?`／期限${md(x.x.due)}`:'';L.push(`${i+1}. ${x.t}${x.kind==='st'?`（${x.sub}${due}）`:due?`（${due.slice(1)}）`:''}${x.late?` ※${md(x.late)}予定分`:''}`)});
   if(!tasks.length)L.push('なし');
