@@ -107,6 +107,9 @@
   .td-i .acts{display:flex;gap:4px}
   .td-i .acts button{padding:4px 8px;border-radius:8px;font-size:12px;font-weight:700;background:var(--soft);color:var(--muted);white-space:nowrap}
   .td-i .acts button.on{background:#fff4e0;color:var(--warn)}
+  .td-g{font-size:13px;font-weight:800;color:var(--muted);margin:12px 0 2px;padding-bottom:4px;border-bottom:2px solid var(--line)}
+  .td-g:first-child{margin-top:4px}
+  .td-g b{color:var(--ink)}
   .td-wip{padding:0 2px 8px 38px}
   .td-wip input{padding:7px 9px;font-size:13px}
   .td-i.wip .tx{color:var(--warn)}
@@ -424,25 +427,32 @@
     <input type="time" id="dueTime">
   </div>
   <div class="card">
-    <h2>今日やること<span class="sub" id="tdSub"></span></h2>
+    <h2>今日のタスク<span class="sub" id="tdSub"></span></h2>
+    <div class="hint" style="margin:-6px 0 4px">チェックで完了、「着手」でどこまでやったかを書き、「明日へ」で明日に回します。</div>
     <div id="today"></div>
   </div>
   <div class="card">
-    <h2>毎日やること<span class="sub">今日やることにチェック欄が出ます</span></h2>
-    <div id="routines"></div>
-    <div class="tadd" style="margin-top:8px"><input type="text" id="newRt" placeholder="例：チラシ配り、インスタ投稿" enterkeyhint="done"><button id="btnRt">追加</button></div>
-  </div>
-  <div class="card">
-    <h2>タスク<span class="sub">期限と、それまでにやる細かいこと</span></h2>
+    <h2>タスクの状況<span class="sub">期限と、それまでにやる細かいこと</span></h2>
     <div class="tadd"><input type="text" id="newTask" placeholder="タスクを書く（例：チラシ完成）" enterkeyhint="done"><button id="btnAdd">追加</button></div>
     <div class="chips" id="recent"></div>
     <div id="tasks"></div>
   </div>
   <div class="card">
-    <h2>確認・相談したいこと<span class="sub">任意。報告の最後に入ります</span></h2>
+    <h2>毎日やること<span class="sub">やったらチェック</span></h2>
+    <div id="routines"></div>
+    <div class="tadd" style="margin-top:8px"><input type="text" id="newRt" placeholder="例：チラシ配り、インスタ投稿" enterkeyhint="done"><button id="btnRt">追加</button></div>
+  </div>
+  <div class="card">
+    <h2>確認したいこと<span class="sub">任意。報告に入ります</span></h2>
     <textarea id="tAsk" placeholder="例：チラシの印刷部数は300枚で進めてよいでしょうか" style="min-height:60px;font-size:14px"></textarea>
   </div>
-  <div class="hint" style="margin:4px 4px 14px">朝に「予定を送る」、終わったら「進捗を送る」。細かいことにやる日を入れておくと、その日の「今日やること」に自動で出ます。</div>
+  <div class="card">
+    <h2>明日のタスク<span class="sub" id="tmSub"></span></h2>
+    <div id="tmList"></div>
+    <div class="tadd" style="margin-top:8px"><input type="text" id="newTm" placeholder="明日やることを追加" enterkeyhint="done"><button id="btnTm">追加</button></div>
+    <div class="chips" id="tmChips"></div>
+  </div>
+  <div class="hint" style="margin:4px 4px 14px">上から順に入れていくと、そのまま「進捗を送る」の文面になります。細かいことにやる日を入れておくと、その日の「今日のタスク」に自動で出ます。</div>
 </div>
 <div class="page" id="p-tsend">
   <div class="card">
@@ -1499,43 +1509,55 @@ const tkProg=x=>{const st=tkSteps(x);return st.length?[st.filter(y=>y.done).leng
 // 今日やること：毎日やること＋やる日が今日まで（過ぎて終わっていないもの含む）の細かいこと＋ステップのないタスク
 // 今日やること：毎日やること＋やる日が今日まで（過ぎて終わっていないもの含む）の細かいこと＋ステップのないタスク
 // 細かいこと・タスクには「着手」（wip=その日付、note=どこまでやったか）を付けられる
-function todayItems(){const t=tToday,out=[],lg=rtLog()[t]||[];
-  rts().forEach(r=>out.push({kind:'rt',id:r.id,t:r.t,on:lg.includes(r.id)}));
+function todayItems(){const t=tToday,out=[];
   T.forEach(x=>{const st=tkSteps(x);
-    if(st.length)st.forEach(y=>{if((y.d&&y.d<=t&&!y.done)||(y.done&&y.doneDate===t))out.push({kind:'st',x,o:y,t:y.t,sub:x.t,on:y.done,late:!y.done&&y.d<t?y.d:''})});
-    else if(!x.done&&(!x.d||x.d<=t)||x.done&&x.doneDate===t)out.push({kind:'tk',x,o:x,t:x.t,sub:x.due?`期限 ${md(x.due)}`:'',on:x.done,late:!x.done&&x.d&&x.d<t?x.d:''})});
-  out.forEach(it=>{if(it.o)it.wip=!it.on&&it.o.wip===t});
+    if(st.length)st.forEach(y=>{if((y.d&&y.d<=t&&!y.done)||(y.done&&y.doneDate===t)||(y.moved===t&&!y.done))out.push({kind:'st',x,o:y,t:y.t,sub:x.t,on:y.done,late:!y.done&&y.d<t?y.d:''})});
+    else if(!x.done&&(!x.d||x.d<=t)||x.done&&x.doneDate===t||x.moved===t&&!x.done)out.push({kind:'tk',x,o:x,t:x.t,sub:x.due?`期限 ${md(x.due)}`:'',on:x.done,late:!x.done&&x.d&&x.d<t?x.d:''})});
+  out.forEach(it=>{it.wip=!it.on&&it.o.wip===t;it.moved=!it.on&&it.o.moved===t&&it.o.d>t});
   return out}
+// 今日のタスクを報告と同じ【完了】【着手】【未着手】に分けて出す
 function renderToday(){const box=$('today'),items=todayItems();box.innerHTML='';
-  const n=items.filter(x=>x.on).length;$('tdSub').textContent=items.length?`${n}/${items.length} できた`:'';
-  if(!items.length){box.innerHTML='<div class="hint">今日やることはありません。下の「タスク」で細かいことにやる日を入れると、ここに出ます。</div>';return}
-  items.forEach(it=>{const e=document.createElement('div');e.className='td-i'+(it.on?' on':'')+(it.wip?' wip':'');
-    e.innerHTML=`<button class="cb" aria-label="できた">${it.on?'✓':''}</button><span class="tx">${esc(it.t)}${it.sub?`<small>${esc(it.sub)}</small>`:''}</span>${it.kind==='rt'?'<span class="tag">毎日</span>':''}${it.late?`<span class="tag late">${md(it.late)}から</span>`:''}`+
-      (it.kind!=='rt'&&!it.on?`<span class="acts"><button class="wp${it.wip?' on':''}">着手</button><button class="tm">明日へ</button></span>`:'');
-    e.querySelector('.cb').onclick=()=>{
-      if(it.kind==='rt'){const lg=rtLog(),l=lg[tToday]=lg[tToday]||[],k=l.indexOf(it.id);if(k>=0)l.splice(k,1);else l.push(it.id);
-        Object.keys(lg).forEach(d=>{if(d<dstr(new Date(Date.now()-60*864e5)))delete lg[d]});ls.set('teiki_rtlog',lg)}
-      else{it.o.done=!it.o.done;it.o.doneDate=it.o.done?tToday:'';if(it.o.done)it.o.wip='';saveT()}
-      renderTasks()};
-    if(it.kind!=='rt'&&!it.on){
+  const done=items.filter(x=>x.on),wip=items.filter(x=>!x.on&&x.wip),todo=items.filter(x=>!x.on&&!x.wip);
+  $('tdSub').textContent=items.length?`完了${done.length}／着手${wip.length}／未着手${todo.length}（全${items.length}件）`:'';
+  if(!items.length){box.innerHTML='<div class="hint">今日のタスクはありません。「タスクの状況」で細かいことにやる日を入れると、ここに出ます。</div>';return}
+  const row=it=>{const e=document.createElement('div');e.className='td-i'+(it.on?' on':'')+(it.wip?' wip':'');
+    e.innerHTML=`<button class="cb" aria-label="完了">${it.on?'✓':''}</button><span class="tx">${esc(it.t)}${it.sub?`<small>${esc(it.sub)}</small>`:''}</span>${it.moved?'<span class="tag">明日対応</span>':it.late?`<span class="tag late">${md(it.late)}から</span>`:''}`+
+      (!it.on?`<span class="acts"><button class="wp${it.wip?' on':''}">着手</button>${it.moved?'<button class="bk">今日に戻す</button>':'<button class="tm">明日へ</button>'}</span>`:'');
+    e.querySelector('.cb').onclick=()=>{it.o.done=!it.o.done;it.o.doneDate=it.o.done?tToday:'';if(it.o.done){it.o.wip='';if(it.moved){it.o.d=tToday;it.o.moved=''}}saveT();renderTasks()};
+    if(!it.on){
       e.querySelector('.wp').onclick=()=>{it.o.wip=it.wip?'':tToday;saveT();renderTasks();if(!it.wip){const w=$('today').querySelectorAll('.td-wip input');w.forEach(x=>{if(x.dataset.id==it.o.id)x.focus()})}};
-      // 今日できないものは明日に回す（報告には「明日対応」と書く）
-      e.querySelector('.tm').onclick=()=>{const old=it.o.d;it.o.d=nextDay(tToday);it.o.moved=tToday;saveT();renderTasks();toast(`「${it.t}」を明日に回しました`,()=>{it.o.d=old;it.o.moved='';saveT();renderTasks()})}}
+      if(it.moved)e.querySelector('.bk').onclick=()=>{it.o.d=it.o.prevD||tToday;it.o.moved='';saveT();renderTasks()};
+      else e.querySelector('.tm').onclick=()=>{it.o.prevD=it.o.d||'';it.o.d=nextDay(tToday);it.o.moved=tToday;saveT();renderTasks()}}
     box.appendChild(e);
-    if(it.wip){const w=document.createElement('div');w.className='td-wip';const inp=document.createElement('input');inp.type='text';inp.dataset.id=it.o.id;inp.placeholder='どこまでやったか（例：文面の案を3つ作った。残りは写真選び）';inp.value=it.o.note||'';
-      inp.oninput=()=>{it.o.note=inp.value;saveT()};w.appendChild(inp);box.appendChild(w)}})}
-function renderRoutines(){const box=$('routines'),l=rts(),lg=rtLog();box.innerHTML=l.length?'':'<div class="hint">まだありません</div>';
-  l.forEach((r,i)=>{const e=document.createElement('div');e.className='rt';
+    if(it.wip){const w=document.createElement('div');w.className='td-wip';const inp=document.createElement('input');inp.type='text';inp.dataset.id=it.o.id;inp.placeholder='どこまでやったか（例：候補を3枚撮影。残りは店内の写真）';inp.value=it.o.note||'';
+      inp.oninput=()=>{it.o.note=inp.value;saveT()};w.appendChild(inp);box.appendChild(w)}};
+  [['完了',done],['着手',wip],['未着手',todo]].forEach(([nm,l])=>{box.insertAdjacentHTML('beforeend',`<div class="td-g">【${nm}】<b>${l.length}件</b></div>`);
+    if(!l.length)box.insertAdjacentHTML('beforeend','<div class="hint" style="margin:4px 2px 6px">なし</div>');l.forEach(row)})}
+function renderRoutines(){const box=$('routines'),l=rts(),lg=rtLog(),td=lg[tToday]||[];box.innerHTML=l.length?'':'<div class="hint">まだありません</div>';
+  l.forEach((r,i)=>{const e=document.createElement('div');e.className='rt td-i'+(td.includes(r.id)?' on':'');
     // 直近7日（左が古い、右が今日）
     const dots=[...Array(7)].map((_,k)=>{const d=dstr(new Date(Date.now()-(6-k)*864e5));return (lg[d]||[]).includes(r.id)?'●':'<i>●</i>'}).join('');
-    e.innerHTML=`<span class="n"></span><span class="dots" title="直近7日">${dots}</span><button class="x" aria-label="消す">×</button>`;e.querySelector('.n').textContent=r.t;
+    e.innerHTML=`<button class="cb" aria-label="やった">${td.includes(r.id)?'✓':''}</button><span class="n tx"></span><span class="dots" title="直近7日">${dots}</span><button class="x" aria-label="消す">×</button>`;e.querySelector('.n').textContent=r.t;
+    e.querySelector('.cb').onclick=()=>{const g=rtLog(),a=g[tToday]=g[tToday]||[],k=a.indexOf(r.id);if(k>=0)a.splice(k,1);else a.push(r.id);
+      Object.keys(g).forEach(d=>{if(d<dstr(new Date(Date.now()-60*864e5)))delete g[d]});ls.set('teiki_rtlog',g);renderTasks()};
     e.querySelector('.x').onclick=()=>{const a=rts();a.splice(i,1);ls.set('teiki_rt',a);renderTasks();toast(`「${r.t}」を消しました`,()=>{const b=rts();b.splice(i,0,r);ls.set('teiki_rt',b);renderTasks()})};
     box.appendChild(e)})}
+// 明日のタスク：やる日が明日のもの。×で外す、その場で追加、日が決まっていないものをボタンで明日に入れる
+function tmItems(){const nd=nextDay(tToday),out=[];T.forEach(x=>{const st=tkSteps(x);if(st.length)st.forEach(y=>{if(!y.done&&y.d===nd)out.push({o:y,t:y.t,sub:x.t})});else if(!x.done&&x.d===nd)out.push({o:x,t:x.t})});return out}
+function renderTomorrow(){const nd=nextDay(tToday),l=tmItems(),box=$('tmList');$('tmSub').textContent=`${md(nd)}・${l.length}件`;box.innerHTML=l.length?'':'<div class="hint">まだありません</div>';
+  l.forEach(it=>{const e=document.createElement('div');e.className='td-i';e.innerHTML=`<span class="tx">${esc(it.t)}${it.sub?`<small>${esc(it.sub)}</small>`:''}</span><button class="x" aria-label="外す" style="flex:0 0 28px;height:28px;border-radius:8px;color:var(--muted);background:none;font-size:16px">×</button>`;
+    e.querySelector('.x').onclick=()=>{const o=it.o;if(o.moved===tToday){o.d=o.prevD||tToday;o.moved=''}else o.d='';saveT();renderTasks()};box.appendChild(e)});
+  // 候補：終わっていなくて、やる日が決まっていない（または明日より後の）もの
+  const ch=$('tmChips');ch.innerHTML='';const cand=[];
+  T.forEach(x=>{const st=tkSteps(x);if(st.length)st.forEach(y=>{if(!y.done&&(!y.d||y.d>nd))cand.push({o:y,t:y.t,sub:x.t})});else if(!x.done&&x.d&&x.d>nd)cand.push({o:x,t:x.t})});
+  cand.slice(0,10).forEach(c=>{const b=document.createElement('button');b.className='chip';b.textContent='＋ '+c.t+(c.sub?`（${c.sub}）`:'');b.onclick=()=>{c.o.d=nd;saveT();renderTasks()};ch.appendChild(b)})}
+function tmAdd(){const v=$('newTm').value.trim();if(!v)return;T.push({id:Date.now(),t:v,done:false,doneDate:'',memo:'',added:tToday,due:'',d:nextDay(tToday),steps:[]});remember(v);saveT();$('newTm').value='';renderTasks()}
+$('btnTm').onclick=tmAdd;$('newTm').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing)tmAdd()});
 function rtAdd(){const v=$('newRt').value.trim();if(!v)return;const a=rts();if(!a.some(x=>x.t===v))a.push({id:Date.now(),t:v});ls.set('teiki_rt',a);$('newRt').value='';renderTasks()}
 $('tAsk').oninput=()=>{tDay().ask=$('tAsk').value;saveTD()};
 $('btnRt').onclick=rtAdd;$('newRt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing)rtAdd()});
 function renderTasks(){
-  renderToday();renderRoutines();$('tAsk').value=tDay().ask||'';
+  renderToday();renderRoutines();renderTomorrow();$('tAsk').value=tDay().ask||'';
   const box=$('tasks');box.innerHTML='';
   if(!T.length)box.innerHTML='<div class="hint" style="margin-top:12px">まだタスクがありません</div>';
   T.forEach((x,i)=>{const st=tkSteps(x),[dn,all]=tkProg(x),open=tkOpen===x.id,e=document.createElement('div');e.className='tk'+(x.done?' done':'');
@@ -1590,16 +1612,8 @@ function renderDue(){
 $('dueTime').onchange=()=>{tDay().deadline=$('dueTime').value;saveTD();renderDue()};
 // ---- 報告の文面（山下さんとのやりとりから：結論＝件数を先に、完了・着手・未着手の順に分ける、着手は「どこまで」、
 //      終わらなかったものは「いつやるか」、判断を仰ぐことは別に、明日の予定も前もって）
-function schedLines(l){return filled(l).map(x=>`・${x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜')+' ':''}${(x.t||'').trim()}`)}
-// 今日の時間の予定：前の日の報告の「明日の予定」→ 予定タブ
-function todaySched(){const t=tToday,rs=repSched();return effPlan(t,rs).l}
-// 明日の時間の予定：今日の資金報告の「明日の予定」→ 予定タブ
-function tomorrowSched(){const nd=nextDay(tToday),r=allReports()[tToday];if(r&&filled(r.sched).length)return r.sched;return effPlan(nd).l}
-// 明日やるタスク：やる日が明日の細かいこと・タスク（明日に回したもの含む）
-function tomorrowTasks(){const nd=nextDay(tToday),out=[];
-  T.forEach(x=>{const st=tkSteps(x);if(st.length)st.forEach(y=>{if(!y.done&&y.d===nd)out.push(`${y.t}（${x.t}）`)});else if(!x.done&&x.d===nd)out.push(x.t)});return out}
 const itemLabel=it=>it.t+(it.kind==='st'?`（${it.sub}）`:'');
-function planText(){const d=tDay(),it=todayItems(),tasks=it.filter(x=>x.kind!=='rt'&&!x.on),r=it.filter(x=>x.kind==='rt'),ask=(d.ask||'').trim();
+function planText(){const d=tDay(),tasks=todayItems().filter(x=>!x.on&&!x.moved),r=rts(),ask=(d.ask||'').trim();
   const L=['おはようございます。',`本日のタスクです。${d.deadline?tm(d.deadline)+'までに進捗を報告いたします。':''}`];
   L.push('',`【本日のタスク】${tasks.length}件`);
   tasks.forEach((x,i)=>{const due=x.x&&x.x.due?`／期限${md(x.x.due)}`:'';L.push(`${i+1}. ${x.t}${x.kind==='st'?`（${x.sub}${due}）`:due?`（${due.slice(1)}）`:''}${x.late?` ※${md(x.late)}予定分`:''}`)});
@@ -1607,26 +1621,19 @@ function planText(){const d=tDay(),it=todayItems(),tasks=it.filter(x=>x.kind!=='
   if(r.length)L.push('','【毎日やること】',...r.map(x=>'・'+x.t));
   if(ask)L.push('','【確認したいこと】',ask);
   return L.join('\n')}
-function progText(){const t=tToday,d=tDay(),it=todayItems(),tasks=it.filter(x=>x.kind!=='rt'),r=it.filter(x=>x.kind==='rt'),ask=(d.ask||'').trim();
-  const done=tasks.filter(x=>x.on),wip=tasks.filter(x=>!x.on&&x.wip),todo=tasks.filter(x=>!x.on&&!x.wip);
-  // 明日に回したもの（今日の一覧からは外れている）も未着手・着手として書く
-  const moved=[];T.forEach(x=>{const st=tkSteps(x);(st.length?st.map(y=>({o:y,t:y.t,sub:x.t,kind:'st'})):[{o:x,t:x.t,kind:'tk'}]).forEach(m=>{if(m.o.moved===t&&!m.o.done)moved.push(m)})});
-  const nWip=wip.length+moved.filter(m=>m.o.wip===t).length,nTodo=todo.length+moved.filter(m=>m.o.wip!==t).length,all=done.length+nWip+nTodo;
-  const L=['本日のタスク進捗です。',`完了${done.length}件／着手${nWip}件／未着手${nTodo}件（全${all}件）`];
-  const nextOf=o=>o.moved===t||o.d===nextDay(t)?'明日対応':o.d&&o.d>t?`${md(o.d)}対応`:'対応日未定';
+function progText(){const t=tToday,d=tDay(),it=todayItems(),r=rts(),lg=rtLog()[t]||[],ask=(d.ask||'').trim();
+  const done=it.filter(x=>x.on),wip=it.filter(x=>!x.on&&x.wip),todo=it.filter(x=>!x.on&&!x.wip);
+  const nextOf=x=>x.moved||x.o.d===nextDay(t)?'明日対応':x.o.d&&x.o.d>t?`${md(x.o.d)}対応`:'対応日未定';
+  const L=['本日のタスク進捗です。',`完了${done.length}件／着手${wip.length}件／未着手${todo.length}件（全${it.length}件）`];
   if(done.length)L.push('','【完了】',...done.map(x=>'・'+itemLabel(x)));
-  const wipAll=[...wip,...moved.filter(m=>m.o.wip===t)];
-  if(wipAll.length){L.push('','【着手】');wipAll.forEach(x=>{L.push('・'+itemLabel(x));L.push(`　→ ${(x.o.note||'').trim()||'（どこまでか記入）'}／${nextOf(x.o)}`)})}
-  const todoAll=[...todo,...moved.filter(m=>m.o.wip!==t)];
-  if(todoAll.length){L.push('','【未着手】');todoAll.forEach(x=>L.push(`・${itemLabel(x)} → ${nextOf(x.o)}`))}
-  // 期限のあるタスクの全体の進み具合
+  if(wip.length){L.push('','【着手】');wip.forEach(x=>{L.push('・'+itemLabel(x));L.push(`　→ ${(x.o.note||'').trim()||'（どこまでか記入）'}／${nextOf(x)}`)})}
+  if(todo.length){L.push('','【未着手】');todo.forEach(x=>L.push(`・${itemLabel(x)} → ${nextOf(x)}`))}
   const big=T.filter(x=>!x.done&&tkSteps(x).length);
   if(big.length){L.push('','【タスクの状況】');big.forEach(x=>{const [dn,al]=tkProg(x),nx=tkSteps(x).filter(y=>!y.done).sort((a,b)=>(a.d||'9').localeCompare(b.d||'9'))[0];
     L.push(`・${x.t}${x.due?`（期限${md(x.due)}）`:''} ${dn}/${al}完了${nx?`／次：${nx.t}${nx.d?`（${md(nx.d)}）`:'（日程未定）'}`:''}`);if((x.memo||'').trim())L.push('　'+x.memo.trim())})}
-  if(r.length)L.push('','【毎日やること】',...r.map(x=>`・${x.t} ${x.on?'✓':'未'}`));
+  if(r.length)L.push('','【毎日やること】',...r.map(x=>`・${x.t} ${lg.includes(x.id)?'✓':'未'}`));
   if(ask)L.push('','【確認したいこと】',ask);
-  const sc=schedLines(tomorrowSched()),tt=tomorrowTasks();
-  if(sc.length||tt.length){L.push('','【明日の予定】',...sc);if(tt.length)L.push(...(sc.length?['']:[]),'明日のタスク',...tt.map((x,i)=>`${i+1}. ${x}`))}
+  const tt=tmItems();if(tt.length)L.push('','明日のタスク',...tt.map((x,i)=>`${i+1}. ${x.t}${x.sub?`（${x.sub}）`:''}`));
   return L.join('\n')}
 function openTSend(m){
   if(!T.length&&!rts().length){toast('タスクか毎日やることを入れてください');return}
