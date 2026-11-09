@@ -616,6 +616,26 @@ def vendor_master_names():
     return out
 
 
+def _already_registered(withdraws, vendor, items):
+    """items の明細（仕入れ先・品名・金額）が、既存の withdraws にすべて含まれていれば True。"""
+    def key(vend, label, amount):
+        return (_norm(vend or ''), _norm(label or ''), int(amount or 0))
+
+    pool = {}
+    for w in withdraws:
+        try:
+            k = key(w.get('vendor'), w.get('label'), w.get('amount'))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        pool[k] = pool.get(k, 0) + 1
+    for it in items:
+        k = key(vendor, it['label'], it['amount'])
+        if pool.get(k, 0) <= 0:
+            return False
+        pool[k] -= 1
+    return True
+
+
 def add_receipt_items(user_id, date_iso, vendor, items):
     """レシートから読み取った複数明細をまとめて1日分に追加する（receipt.py から呼ばれる）。
 
@@ -628,6 +648,18 @@ def add_receipt_items(user_id, date_iso, vendor, items):
     report = _report(date_iso) or _default_report(date_iso)
     corp = report.get('corp') or _empty_bucket()
     withdraws = list(corp.get('withdraws') or [])
+
+    # 同じレシートの二重登録を防ぐ（勤怠botにも送った・同じ写真を2回送った等）。
+    # その日の明細に、同じ仕入れ先・品名・金額の組がすべて揃っていれば登録済みとみなす。
+    if _already_registered(withdraws, vendor, items):
+        total = sum(int(i['amount']) for i in items)
+        where = f'{vendor} / ' if vendor else ''
+        return '\n'.join([
+            f'⚠️ {config.jp(date_iso)} に同じ内容のレシートが既に登録されているため、登録しませんでした',
+            f'{where}合計 {total:,}円（税込）',
+            '（勤怠botなど別の場所で登録済みの可能性があります）',
+            entry_url(date_iso),
+        ])
 
     for it in items:
         entry = {

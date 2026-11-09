@@ -175,9 +175,13 @@ def _format_items(vendor, items):
     return '\n'.join(lines)
 
 
-def handle_image(user_id, message_id):
-    """画像メッセージを受け取ったときの入り口。読み取ってそのまま登録し、内訳と結果を返す。"""
-    image_bytes, mime = fetch_image(message_id)
+def handle_image(user_id, message_id, image_bytes=None, mime=None):
+    """画像メッセージを受け取ったときの入り口。読み取ってそのまま登録し、内訳と結果を返す。
+
+    呼び出し側（router）がシフト表判定のために取得済みの画像があれば、それを渡せば取り直さない。
+    """
+    if not image_bytes:
+        image_bytes, mime = fetch_image(message_id)
     if not image_bytes:
         return '画像を取得できませんでした。もう一度送ってみてください。'
     if len(image_bytes) > MAX_IMAGE_BYTES:

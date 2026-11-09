@@ -188,6 +188,7 @@ def _handle_image_message(user_id, message_id):
 
     # シフト表かどうかの判定だけ先に済ませる。レシート側の処理には手を触れず、
     # シフト表と分かったときだけそちらへ回す。
+    image_bytes, mime = None, None
     try:
         image_bytes, mime = receipt_mod.fetch_image(message_id)
         if image_bytes and len(image_bytes) <= shift_mod.MAX_IMAGE_BYTES \
@@ -197,10 +198,10 @@ def _handle_image_message(user_id, message_id):
         # 判定に失敗しただけならレシートとして読み進める（従来どおりの動きに戻す）
         print('shift detect error:', e)
 
-    # レシートの登録は勤怠bot（line-kintai-vercel）に一本化した（2026-10-14、オーナーの要望）。
-    # ここでも登録すると、同じレシートを勤怠botにも送った時に二重計上になるため（こちらには重複チェックが無い）。
-    # receipt.py は残してある（元に戻す時はこの返信の代わりに receipt_mod.handle_image を呼ぶ）。
-    return 'レシートの登録は勤怠botに一本化しました。\n写真は勤怠botのトーク（またはスタッフのグループ）に送ってください。'
+    # レシートは右腕のチャットで読み取って登録する（2026-11-09、オーナーの要望で勤怠botへの一本化をやめて戻した）。
+    # 勤怠botにも同じレシートを送ってしまった場合に備え、finance.add_receipt_items 側で重複を弾く。
+    # 判定のために取得した画像はそのまま使い回す（LINEから2回取りに行かない）。
+    return receipt_mod.handle_image(user_id, message_id, image_bytes=image_bytes, mime=mime)
 
 
 def handle_event(ev):
