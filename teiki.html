@@ -1498,7 +1498,7 @@ const tkSteps=x=>x.steps||(x.steps=[]);
 const tkProg=x=>{const st=tkSteps(x);return st.length?[st.filter(y=>y.done).length,st.length]:[x.done?1:0,1]};
 // 今日やること：毎日やること＋やる日が今日まで（過ぎて終わっていないもの含む）の細かいこと＋ステップのないタスク
 // 今日やること：毎日やること＋やる日が今日まで（過ぎて終わっていないもの含む）の細かいこと＋ステップのないタスク
-// 細かいこと・タスクには「途中」（wip=その日付、note=どこまでやったか）を付けられる
+// 細かいこと・タスクには「着手」（wip=その日付、note=どこまでやったか）を付けられる
 function todayItems(){const t=tToday,out=[],lg=rtLog()[t]||[];
   rts().forEach(r=>out.push({kind:'rt',id:r.id,t:r.t,on:lg.includes(r.id)}));
   T.forEach(x=>{const st=tkSteps(x);
@@ -1511,7 +1511,7 @@ function renderToday(){const box=$('today'),items=todayItems();box.innerHTML='';
   if(!items.length){box.innerHTML='<div class="hint">今日やることはありません。下の「タスク」で細かいことにやる日を入れると、ここに出ます。</div>';return}
   items.forEach(it=>{const e=document.createElement('div');e.className='td-i'+(it.on?' on':'')+(it.wip?' wip':'');
     e.innerHTML=`<button class="cb" aria-label="できた">${it.on?'✓':''}</button><span class="tx">${esc(it.t)}${it.sub?`<small>${esc(it.sub)}</small>`:''}</span>${it.kind==='rt'?'<span class="tag">毎日</span>':''}${it.late?`<span class="tag late">${md(it.late)}から</span>`:''}`+
-      (it.kind!=='rt'&&!it.on?`<span class="acts"><button class="wp${it.wip?' on':''}">途中</button><button class="tm">明日へ</button></span>`:'');
+      (it.kind!=='rt'&&!it.on?`<span class="acts"><button class="wp${it.wip?' on':''}">着手</button><button class="tm">明日へ</button></span>`:'');
     e.querySelector('.cb').onclick=()=>{
       if(it.kind==='rt'){const lg=rtLog(),l=lg[tToday]=lg[tToday]||[],k=l.indexOf(it.id);if(k>=0)l.splice(k,1);else l.push(it.id);
         Object.keys(lg).forEach(d=>{if(d<dstr(new Date(Date.now()-60*864e5)))delete lg[d]});ls.set('teiki_rtlog',lg)}
@@ -1588,7 +1588,7 @@ function renderDue(){
   else{if(left<=30)box.classList.add('soon');$('dueTxt').textContent=`あと ${hh(left)}`}
 }
 $('dueTime').onchange=()=>{tDay().deadline=$('dueTime').value;saveTD();renderDue()};
-// ---- 報告の文面（山下さんとのやりとりから：結論＝件数を先に、完了・途中・未着手を分ける、途中は「どこまで」、
+// ---- 報告の文面（山下さんとのやりとりから：結論＝件数を先に、完了・着手・未着手の順に分ける、着手は「どこまで」、
 //      終わらなかったものは「いつやるか」、判断を仰ぐことは別に、明日の予定も前もって）
 function schedLines(l){return filled(l).map(x=>`・${x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜')+' ':''}${(x.t||'').trim()}`)}
 // 今日の時間の予定：前の日の報告の「明日の予定」→ 予定タブ
@@ -1610,14 +1610,14 @@ function planText(){const d=tDay(),it=todayItems(),tasks=it.filter(x=>x.kind!=='
   return L.join('\n')}
 function progText(){const t=tToday,d=tDay(),it=todayItems(),tasks=it.filter(x=>x.kind!=='rt'),r=it.filter(x=>x.kind==='rt'),ask=(d.ask||'').trim();
   const done=tasks.filter(x=>x.on),wip=tasks.filter(x=>!x.on&&x.wip),todo=tasks.filter(x=>!x.on&&!x.wip);
-  // 明日に回したもの（今日の一覧からは外れている）も未着手・途中として書く
+  // 明日に回したもの（今日の一覧からは外れている）も未着手・着手として書く
   const moved=[];T.forEach(x=>{const st=tkSteps(x);(st.length?st.map(y=>({o:y,t:y.t,sub:x.t,kind:'st'})):[{o:x,t:x.t,kind:'tk'}]).forEach(m=>{if(m.o.moved===t&&!m.o.done)moved.push(m)})});
   const nWip=wip.length+moved.filter(m=>m.o.wip===t).length,nTodo=todo.length+moved.filter(m=>m.o.wip!==t).length,all=done.length+nWip+nTodo;
-  const L=['本日のタスク進捗です。',`完了${done.length}件／途中${nWip}件／未着手${nTodo}件（全${all}件）`];
+  const L=['本日のタスク進捗です。',`完了${done.length}件／着手${nWip}件／未着手${nTodo}件（全${all}件）`];
   const nextOf=o=>o.moved===t||o.d===nextDay(t)?'明日対応':o.d&&o.d>t?`${md(o.d)}対応`:'対応日未定';
   if(done.length)L.push('','【完了】',...done.map(x=>'・'+itemLabel(x)));
   const wipAll=[...wip,...moved.filter(m=>m.o.wip===t)];
-  if(wipAll.length){L.push('','【途中】');wipAll.forEach(x=>{L.push('・'+itemLabel(x));L.push(`　→ ${(x.o.note||'').trim()||'（どこまでか記入）'}／${nextOf(x.o)}`)})}
+  if(wipAll.length){L.push('','【着手】');wipAll.forEach(x=>{L.push('・'+itemLabel(x));L.push(`　→ ${(x.o.note||'').trim()||'（どこまでか記入）'}／${nextOf(x.o)}`)})}
   const todoAll=[...todo,...moved.filter(m=>m.o.wip!==t)];
   if(todoAll.length){L.push('','【未着手】');todoAll.forEach(x=>L.push(`・${itemLabel(x)} → ${nextOf(x.o)}`))}
   // 期限のあるタスクの全体の進み具合
