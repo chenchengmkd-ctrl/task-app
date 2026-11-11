@@ -62,6 +62,18 @@ td:first-child{white-space:nowrap}
   pre{font-size:8.5pt;white-space:pre}
   a{color:inherit;text-decoration:none}
 }
+
+@media print{
+  @page{margin:11mm 12mm}
+  body{font-size:9.5pt;line-height:1.5}
+  .top{padding:6mm 0 4mm}.top h1{font-size:17pt}.top .k{display:none}
+  h2{break-before:auto;margin:5mm 0 2mm;padding-bottom:1mm;font-size:12pt}
+  h2::before{height:12pt}
+  p,ul,ol{margin:1.5mm 0}li{margin:.5mm 0}
+  blockquote{margin:2mm 0;padding:1.5mm 3mm;font-size:8.5pt}
+  .scroll{margin:2mm 0}table{font-size:8.5pt}th,td{padding:3px 6px}
+  pre{padding:2mm 3mm;font-size:8pt;margin:2mm 0}
+}
 </style>
 </head>
 <body>
@@ -69,21 +81,11 @@ td:first-child{white-space:nowrap}
 <header class="top"><div class="in"><div class="k">GUIDEBOOK</div><h1>日報アプリ ガイドブック</h1></div></header>
 <main>
 <h1 id="日報アプリ-ガイドブック">日報アプリ ガイドブック</h1>
-<p>このドキュメントは、日報アプリ（<code>nippo.html</code>）を <strong>はじめて触る人がゼロから理解できる</strong> ようにまとめたものです。
-「何をするアプリか」「どう使うか」と、全体の仕組みを短く説明します。</p>
-<blockquote>
-<p>同じ内容のWeb版（<code>nippo-guide.html</code>、公開URL：https://chenchengmkd-ctrl.github.io/task-app/nippo-guide.html ）とPDF版（<code>NIPPO_GUIDE.pdf</code>）があります。
-どちらもこのファイルから作っています。内容を直したら <code>tools/build_guide_html.py</code> と <code>tools/guide_pdf.js</code> で作り直してください。</p>
-</blockquote>
-<hr />
-<h2 id="目次">目次</h2>
-<ol>
-<li><a href="#1-このアプリは何か">このアプリは何か</a></li>
-<li><a href="#2-1日の流れ使い方">1日の流れ（使い方）</a></li>
-<li><a href="#3-画面ごとの説明">画面ごとの説明</a></li>
-<li><a href="#4-全体の仕組み">全体の仕組み</a></li>
-</ol>
-<hr />
+<p>日報アプリ（<code>nippo.html</code>）を、はじめて触る人向けに1枚でまとめたものです。</p>
+<!-- Web版 nippo-guide.html・PDF版 NIPPO_GUIDE.pdf はこのファイルから作っています:
+     python3 tools/build_guide_html.py NIPPO_GUIDE.md nippo-guide.html --compact
+     node tools/guide_pdf.js nippo-guide.html NIPPO_GUIDE.pdf -->
+
 <h2 id="1-このアプリは何か">1. このアプリは何か</h2>
 <p>鰻のお店（屋台）で、<strong>1日の営業の記録＝日報</strong> をつけて、スタッフのLINEグループに送るためのWebアプリです。</p>
 <div class="scroll"><table>
@@ -95,12 +97,8 @@ td:first-child{white-space:nowrap}
 </thead>
 <tbody>
 <tr>
-<td>使う人</td>
-<td>お店のスタッフ（記入者。初期値：江夏・工藤・上原・都丸）</td>
-</tr>
-<tr>
-<td>使う端末</td>
-<td>主にお店のiPad。スマホからも続きを書ける</td>
+<td>使う人・端末</td>
+<td>お店のスタッフ。主にお店のiPad（スマホからも続きを書ける）</td>
 </tr>
 <tr>
 <td>公開URL</td>
@@ -108,233 +106,87 @@ td:first-child{white-space:nowrap}
 </tr>
 <tr>
 <td>ファイル</td>
-<td><code>nippo.html</code> 1枚（HTML・CSS・JavaScript がすべて入っている。ビルド不要）</td>
-</tr>
-<tr>
-<td>サーバー側</td>
-<td><code>line-bot-vercel/</code>（Vercel上のPython）に日報用のAPIが2本ある</td>
+<td><code>nippo.html</code> 1枚（HTML・CSS・JavaScript入り。ビルド不要）＋ サーバー側 <code>line-bot-vercel/</code>（Vercel）</td>
 </tr>
 </tbody>
 </table></div>
-<h3 id="できること">できること</h3>
+<p><strong>できること</strong></p>
 <ul>
-<li><strong>会計ごとに「来店経緯」を記録</strong>（インスタ・看板・リピーター…）。人数・食べたもの・性別年代・お客さんの反応も一緒に。</li>
-<li><strong>売上はSquare（レジ）から自動取得</strong>。手で打たなくていい。会計ごとの注文明細も自動で入る。</li>
-<li><strong>常連さん台帳</strong>。リピーターを選ぶと来店回数・よく頼むものが自動でたまる。</li>
-<li><strong>iPadとスマホで同じ日報を編集</strong>（サーバー経由で同期）。</li>
-<li><strong>ボタン1つでLINEグループへ送信</strong>（勤怠Bot経由。iPadにLINEアプリが無くても送れる）。</li>
+<li>会計ごとに <strong>来店経緯</strong>（インスタ・看板・リピーター…）・人数・食べたもの・お客さんの反応を記録</li>
+<li><strong>売上と注文明細はSquare（レジ）から自動</strong>で入る／<strong>常連さん台帳</strong>（来店回数・よく頼むものが自動でたまる）</li>
+<li><strong>iPadとスマホで同じ日報を編集</strong>／<strong>ボタン1つでLINEグループへ送信</strong>（勤怠Bot経由）</li>
 </ul>
-<hr />
-<h2 id="2-1日の流れ使い方">2. 1日の流れ（使い方）</h2>
+<h2 id="2-1日の流れ">2. 1日の流れ</h2>
 <div class="scroll"><table>
 <thead>
 <tr>
 <th>いつ</th>
 <th>画面</th>
-<th>入れるもの</th>
+<th>やること</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>開店</td>
+<td>開店（1日1回）</td>
 <td>① 開始画面</td>
-<td>日付・記入者・天気</td>
+<td><strong>記入者</strong>（複数可）と <strong>天気</strong> を選んで「はじめる」</td>
 </tr>
 <tr>
-<td>営業中（会計のたびに繰り返す）</td>
+<td>会計のたび</td>
 <td>② 会計を記録</td>
-<td>人数・食べたもの（Squareから自動）・<strong>来店経緯（必須）</strong>・性別年代・お客さん・反応（任意）</td>
+<td>人数を押す → 食べたものはSquareから自動 → <strong>来店経緯を押す（必須）</strong> → 任意で性別年代・お客さん・反応 → 「この会計を記録する」</td>
 </tr>
 <tr>
 <td>閉店</td>
 <td>③ 申し送り・実績</td>
-<td>申し送り事項・インバウンド・売上と累計（自動）</td>
+<td>「営業おわり」→ 申し送り事項・インバウンドを入力。売上・累計はSquareから自動</td>
 </tr>
 <tr>
 <td>最後</td>
 <td>LINEで送る</td>
-<td>送信後、翌日の開始画面に進む</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="①-開始1日1回">① 開始（1日1回）</h3>
-<ol>
-<li>アプリを開くと「今日の日報」画面。</li>
-<li><strong>記入者</strong>（複数可）と <strong>天気</strong> を選んで「はじめる」。</li>
-<li>以後この画面は出ない。直したいときは上部の「日付・天気・記入者　変更 ›」の帯をタップ。</li>
-</ol>
-<h3 id="②-会計を記録お客さん1組ごと">② 会計を記録（お客さん1組ごと）</h3>
-<ol>
-<li>会計が終わると、Squareの会計が横並びのカードで出る（最新のものが自動で選ばれる）。</li>
-<li><strong>人数</strong> を押す（6人以上は「6+」）。テイクアウトなら「テイクアウト」。</li>
-<li><strong>食べたもの</strong> はSquareから自動で入る（特上・上・並・おにぎり・混ぜご飯）。手で足すこともできる。</li>
-<li><strong>来店経緯</strong> を押す（<strong>ここだけ必須</strong>）。</li>
-<li>1組の中で人ごとに違うときは、別のボタンも押す。同じボタンをもう一度押すとその人数が1人増える。
-     例：3名で「インスタ」→「看板」→「看板」と押すと インスタ1・看板2。</li>
-<li>「リピーター」を押すと常連さんを選ぶ画面が出る（新規登録もここでできる）。</li>
-<li>任意で <strong>性別・年代</strong>（人数分まで）、<strong>どんなお客さん</strong>、<strong>反応</strong> を選ぶ／書く。</li>
-<li>一番下の <strong>「この会計を記録する」</strong> で確定。下の「記録済み」に並ぶ。</li>
-</ol>
-<blockquote>
-<p>間違えたら「↶ 元に戻す」。記録済みカードの「編集」から後で直すこともできる。</p>
-</blockquote>
-<h3 id="③-営業おわり">③ 営業おわり</h3>
-<ol>
-<li>「営業おわり → 申し送り・実績へ」を押す。</li>
-<li><strong>申し送り事項</strong>・<strong>インバウンド</strong>（話せた方・口コミ依頼人数）を入力。</li>
-<li><strong>実績</strong> の本日売上・累計売上はSquareから自動。確認だけ。</li>
-<li>下の <strong>「LINEで送る」</strong> → 確認 → 送信。送信後は翌日の開始画面に進む（トーストの「取り消す」で戻れる）。</li>
-</ol>
-<p>送る前に「プレビュー」で文章を確認できます。「コピー」で手動貼り付けもできます。</p>
-<hr />
-<h2 id="3-画面ごとの説明">3. 画面ごとの説明</h2>
-<p>画面は1つのHTMLの中で <code>&lt;div class="page" id="p-○○"&gt;</code> を切り替えて表示しています（<code>go()</code> 関数）。</p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>画面ID</th>
-<th>名前</th>
-<th>開き方</th>
-<th>内容</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>p-start</code></td>
-<td>開始画面</td>
-<td>初回／上部の帯</td>
-<td>日付・記入者・天気</td>
-</tr>
-<tr>
-<td><code>p-form</code></td>
-<td>会計の記録</td>
-<td>メイン</td>
-<td>会計記録パネル＋記録済み一覧</td>
-</tr>
-<tr>
-<td><code>p-end</code></td>
-<td>申し送り・実績</td>
-<td>「営業おわり」</td>
-<td>申し送り・インバウンド・売上</td>
-</tr>
-<tr>
-<td><code>p-prev</code></td>
-<td>プレビュー</td>
-<td>下部「プレビュー」</td>
-<td>送信される文章そのもの</td>
-</tr>
-<tr>
-<td><code>p-hist</code></td>
-<td>履歴</td>
-<td>ヘッダー「履歴」</td>
-<td>過去の日報を開く／削除、バックアップ保存（JSON）</td>
-</tr>
-<tr>
-<td><code>p-reg</code></td>
-<td>常連</td>
-<td>ヘッダー「常連」</td>
-<td>常連さんの一覧・特徴・メモ・来店履歴</td>
-</tr>
-<tr>
-<td><code>p-set</code></td>
-<td>設定</td>
-<td>ヘッダー「設定」</td>
-<td>合言葉、累計の数え方、営業報告に載せる組</td>
-</tr>
-</tbody>
-</table></div>
-<p>ヘッダーの「新規」は「今日の日報を開く」ボタンです（過去の日報を開いた後に今日へ戻るとき用）。</p>
-<h3 id="設定画面の項目">設定画面の項目</h3>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>項目</th>
-<th>意味</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>合言葉</td>
-<td>サーバーの <code>NIPPO_TOKEN</code> と同じ文字。入れると Square連携・端末間同期・Bot送信が有効になる。<strong>未入力だとその端末だけで動く</strong></td>
-</tr>
-<tr>
-<td>累計売上</td>
-<td>「月ごと」（毎月1日にリセット、既定）／「ずっと足し続ける」</td>
-</tr>
-<tr>
-<td>営業報告に載せる組</td>
-<td>「記録した組すべて」（既定）／「反応・お客さん情報を入れた組だけ」</td>
-</tr>
-</tbody>
-</table></div>
-<hr />
-<h2 id="4-全体の仕組み">4. 全体の仕組み</h2>
-<pre><code>nippo.html（iPad／スマホのブラウザ。画面と入力、日報は端末の localStorage に保存）
- │
- ├─ ① 売上 ─→ task-app（Vercel） /api/nippo_sales ─→ Square
- │
- ├─ ② 同期 ─→ task-app（Vercel） /api/nippo_sync  ─→ Supabase（bot_state）
- │
- └─ ③ 送信 ─→ 勤怠Bot（Vercel・別リポジトリ） /api/nippo_post ─→ LINEグループに投稿
-</code></pre>
-<p>task-app 側の入口は <code>line-bot-vercel/app.py</code>、勤怠Botは <code>line-kintai-vercel</code> という別プロジェクトです。</p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>通信先</th>
-<th>URL（<code>nippo.html</code> 内の定数）</th>
-<th>役割</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>① <code>API</code></td>
-<td><code>https://task-app-nine-liard.vercel.app/api/nippo_sales</code></td>
-<td>その日のSquare売上・月累計・会計明細を返す</td>
-</tr>
-<tr>
-<td>② <code>SYNC_API</code></td>
-<td><code>https://task-app-nine-liard.vercel.app/api/nippo_sync</code></td>
-<td>日報と共有データを端末間でやりとり</td>
-</tr>
-<tr>
-<td>③ <code>SEND_API</code></td>
-<td><code>https://line-kintai-vercel.vercel.app/api/nippo_post</code></td>
-<td>日報文をLINEグループに投稿</td>
+<td>確認して送信 → 翌日の開始画面へ（「取り消す」で戻れる）</td>
 </tr>
 </tbody>
 </table></div>
 <ul>
-<li>3つとも HTTPヘッダー <code>X-App-Token: &lt;合言葉&gt;</code> で認証します。合言葉が違うと <code>401 合言葉が違います</code>。</li>
-<li>③の勤怠Botは <strong>このリポジトリには入っていません</strong>（<code>line-kintai-vercel</code> という別プロジェクト）。中身を直すときはそちらを見てください。</li>
+<li>1組で来店経緯が人ごとに違うときは、別のボタンも押す（同じボタンをもう一度押すとその人数が1人増える。例：3名で インスタ1・看板2）。</li>
+<li>「リピーター」を押すと常連さんを選ぶ画面が出る（新規登録もここで）。</li>
+<li>間違えたら「↶ 元に戻す」／記録済みの組は「編集」から直せる／送る前に「プレビュー」で確認できる。</li>
+<li>「設定」で <strong>合言葉</strong>（サーバーの <code>NIPPO_TOKEN</code>）を入れると、Square連携・端末間同期・Bot送信が有効になる。未入力だとその端末だけで動く。</li>
 </ul>
-<h3 id="保存場所">保存場所</h3>
+<h2 id="3-全体の仕組み">3. 全体の仕組み</h2>
+<pre><code>nippo.html（iPad／スマホ。日報はまず端末の localStorage に保存）
+ ├─ ① 売上 ─→ task-app（Vercel） /api/nippo_sales ─→ Square
+ ├─ ② 同期 ─→ task-app（Vercel） /api/nippo_sync  ─→ Supabase（bot_state）
+ └─ ③ 送信 ─→ 勤怠Bot（Vercel・別リポジトリ） /api/nippo_post ─→ LINEグループ
+</code></pre>
 <div class="scroll"><table>
 <thead>
 <tr>
-<th>データ</th>
-<th>一次保存</th>
-<th>共有先</th>
+<th>通信先</th>
+<th>役割</th>
+<th>コード</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>日報（1日1件）</td>
-<td>端末の localStorage <code>nippo_all</code></td>
-<td>Supabase <code>bot_state</code> テーブル、キー <code>nippo:r:YYYY-MM-DD</code></td>
+<td>① <code>/api/nippo_sales</code></td>
+<td>その日のSquare売上・月累計・会計明細を返す</td>
+<td><code>line-bot-vercel/linebot/nippo.py</code></td>
 </tr>
 <tr>
-<td>常連・名前・よく使う言葉・設定</td>
-<td>localStorage の各キー</td>
-<td>Supabase <code>bot_state</code>、キー <code>nippo:shared</code></td>
+<td>② <code>/api/nippo_sync</code></td>
+<td>日報・常連・設定を端末間でやりとり（新しい方が勝つ。中身のある日報は空の日報で上書きしない）</td>
+<td><code>line-bot-vercel/linebot/nippo_sync.py</code></td>
 </tr>
 <tr>
-<td>合言葉</td>
-<td>localStorage <code>nippo_sqkey</code></td>
-<td>共有しない（端末ごとに入力）</td>
+<td>③ <code>/api/nippo_post</code></td>
+<td>日報文をLINEグループに投稿</td>
+<td><code>line-kintai-vercel</code>（別リポジトリ）の <code>kintai/nippo_post.py</code></td>
 </tr>
 </tbody>
 </table></div>
+<p>3つとも HTTPヘッダー <code>X-App-Token: &lt;合言葉&gt;</code> で認証します。保存場所は、日報が Supabase のキー <code>nippo:r:YYYY-MM-DD</code>、常連・名前・設定が <code>nippo:shared</code>（合言葉は端末ごと）。</p>
 </main>
 <button class="theme" id="theme" type="button">表示の明暗</button>
 <script>

@@ -1,5 +1,6 @@
 """ガイドブックのMarkdownからHTMLを作る（タイトルはMarkdownの最初の「# 見出し」）。
 使い方: pip install markdown && python3 tools/build_guide_html.py NIPPO_GUIDE.md nippo-guide.html
+短いガイドは --compact を付ける（印刷で章ごとに改ページしない）
 PDFは続けて: node tools/guide_pdf.js nippo-guide.html NIPPO_GUIDE.pdf（Playwrightが必要）
 """
 import re
@@ -7,7 +8,10 @@ import sys
 
 import markdown
 
-md_path, html_path = sys.argv[1], sys.argv[2]
+args = [a for a in sys.argv[1:] if not a.startswith('--')]
+md_path, html_path = args[0], args[1]
+# --compact: 1〜2ページの短いガイド用。印刷で章ごとに改ページせず、余白・文字を詰める
+COMPACT = '--compact' in sys.argv
 
 
 def gh_slug(value, separator='-'):
@@ -89,6 +93,20 @@ td:first-child{white-space:nowrap}
 }
 """
 
+COMPACT_CSS = r"""
+@media print{
+  @page{margin:11mm 12mm}
+  body{font-size:9.5pt;line-height:1.5}
+  .top{padding:6mm 0 4mm}.top h1{font-size:17pt}.top .k{display:none}
+  h2{break-before:auto;margin:5mm 0 2mm;padding-bottom:1mm;font-size:12pt}
+  h2::before{height:12pt}
+  p,ul,ol{margin:1.5mm 0}li{margin:.5mm 0}
+  blockquote{margin:2mm 0;padding:1.5mm 3mm;font-size:8.5pt}
+  .scroll{margin:2mm 0}table{font-size:8.5pt}th,td{padding:3px 6px}
+  pre{padding:2mm 3mm;font-size:8pt;margin:2mm 0}
+}
+"""
+
 page = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -96,7 +114,7 @@ page = f"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title}</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
-<style>{CSS}</style>
+<style>{CSS}{COMPACT_CSS if COMPACT else ""}</style>
 </head>
 <body>
 <!-- このファイルは {md_name} から自動で作っています。内容を直すときは {md_name} を直してください。 -->
