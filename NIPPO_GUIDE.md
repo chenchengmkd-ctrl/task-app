@@ -6,6 +6,9 @@
 - 使う人だけ → [1](#1-このアプリは何か) 〜 [3](#3-画面ごとの説明)
 - 直す人・引き継ぐ人 → 全部（特に [4](#4-全体の仕組み) 以降）
 
+> 同じ内容のWeb版（`nippo-guide.html`、公開URL：https://chenchengmkd-ctrl.github.io/task-app/nippo-guide.html ）とPDF版（`NIPPO_GUIDE.pdf`）があります。
+> どちらもこのファイルから作っています。内容を直したら `tools/build_nippo_guide.py` と `tools/nippo_guide_pdf.js` で作り直してください。
+
 ---
 
 ## 目次
@@ -58,16 +61,12 @@
 
 ## 2. 1日の流れ（使い方）
 
-```
- 開店               営業中（会計のたび）                 閉店
-  │                     │                                │
-  ▼                     ▼                                ▼
-[開始画面]  ──▶  [会計を記録]  ──(繰り返し)──▶  [申し送り・実績]  ──▶  LINEで送る ──▶ 翌日の開始画面へ
- 日付                人数                          申し送り事項
- 記入者              食べたもの（Squareから自動）    インバウンド
- 天気                来店経緯（必須）               売上・累計（自動）
-                     性別年代・お客さん・反応(任意)
-```
+| いつ | 画面 | 入れるもの |
+|---|---|---|
+| 開店 | ① 開始画面 | 日付・記入者・天気 |
+| 営業中（会計のたびに繰り返す） | ② 会計を記録 | 人数・食べたもの（Squareから自動）・**来店経緯（必須）**・性別年代・お客さん・反応（任意） |
+| 閉店 | ③ 申し送り・実績 | 申し送り事項・インバウンド・売上と累計（自動） |
+| 最後 | LINEで送る | 送信後、翌日の開始画面に進む |
 
 ### ① 開始（1日1回）
 
@@ -129,21 +128,16 @@
 ## 4. 全体の仕組み
 
 ```
-┌──────────────────────────┐
-│  nippo.html（iPad / スマホのブラウザ） │
-│  ・画面と入力                          │
-│  ・localStorage に日報を保存           │
-└───┬───────────┬───────────┬──────────┘
-    │①売上        │②同期          │③送信
-    │POST         │POST           │POST
-    ▼             ▼               ▼
-┌───────────────────────┐   ┌──────────────────────┐
-│ task-app (Vercel)          │   │ 勤怠Bot (Vercel・別リポジトリ) │
-│ line-bot-vercel/app.py     │   │ line-kintai-vercel           │
-│  /api/nippo_sales ─▶ Square │   │  /api/nippo_post             │
-│  /api/nippo_sync  ─▶ Supabase│   │   └▶ LINEグループに投稿        │
-└───────────────────────┘   └──────────────────────┘
+nippo.html（iPad／スマホのブラウザ。画面と入力、日報は端末の localStorage に保存）
+ │
+ ├─ ① 売上 ─→ task-app（Vercel） /api/nippo_sales ─→ Square
+ │
+ ├─ ② 同期 ─→ task-app（Vercel） /api/nippo_sync  ─→ Supabase（bot_state）
+ │
+ └─ ③ 送信 ─→ 勤怠Bot（Vercel・別リポジトリ） /api/nippo_post ─→ LINEグループに投稿
 ```
+
+task-app 側の入口は `line-bot-vercel/app.py`、勤怠Botは `line-kintai-vercel` という別プロジェクトです。
 
 | 通信先 | URL（`nippo.html` 内の定数） | 役割 |
 |---|---|---|

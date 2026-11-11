@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日報アプリ ガイドブック</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
+<style>
+:root{--bg:#f8f4ef;--card:#fff;--ink:#1f1d1a;--muted:#7b766f;--line:#ebe5dd;--soft:#fbf3ec;
+  --accent:#e8552d;--accent-ink:#c2410c;--code-bg:#f4efe9;--quote:#fff4ea}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141210;--card:#1d1a17;--ink:#ece6df;--muted:#a39a90;--line:#332e29;--soft:#26211c;
+  --accent:#ff8a5c;--accent-ink:#ffa27e;--code-bg:#24201c;--quote:#2a221b}}
+:root[data-theme="dark"]{--bg:#141210;--card:#1d1a17;--ink:#ece6df;--muted:#a39a90;--line:#332e29;--soft:#26211c;
+  --accent:#ff8a5c;--accent-ink:#ffa27e;--code-bg:#24201c;--quote:#2a221b}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo","IPAPGothic","IPAGothic",sans-serif;
+  font-size:16px;line-height:1.8;-webkit-text-size-adjust:100%}
+.top{background:linear-gradient(135deg,#ff9a3c 0%,#ff5e62 100%);color:#fff;padding:28px 16px 22px}
+.top .in{max-width:820px;margin:0 auto}
+.top .k{font-size:13px;font-weight:700;letter-spacing:.08em;opacity:.9}
+.top h1{margin:4px 0 0;font-size:28px;line-height:1.3}
+main{max-width:820px;margin:0 auto;padding:8px 16px 80px}
+main>h1:first-child{display:none}
+h2{font-size:21px;margin:48px 0 14px;padding:0 0 8px;border-bottom:2px solid var(--line);scroll-margin-top:12px}
+h2::before{content:"";display:inline-block;width:6px;height:20px;border-radius:3px;background:var(--accent);margin-right:10px;vertical-align:-3px}
+h3{font-size:17px;margin:28px 0 8px;color:var(--accent-ink)}
+p{margin:10px 0}
+ul,ol{padding-left:1.4em}li{margin:4px 0}
+a{color:var(--accent-ink);text-underline-offset:3px}
+hr{border:none;border-top:1px solid var(--line);margin:28px 0}
+code{background:var(--code-bg);border-radius:5px;padding:1px 6px;font-size:.9em;
+  font-family:ui-monospace,SFMono-Regular,Menlo,"IPAGothic",monospace;overflow-wrap:anywhere}
+pre{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;
+  line-height:1.55;font-size:13.5px}
+pre code{background:none;padding:0;font-size:inherit;overflow-wrap:normal;font-family:"IPAGothic",ui-monospace,Menlo,monospace}
+blockquote{margin:14px 0;padding:10px 16px;background:var(--quote);border-left:4px solid var(--accent);border-radius:0 10px 10px 0}
+blockquote p{margin:4px 0}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:12px 0;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{background:var(--soft);font-size:13px;color:var(--muted);white-space:nowrap}
+td:first-child{white-space:nowrap}
+.theme{position:fixed;right:14px;bottom:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);
+  border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+@media (max-width:600px){.top h1{font-size:23px}h2{font-size:19px}td:first-child{white-space:normal}}
+@media print{
+  @page{size:A4;margin:16mm 14mm}
+  :root{--bg:#fff;--card:#fff;--ink:#111;--muted:#555;--line:#ccc;--soft:#f3f3f3;--code-bg:#f2f2f2;--quote:#fff6ee}
+  body{font-size:11pt;line-height:1.65;font-family:"IPAPGothic","IPAGothic",sans-serif}
+  .theme,hr{display:none}
+  .top{padding:18mm 0 10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .top .in,main{max-width:none;padding:0}
+  h2{break-before:page;margin-top:0;break-after:avoid}
+  h3{break-after:avoid}
+  pre,blockquote,tr{break-inside:avoid}
+  .scroll{overflow:visible;border:none}
+  table{font-size:9.5pt}th,td{padding:5px 7px}
+  pre{font-size:8.5pt;white-space:pre}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<!-- このファイルは NIPPO_GUIDE.md から自動で作っています。内容を直すときは NIPPO_GUIDE.md を直してください。 -->
+<header class="top"><div class="in"><div class="k">NIPPO GUIDE</div><h1>日報アプリ ガイドブック</h1></div></header>
+<main>
+<h1 id="日報アプリ-ガイドブック">日報アプリ ガイドブック</h1>
+<p>このドキュメントは、日報アプリ（<code>nippo.html</code>）を <strong>はじめて触る人がゼロから理解できる</strong> ようにまとめたものです。
+前半は「何をするアプリか・どう使うか」、後半は「どう作られているか・どこを直せばいいか」を説明します。</p>
+<ul>
+<li>使う人だけ → <a href="#1-このアプリは何か">1</a> 〜 <a href="#3-画面ごとの説明">3</a></li>
+<li>直す人・引き継ぐ人 → 全部（特に <a href="#4-全体の仕組み">4</a> 以降）</li>
+</ul>
+<blockquote>
+<p>同じ内容のWeb版（<code>nippo-guide.html</code>、公開URL：https://chenchengmkd-ctrl.github.io/task-app/nippo-guide.html ）とPDF版（<code>NIPPO_GUIDE.pdf</code>）があります。
+どちらもこのファイルから作っています。内容を直したら <code>tools/build_nippo_guide.py</code> と <code>tools/nippo_guide_pdf.js</code> で作り直してください。</p>
+</blockquote>
+<hr />
+<h2 id="目次">目次</h2>
+<ol>
+<li><a href="#1-このアプリは何か">このアプリは何か</a></li>
+<li><a href="#2-1日の流れ使い方">1日の流れ（使い方）</a></li>
+<li><a href="#3-画面ごとの説明">画面ごとの説明</a></li>
+<li><a href="#4-全体の仕組み">全体の仕組み</a></li>
+<li><a href="#5-データの形">データの形</a></li>
+<li><a href="#6-square連携">Square連携</a></li>
+<li><a href="#7-端末間同期ipad--スマホ">端末間同期（iPad ⇄ スマホ）</a></li>
+<li><a href="#8-lineへの送信">LINEへの送信</a></li>
+<li><a href="#9-日報の文章ができるまで">日報の文章ができるまで</a></li>
+<li><a href="#10-初期設定環境変数">初期設定・環境変数</a></li>
+<li><a href="#11-コードの地図">コードの地図</a></li>
+<li><a href="#12-よくある変更のやり方">よくある変更のやり方</a></li>
+<li><a href="#13-トラブルシューティング">トラブルシューティング</a></li>
+<li><a href="#14-用語集">用語集</a></li>
+</ol>
+<hr />
+<h2 id="1-このアプリは何か">1. このアプリは何か</h2>
+<p>鰻のお店（屋台）で、<strong>1日の営業の記録＝日報</strong> をつけて、スタッフのLINEグループに送るためのWebアプリです。</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>項目</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>使う人</td>
+<td>お店のスタッフ（記入者。初期値：江夏・工藤・上原・都丸）</td>
+</tr>
+<tr>
+<td>使う端末</td>
+<td>主にお店のiPad。スマホからも続きを書ける</td>
+</tr>
+<tr>
+<td>公開URL</td>
+<td>https://chenchengmkd-ctrl.github.io/task-app/nippo.html （GitHub Pages）</td>
+</tr>
+<tr>
+<td>ファイル</td>
+<td><code>nippo.html</code> 1枚（HTML・CSS・JavaScript がすべて入っている。ビルド不要）</td>
+</tr>
+<tr>
+<td>サーバー側</td>
+<td><code>line-bot-vercel/</code>（Vercel上のPython）に日報用のAPIが2本ある</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="できること">できること</h3>
+<ul>
+<li><strong>会計ごとに「来店経緯」を記録</strong>（インスタ・看板・リピーター…）。人数・食べたもの・性別年代・お客さんの反応も一緒に。</li>
+<li><strong>売上はSquare（レジ）から自動取得</strong>。手で打たなくていい。会計ごとの注文明細も自動で入る。</li>
+<li><strong>常連さん台帳</strong>。リピーターを選ぶと来店回数・よく頼むものが自動でたまる。</li>
+<li><strong>iPadとスマホで同じ日報を編集</strong>（サーバー経由で同期）。</li>
+<li><strong>ボタン1つでLINEグループへ送信</strong>（勤怠Bot経由。iPadにLINEアプリが無くても送れる）。</li>
+</ul>
+<h3 id="設計の考え方なぜこうなっているか">設計の考え方（なぜこうなっているか）</h3>
+<ul>
+<li><strong>営業中は手がふさがっている</strong> → タップ中心。よく使う言葉はボタン化（2026年5〜10月の日報116件から多かった表現を拾ってある）。</li>
+<li><strong>売上はSquareが正しい</strong> → 日報には手で書かせない。自動で入れる。</li>
+<li><strong>電波が悪くても書ける</strong> → まず端末の中（localStorage）に保存し、つながったときにサーバーへ送る。</li>
+<li><strong>ファイル1枚</strong> → GitHubに置くだけで公開でき、引き継ぎやすい。</li>
+</ul>
+<hr />
+<h2 id="2-1日の流れ使い方">2. 1日の流れ（使い方）</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>いつ</th>
+<th>画面</th>
+<th>入れるもの</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>開店</td>
+<td>① 開始画面</td>
+<td>日付・記入者・天気</td>
+</tr>
+<tr>
+<td>営業中（会計のたびに繰り返す）</td>
+<td>② 会計を記録</td>
+<td>人数・食べたもの（Squareから自動）・<strong>来店経緯（必須）</strong>・性別年代・お客さん・反応（任意）</td>
+</tr>
+<tr>
+<td>閉店</td>
+<td>③ 申し送り・実績</td>
+<td>申し送り事項・インバウンド・売上と累計（自動）</td>
+</tr>
+<tr>
+<td>最後</td>
+<td>LINEで送る</td>
+<td>送信後、翌日の開始画面に進む</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="①-開始1日1回">① 開始（1日1回）</h3>
+<ol>
+<li>アプリを開くと「今日の日報」画面。</li>
+<li><strong>記入者</strong>（複数可）と <strong>天気</strong> を選んで「はじめる」。</li>
+<li>以後この画面は出ない。直したいときは上部の「日付・天気・記入者　変更 ›」の帯をタップ。</li>
+</ol>
+<h3 id="②-会計を記録お客さん1組ごと">② 会計を記録（お客さん1組ごと）</h3>
+<ol>
+<li>会計が終わると、Squareの会計が横並びのカードで出る（最新のものが自動で選ばれる）。</li>
+<li><strong>人数</strong> を押す（6人以上は「6+」）。テイクアウトなら「テイクアウト」。</li>
+<li><strong>食べたもの</strong> はSquareから自動で入る（特上・上・並・おにぎり・混ぜご飯）。手で足すこともできる。</li>
+<li><strong>来店経緯</strong> を押す（<strong>ここだけ必須</strong>）。</li>
+<li>1組の中で人ごとに違うときは、別のボタンも押す。同じボタンをもう一度押すとその人数が1人増える。
+     例：3名で「インスタ」→「看板」→「看板」と押すと インスタ1・看板2。</li>
+<li>「リピーター」を押すと常連さんを選ぶ画面が出る（新規登録もここでできる）。</li>
+<li>任意で <strong>性別・年代</strong>（人数分まで）、<strong>どんなお客さん</strong>、<strong>反応</strong> を選ぶ／書く。</li>
+<li>一番下の <strong>「この会計を記録する」</strong> で確定。下の「記録済み」に並ぶ。</li>
+</ol>
+<blockquote>
+<p>間違えたら「↶ 元に戻す」。記録済みカードの「編集」から後で直すこともできる。</p>
+</blockquote>
+<h3 id="③-営業おわり">③ 営業おわり</h3>
+<ol>
+<li>「営業おわり → 申し送り・実績へ」を押す。</li>
+<li><strong>申し送り事項</strong>・<strong>インバウンド</strong>（話せた方・口コミ依頼人数）を入力。</li>
+<li><strong>実績</strong> の本日売上・累計売上はSquareから自動。確認だけ。</li>
+<li>下の <strong>「LINEで送る」</strong> → 確認 → 送信。送信後は翌日の開始画面に進む（トーストの「取り消す」で戻れる）。</li>
+</ol>
+<p>送る前に「プレビュー」で文章を確認できます。「コピー」で手動貼り付けもできます。</p>
+<hr />
+<h2 id="3-画面ごとの説明">3. 画面ごとの説明</h2>
+<p>画面は1つのHTMLの中で <code>&lt;div class="page" id="p-○○"&gt;</code> を切り替えて表示しています（<code>go()</code> 関数）。</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>画面ID</th>
+<th>名前</th>
+<th>開き方</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>p-start</code></td>
+<td>開始画面</td>
+<td>初回／上部の帯</td>
+<td>日付・記入者・天気</td>
+</tr>
+<tr>
+<td><code>p-form</code></td>
+<td>会計の記録</td>
+<td>メイン</td>
+<td>会計記録パネル＋記録済み一覧</td>
+</tr>
+<tr>
+<td><code>p-end</code></td>
+<td>申し送り・実績</td>
+<td>「営業おわり」</td>
+<td>申し送り・インバウンド・売上</td>
+</tr>
+<tr>
+<td><code>p-prev</code></td>
+<td>プレビュー</td>
+<td>下部「プレビュー」</td>
+<td>送信される文章そのもの</td>
+</tr>
+<tr>
+<td><code>p-hist</code></td>
+<td>履歴</td>
+<td>ヘッダー「履歴」</td>
+<td>過去の日報を開く／削除、バックアップ保存（JSON）</td>
+</tr>
+<tr>
+<td><code>p-reg</code></td>
+<td>常連</td>
+<td>ヘッダー「常連」</td>
+<td>常連さんの一覧・特徴・メモ・来店履歴</td>
+</tr>
+<tr>
+<td><code>p-set</code></td>
+<td>設定</td>
+<td>ヘッダー「設定」</td>
+<td>合言葉、累計の数え方、営業報告に載せる組</td>
+</tr>
+</tbody>
+</table></div>
+<p>ヘッダーの「新規」は「今日の日報を開く」ボタンです（過去の日報を開いた後に今日へ戻るとき用）。</p>
+<h3 id="設定画面の項目">設定画面の項目</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>項目</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>合言葉</td>
+<td>サーバーの <code>NIPPO_TOKEN</code> と同じ文字。入れると Square連携・端末間同期・Bot送信が有効になる。<strong>未入力だとその端末だけで動く</strong></td>
+</tr>
+<tr>
+<td>累計売上</td>
+<td>「月ごと」（毎月1日にリセット、既定）／「ずっと足し続ける」</td>
+</tr>
+<tr>
+<td>営業報告に載せる組</td>
+<td>「記録した組すべて」（既定）／「反応・お客さん情報を入れた組だけ」</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="4-全体の仕組み">4. 全体の仕組み</h2>
+<pre><code>nippo.html（iPad／スマホのブラウザ。画面と入力、日報は端末の localStorage に保存）
+ │
+ ├─ ① 売上 ─→ task-app（Vercel） /api/nippo_sales ─→ Square
+ │
+ ├─ ② 同期 ─→ task-app（Vercel） /api/nippo_sync  ─→ Supabase（bot_state）
+ │
+ └─ ③ 送信 ─→ 勤怠Bot（Vercel・別リポジトリ） /api/nippo_post ─→ LINEグループに投稿
+</code></pre>
+<p>task-app 側の入口は <code>line-bot-vercel/app.py</code>、勤怠Botは <code>line-kintai-vercel</code> という別プロジェクトです。</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>通信先</th>
+<th>URL（<code>nippo.html</code> 内の定数）</th>
+<th>役割</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① <code>API</code></td>
+<td><code>https://task-app-nine-liard.vercel.app/api/nippo_sales</code></td>
+<td>その日のSquare売上・月累計・会計明細を返す</td>
+</tr>
+<tr>
+<td>② <code>SYNC_API</code></td>
+<td><code>https://task-app-nine-liard.vercel.app/api/nippo_sync</code></td>
+<td>日報と共有データを端末間でやりとり</td>
+</tr>
+<tr>
+<td>③ <code>SEND_API</code></td>
+<td><code>https://line-kintai-vercel.vercel.app/api/nippo_post</code></td>
+<td>日報文をLINEグループに投稿</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>3つとも HTTPヘッダー <code>X-App-Token: &lt;合言葉&gt;</code> で認証します。合言葉が違うと <code>401 合言葉が違います</code>。</li>
+<li>③の勤怠Botは <strong>このリポジトリには入っていません</strong>（<code>line-kintai-vercel</code> という別プロジェクト）。中身を直すときはそちらを見てください。</li>
+</ul>
+<h3 id="保存場所">保存場所</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>データ</th>
+<th>一次保存</th>
+<th>共有先</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>日報（1日1件）</td>
+<td>端末の localStorage <code>nippo_all</code></td>
+<td>Supabase <code>bot_state</code> テーブル、キー <code>nippo:r:YYYY-MM-DD</code></td>
+</tr>
+<tr>
+<td>常連・名前・よく使う言葉・設定</td>
+<td>localStorage の各キー</td>
+<td>Supabase <code>bot_state</code>、キー <code>nippo:shared</code></td>
+</tr>
+<tr>
+<td>合言葉</td>
+<td>localStorage <code>nippo_sqkey</code></td>
+<td>共有しない（端末ごとに入力）</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="5-データの形">5. データの形</h2>
+<h3 id="日報r1日分">日報（<code>R</code>、1日分）</h3>
+<pre><code class="language-js">{
+  date: &quot;2026-11-10&quot;,        // キー。1日1件
+  who: &quot;江夏・工藤&quot;,          // 表示用（whos を「・」で連結）
+  whos: [&quot;江夏&quot;,&quot;工藤&quot;],
+  weather: &quot;晴&quot;,
+  started: true,              // 開始画面を済ませたか
+  customers: [ /* 下の「お客さん1組」 新しい順 */ ],
+  sales: &quot;85400&quot;,             // 本日売上（Squareから）
+  cum: &quot;1234500&quot;,             // 累計売上
+  cumBase: &quot;&quot;,                // 前の日報がないとき用の「前日までの累計」
+  cumManual: false,           // 累計を手で直したか
+  handover: &quot;…&quot;,              // 申し送り事項
+  inbound: &quot;…&quot;,               // インバウンド
+  talked: 2, review: 1,       // 話せた方／口コミ依頼人数
+  sent: true,                 // 送信済み
+  _u: 1762740000000           // 最終更新時刻(ms)。同期の勝ち負けに使う
+}
+</code></pre>
+<h3 id="お客さん1組customers-の要素">お客さん1組（<code>customers[]</code> の要素）</h3>
+<pre><code class="language-js">{
+  id: 1762740000000,
+  time: &quot;11:42&quot;,               // Squareの会計時刻（なければ記録した時刻）
+  n: 3,                        // 人数
+  src: &quot;看板&quot;,                 // 主な来店経緯（人数が一番多いもの）
+  srcs: {&quot;インスタ&quot;:1,&quot;看板&quot;:2},// 内訳（1種類だけなら null）
+  takeout: false,
+  ord: {&quot;特上&quot;:1,&quot;上&quot;:2},       // 食べたもの
+  other: &quot;お吸い物&quot;,            // メニュー外の品
+  sex: [&quot;男性&quot;], age: [&quot;40代&quot;],
+  label: &quot;出張の方&quot;,            // どんなお客さん（見出しに入る）
+  comment: &quot;「美味しい」とのお言葉。&quot;, // 反応
+  regId: &quot;r1762...&quot;,            // 常連カードのID（任意）
+  sqIds: [&quot;Square注文ID&quot;, ...]  // 結びつけたSquare会計（二重記録の防止に使う）
+}
+</code></pre>
+<h3 id="常連さんnippo_regs-の要素">常連さん（<code>nippo_regs</code> の要素）</h3>
+<pre><code class="language-js">{ id: &quot;r1762...&quot;, name: &quot;メガネの部長さん&quot;, feature: &quot;50代男性・スーツ&quot;, memo: &quot;&quot;, created: &quot;2026-11-01&quot; }
+</code></pre>
+<p>来店回数・前回日・よく頼むものは保存しておらず、<strong>全日報の <code>customers[].regId</code> から毎回数えています</strong>（<code>regStats()</code>）。</p>
+<h3 id="localstorage-のキー一覧">localStorage のキー一覧</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>キー</th>
+<th>中身</th>
+<th>同期</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nippo_all</code></td>
+<td><code>{日付: 日報}</code> 全部</td>
+<td>1日ずつ</td>
+</tr>
+<tr>
+<td><code>nippo_dels</code></td>
+<td>削除した日の印 <code>{date,_del:true,_u}</code></td>
+<td>1日ずつ</td>
+</tr>
+<tr>
+<td><code>nippo_dirty</code></td>
+<td>まだサーバーに送っていない日付の一覧</td>
+<td>―</td>
+</tr>
+<tr>
+<td><code>nippo_regs</code></td>
+<td>常連リスト</td>
+<td>共有</td>
+</tr>
+<tr>
+<td><code>nippo_names</code></td>
+<td>記入者の名前一覧</td>
+<td>共有</td>
+</tr>
+<tr>
+<td><code>nippo_src_custom</code></td>
+<td>追加した来店経緯</td>
+<td>共有</td>
+</tr>
+<tr>
+<td><code>nippo_kw_who</code> / <code>_react</code> / <code>_hand</code></td>
+<td>追加した「よく使う言葉」</td>
+<td>共有</td>
+</tr>
+<tr>
+<td><code>nippo_cummode</code></td>
+<td><code>month</code> / <code>all</code></td>
+<td>共有</td>
+</tr>
+<tr>
+<td><code>nippo_repmode</code></td>
+<td><code>all</code> / <code>detail</code></td>
+<td>共有</td>
+</tr>
+<tr>
+<td><code>nippo_sqkey</code></td>
+<td>合言葉</td>
+<td>しない</td>
+</tr>
+<tr>
+<td><code>nippo_sync_init</code> / <code>nippo_sync_since</code> / <code>nippo_shared_u</code> / <code>nippo_shared_dirty</code></td>
+<td>同期の管理用</td>
+<td>―</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="6-square連携">6. Square連携</h2>
+<h3 id="流れ">流れ</h3>
+<ol>
+<li>画面が「会計の記録」「申し送り・実績」のとき、<strong>開いた時・アプリに戻った時・1分ごと</strong> に <code>fetchSquare()</code> が <code>/api/nippo_sales</code> を呼ぶ（今日の日報のときだけ。過去日は「Square更新」ボタンで手動）。</li>
+<li>サーバー（<code>line-bot-vercel/linebot/nippo.py</code> の <code>day_sales()</code>）が Square API から取得して返す：</li>
+</ol>
+<pre><code class="language-json">{
+  &quot;ok&quot;: true, &quot;date&quot;: &quot;2026-11-10&quot;,
+  &quot;total&quot;: 85400,          // その日の決済合計（返金差し引き済み）
+  &quot;month_total&quot;: 1234500,  // その月1日からこの日までの合計
+  &quot;count&quot;: 31,
+  &quot;orders&quot;: [{&quot;id&quot;:&quot;…&quot;,&quot;time&quot;:&quot;11:42&quot;,&quot;total&quot;:3600,&quot;items&quot;:[{&quot;name&quot;:&quot;上重&quot;,&quot;qty&quot;:1}],&quot;takeout&quot;:false}]
+}
+</code></pre>
+<ol>
+<li>画面側で</li>
+<li><code>R.sales</code> に <code>total</code> を入れる</li>
+<li>累計（月ごとモード）に <code>month_total</code> を入れる</li>
+<li>まだどの組にも結びついていない会計（<code>unassigned()</code>）をカードで並べる</li>
+</ol>
+<h3 id="品名--メニューの読み替えmapitems">品名 → メニューの読み替え（<code>mapItems()</code>）</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Squareの品名に含まれる文字</th>
+<th>日報のメニュー</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>おにぎり</code></td>
+<td>おにぎり</td>
+</tr>
+<tr>
+<td><code>混ぜ</code></td>
+<td>混ぜご飯</td>
+</tr>
+<tr>
+<td><code>重</code> かつ <code>特</code></td>
+<td>特上</td>
+</tr>
+<tr>
+<td><code>重</code> かつ <code>並</code></td>
+<td>並</td>
+</tr>
+<tr>
+<td><code>重</code>（それ以外）</td>
+<td>上</td>
+</tr>
+<tr>
+<td>どれにも当たらない</td>
+<td>「ほか」として表示のみ</td>
+</tr>
+</tbody>
+</table></div>
+<p>Squareの品名を変えたら、ここが正しく読めるか確認してください。</p>
+<h3 id="テイクアウトの判定サーバー側-_is_takeout">テイクアウトの判定（サーバー側 <code>_is_takeout()</code>）</h3>
+<p>品名・バリエーション・オプション・伝票名に「テイクアウト」「持ち帰り」「to go」などが入っている、または受け取り方法が店頭受取・配達なら <code>takeout: true</code>。画面では「TO」と表示され、テイクアウトが自動でオンになります。</p>
+<h3 id="累計売上の出し方">累計売上の出し方</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>モード</th>
+<th>計算</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>月ごと（既定）</td>
+<td>Squareの <code>month_total</code> をそのまま使う（送信後に入った会計のずれが残らないように）</td>
+</tr>
+<tr>
+<td>ずっと足し続ける</td>
+<td>前回の日報の累計 ＋ 本日売上。前の日報がない日は「前日までの累計（<code>cumBase</code>）」＋本日売上</td>
+</tr>
+</tbody>
+</table></div>
+<p>累計欄を手で書き換えると <code>cumManual=true</code> になり、以後自動で上書きされません。</p>
+<hr />
+<h2 id="7-端末間同期ipad--スマホ">7. 端末間同期（iPad ⇄ スマホ）</h2>
+<p>合言葉が入っている端末どうしで、日報と共有データを <code>/api/nippo_sync</code> 経由でやりとりします。</p>
+<h3 id="いつ同期するか">いつ同期するか</h3>
+<ul>
+<li>保存の1.5秒後（<code>syncSoon()</code>）</li>
+<li>アプリに戻ってきたとき</li>
+<li>30秒ごと</li>
+</ul>
+<h3 id="1回の同期syncnow">1回の同期（<code>syncNow()</code>）</h3>
+<ol>
+<li><strong>pull</strong>：前回以降に更新された日報を受け取る（初回は全部。時計のずれを見込んで10分さかのぼる）。</li>
+<li>初回だけ：この端末にしか無い日報を「未送信」にしておく。</li>
+<li><strong>push</strong>：<code>nippo_dirty</code> に入っている日の日報と、変わっていれば共有データを送る。</li>
+<li>サーバーの方が新しかったものは返ってくるので取り込む。</li>
+</ol>
+<h3 id="競合のルールどちらが勝つか">競合のルール（どちらが勝つか）</h3>
+<p>基本は <strong><code>_u</code>（最終更新時刻）が新しい方が勝つ</strong>。ただし例外が1つあります：</p>
+<blockquote>
+<p><strong>中身のある日報を、空の日報で上書きしない。</strong>
+（記入者・天気・記録・申し送りなどが入っているかを <code>hasContent()</code> / <code>_has_content()</code> で判定）</p>
+</blockquote>
+<p>これは、まだ何も書いていない端末が「空の今日の日報」を作っただけで、別の端末で書いた内容を消してしまう事故を防ぐためです（2026-11-05 の修正）。同じルールが <strong>画面側（<code>applyRemote()</code>）とサーバー側（<code>nippo_sync.push()</code>）の両方</strong> に入っています。直すときは両方そろえてください。</p>
+<p>その他の工夫：
+- 開いただけ・中身が同じなら <code>_u</code> を進めない（<code>save()</code>）
+- Squareの売上の自動更新は人の入力ではないので <code>_u</code> を進めない（<code>save(true)</code>）
+- 削除は消すのではなく <code>{_del:true}</code> の印を送って、他の端末からも消す</p>
+<h3 id="開いている日報が他の端末で変わったら">開いている日報が他の端末で変わったら</h3>
+<p><code>onRemote()</code> が画面を描き直し、「ほかの端末の変更を取り込みました」と表示します。</p>
+<hr />
+<h2 id="8-lineへの送信">8. LINEへの送信</h2>
+<p>「LINEで送る」（<code>btnShare</code>）を押したときの動き：</p>
+<pre><code>合言葉あり？ ──No──▶ 共有メニュー（navigator.share）／LINEの共有URL で送る
+    │Yes
+    ▼
+確認ダイアログ
+    ▼
+勤怠Bot /api/nippo_post に {text, date, writers} を送る
+    │
+ 成功 ──▶ afterSent()：sent=true にして翌日の開始画面へ
+ 失敗 ──▶ 「共有メニューで送りますか？」→ 共有メニューで送る
+</code></pre>
+<ul>
+<li>送信前に <code>check()</code> が「来店経緯が未記録のSquare会計」「来店経緯が未選択の記録」が無いか確認します。</li>
+<li>勤怠Botは、お店のiPadにLINEアプリが入っていないため、Botからグループに投稿する方式にしたものです（2026-11-04）。</li>
+<li>勤怠Bot側にも同じ <code>NIPPO_TOKEN</code> が設定されている必要があります。</li>
+</ul>
+<hr />
+<h2 id="9-日報の文章ができるまで">9. 日報の文章ができるまで</h2>
+<p><code>reportText()</code> が次の形の文章を作ります（プレビュー・コピー・送信すべてこれ）。</p>
+<pre><code>【日報】
+日付：11月10日（月）
+天気：晴
+記入者：江夏・工藤
+＝＝＝＝＝＝＝＝＝＝＝＝＝
+▼実績
+① 本日売上：¥85,400
+② 累計売上：¥1,234,500
+③ 客数：42人
+＝＝＝＝＝＝＝＝＝＝＝＝＝
+▼来店経緯
+リピーター　　：8人
+インスタ　　　：5人
+…
+聞けなかった　：2人
+＝＝＝＝＝＝＝＝＝＝＝＝＝
+▼営業報告（お客様の反応）
+
+新規｜看板経由・2名・男性・40代・出張の方
+「美味しい」とのお言葉。（上×2）
+
+リピーター｜メガネの部長さん・1名
+（TO 特上×1）
+
+▼申し送り事項
+ご飯が完売しました。
+
+▼インバウンド
+
+話せた方：2人
+口コミ依頼できた人数：1人
+</code></pre>
+<p>ポイント：
+- 来店経緯は「：」の位置をそろえるため、名前を全角にして全角スペースで埋めています（<code>X</code> → <code>Ｘ</code>）。
+- 営業報告は <strong>古い順</strong>（記録は新しい順に保存しているので反転して出す）。
+- 見出し（<code>custTitle()</code>）は「新規／リピーター｜経緯・常連名・人数・性別・年代・どんなお客さん」。全員リピーターのときだけ「リピーター」。
+- 括弧内は注文。テイクアウトは頭に <code>TO</code>。</p>
+<hr />
+<h2 id="10-初期設定環境変数">10. 初期設定・環境変数</h2>
+<h3 id="サーバーverceltask-app-プロジェクト">サーバー（Vercel：task-app プロジェクト）</h3>
+<p><code>line-bot-vercel/linebot/config.py</code> が読む環境変数のうち、日報に関係するもの：</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>変数</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NIPPO_TOKEN</code></td>
+<td>日報APIの合言葉（必須。未設定だと <code>503</code>）</td>
+</tr>
+<tr>
+<td><code>SQUARE_ACCESS_TOKEN</code></td>
+<td>Square API のトークン</td>
+</tr>
+<tr>
+<td><code>SQUARE_LOCATION_ID</code></td>
+<td>店舗ID（省略時は有効な店舗の1件目）</td>
+</tr>
+<tr>
+<td><code>SUPABASE_URL</code> / <code>SUPABASE_ANON_KEY</code></td>
+<td>同期データの保存先</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>環境変数を変えたら Vercel で <strong>Redeploy</strong> が必要です。</li>
+<li>Square の設定手順：<code>line-bot-vercel/SETUP_SQUARE.md</code></li>
+<li>Vercel・Supabase（<code>bot_state</code> テーブル作成）の手順：<code>line-bot-vercel/SETUP_VERCEL.md</code></li>
+</ul>
+<h3 id="勤怠bot別プロジェクト">勤怠Bot（別プロジェクト）</h3>
+<ul>
+<li>同じ <code>NIPPO_TOKEN</code> を設定しておく（送信の認証に使う）。</li>
+</ul>
+<h3 id="端末ipadスマホ">端末（iPad・スマホ）</h3>
+<ol>
+<li>Safariで公開URLを開き、「共有 → ホーム画面に追加」（アプリのように使える）。</li>
+<li>「設定」で合言葉を入れる。</li>
+<li>「✓ 〇〇:〇〇 に同期しました」と出ればOK。</li>
+</ol>
+<h3 id="公開デプロイ">公開（デプロイ）</h3>
+<ul>
+<li><code>nippo.html</code>：<code>main</code> ブランチにマージすると GitHub Pages に自動で反映されます。</li>
+<li><code>line-bot-vercel/</code>：Vercel が GitHub と連携して自動デプロイします。</li>
+</ul>
+<hr />
+<h2 id="11-コードの地図">11. コードの地図</h2>
+<h3 id="nippohtml約1070行"><code>nippo.html</code>（約1,070行）</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>行（目安）</th>
+<th>中身</th>
+<th>主な関数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>11–129</td>
+<td>CSS</td>
+<td>―</td>
+</tr>
+<tr>
+<td>131–271</td>
+<td>画面のHTML（各 <code>p-○○</code>）</td>
+<td>―</td>
+</tr>
+<tr>
+<td>274–277</td>
+<td>API URL、localStorage ラッパー <code>ls</code></td>
+<td><code>ls.get</code> / <code>ls.set</code></td>
+</tr>
+<tr>
+<td>278–351</td>
+<td><strong>端末間同期</strong></td>
+<td><code>syncNow</code> <code>applyRemote</code> <code>markDirty</code> <code>hasContent</code></td>
+</tr>
+<tr>
+<td>352–392</td>
+<td><strong>ボタンの選択肢</strong>（来店経緯・メニュー・天気・よく使う言葉）</td>
+<td><code>SRC_BASE</code> <code>MENU</code> <code>WEATHERS</code> <code>KW_REACT</code> <code>KW_WHO</code> <code>KW_HAND</code></td>
+</tr>
+<tr>
+<td>402–428</td>
+<td>編集中の状態と保存</td>
+<td><code>blank</code> <code>save</code></td>
+</tr>
+<tr>
+<td>430–455</td>
+<td>集計、累計、品名の読み替え</td>
+<td><code>srcCounts</code> <code>prevCum</code> <code>autoCum</code> <code>mapItems</code></td>
+</tr>
+<tr>
+<td>457–470</td>
+<td>元に戻す／やり直す</td>
+<td><code>pushUndo</code> <code>undo</code> <code>redo</code></td>
+</tr>
+<tr>
+<td>472–502</td>
+<td>来店経緯の人数わけ</td>
+<td><code>tapSrc</code> <code>fitMap</code> <code>storeSrc</code></td>
+</tr>
+<tr>
+<td>504–627</td>
+<td><strong>会計記録パネル</strong></td>
+<td><code>renderQuick</code> <code>renderSrc</code> <code>renderSqBox</code> <code>doRecord</code></td>
+</tr>
+<tr>
+<td>629–714</td>
+<td>常連</td>
+<td><code>regs</code> <code>regStats</code> <code>openRegPicker</code> <code>renderRegs</code></td>
+</tr>
+<tr>
+<td>716–732</td>
+<td><strong>Square取得</strong></td>
+<td><code>fetchSquare</code></td>
+</tr>
+<tr>
+<td>734–893</td>
+<td>画面描画（開始・記録済み・編集・売上）</td>
+<td><code>renderNames</code> <code>custTitle</code> <code>renderCustomers</code> <code>editor</code> <code>renderSales</code></td>
+</tr>
+<tr>
+<td>895–916</td>
+<td><strong>日報の文章</strong></td>
+<td><code>reportText</code></td>
+</tr>
+<tr>
+<td>918–966</td>
+<td>画面切替・履歴・設定</td>
+<td><code>go</code> <code>renderHist</code> <code>renderSettings</code></td>
+</tr>
+<tr>
+<td>968–1044</td>
+<td>入力イベント・コピー・<strong>送信</strong></td>
+<td><code>check</code> <code>afterSent</code> <code>btnShare.onclick</code> <code>load</code></td>
+</tr>
+<tr>
+<td>1046–1072</td>
+<td>起動処理・定期実行</td>
+<td>―</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="サーバー側">サーバー側</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>line-bot-vercel/app.py</code></td>
+<td>ルーティング。<code>_handle_nippo_sales</code> / <code>_handle_nippo_sync</code>（合言葉チェック→各モジュールへ）</td>
+</tr>
+<tr>
+<td><code>line-bot-vercel/linebot/nippo.py</code></td>
+<td><code>day_sales()</code>：Squareから売上・月累計・会計明細を作る。<code>_is_takeout()</code></td>
+</tr>
+<tr>
+<td><code>line-bot-vercel/linebot/nippo_sync.py</code></td>
+<td><code>push()</code> / <code>pull()</code>：Supabase <code>bot_state</code> への保存と競合判定</td>
+</tr>
+<tr>
+<td><code>line-bot-vercel/linebot/square.py</code></td>
+<td>Square API 共通（<code>summarize</code> <code>month_total</code> <code>fetch_orders</code>）</td>
+</tr>
+<tr>
+<td><code>line-bot-vercel/linebot/supabase_client.py</code></td>
+<td>Supabase（PostgREST）の読み書き</td>
+</tr>
+<tr>
+<td><code>line-bot-vercel/linebot/config.py</code></td>
+<td>環境変数</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="読む順番のおすすめ">読む順番のおすすめ</h3>
+<ol>
+<li>実際にアプリを開いて1日分を触ってみる（合言葉なしでも端末内で動く）</li>
+<li><code>nippo.html</code> の HTML 部分（131–271行）で画面の構成をつかむ</li>
+<li><code>blank()</code> <code>save()</code> <code>load()</code> でデータの持ち方を見る</li>
+<li><code>doRecord()</code> → <code>reportText()</code> で「記録が文章になる」流れを追う</li>
+<li><code>fetchSquare()</code> と <code>nippo.py</code>、<code>syncNow()</code> と <code>nippo_sync.py</code> を対で読む</li>
+</ol>
+<hr />
+<h2 id="12-よくある変更のやり方">12. よくある変更のやり方</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>やりたいこと</th>
+<th>直す場所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>来店経緯の初期ボタンを増やす・並べ替える</td>
+<td><code>SRC_BASE</code>（アプリ上の「＋追加」でも足せる）</td>
+</tr>
+<tr>
+<td>メニューを変える</td>
+<td><code>MENU</code> と <code>mapItems()</code>（Squareの品名との対応）。必要ならサーバーの <code>_unagi_usage</code> 等も</td>
+</tr>
+<tr>
+<td>天気の選択肢</td>
+<td><code>WEATHERS</code></td>
+</tr>
+<tr>
+<td>よく使う言葉ボタン</td>
+<td><code>KW_REACT</code>（反応）／<code>KW_WHO</code>（どんなお客さん）／<code>KW_HAND</code>（申し送り）</td>
+</tr>
+<tr>
+<td>記入者の初期一覧</td>
+<td><code>NAMES_DEFAULT</code>（既に使っている端末は <code>nippo_names</code> が優先される）</td>
+</tr>
+<tr>
+<td>日報の文章の形</td>
+<td><code>reportText()</code>、見出しは <code>custTitle()</code>、注文は <code>ordLine()</code></td>
+</tr>
+<tr>
+<td>テイクアウトと判定する言葉</td>
+<td><code>line-bot-vercel/linebot/nippo.py</code> の <code>TAKEOUT_WORDS</code></td>
+</tr>
+<tr>
+<td>同期の勝ち負けのルール</td>
+<td><code>applyRemote()</code> と <code>nippo_sync.push()</code> の <strong>両方</strong></td>
+</tr>
+<tr>
+<td>送信先</td>
+<td><code>SEND_API</code>（勤怠Bot側の実装は別リポジトリ）</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="変更するときの注意">変更するときの注意</h3>
+<ul>
+<li><strong>日報のデータ項目を増やすとき</strong>：<code>blank()</code> に初期値を入れる。古い日報にはその項目が無いので、読む側で <code>|| 0</code> などの既定値を必ず付ける。</li>
+<li><strong>「中身があるか」の判定に関わる項目を増やしたとき</strong>：<code>hasContent()</code>（画面）と <code>_has_content()</code>（サーバー）を両方直す。</li>
+<li><strong>共有したい設定を増やすとき</strong>：<code>SHARED_KEYS</code> に追加する。</li>
+<li>localStorage を使っているので、ブラウザのデータを消すと（同期していない分は）消えます。動作確認は合言葉なしの別ブラウザで行うと本番データを汚しません。</li>
+<li>合言葉ありで動作確認すると、<strong>本番のSupabaseとLINEグループにつながります</strong>。送信ボタンは押さないように。</li>
+</ul>
+<hr />
+<h2 id="13-トラブルシューティング">13. トラブルシューティング</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>症状</th>
+<th>原因と対処</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>「Squareを読めませんでした（合言葉が違います）」</td>
+<td>端末の合言葉と Vercel の <code>NIPPO_TOKEN</code> が違う。設定画面の「表示」で確認</td>
+</tr>
+<tr>
+<td>「NIPPO_TOKEN が未設定です」</td>
+<td>Vercel に環境変数を追加して Redeploy</td>
+</tr>
+<tr>
+<td>「Squareからデータを取得できませんでした」</td>
+<td><code>SQUARE_ACCESS_TOKEN</code> の期限切れ・権限不足、店舗IDの違い。<code>SETUP_SQUARE.md</code> 参照</td>
+</tr>
+<tr>
+<td>売上が入らない（過去の日報）</td>
+<td>過去日は自動取得しない。「Square更新」ボタンを押す</td>
+</tr>
+<tr>
+<td>「⚠️ 同期できませんでした」</td>
+<td>電波。戻れば自動で送り直す（未送信分は <code>nippo_dirty</code> に残っている）</td>
+</tr>
+<tr>
+<td>スマホで書いた内容がiPadに出ない</td>
+<td>両方に同じ合言葉が入っているか。設定画面の同期状態を確認。最大30秒待つかアプリを開き直す</td>
+</tr>
+<tr>
+<td>「勤怠Botで送れませんでした」</td>
+<td>勤怠Bot側の <code>NIPPO_TOKEN</code>・稼働状況を確認。とりあえず共有メニューで送れる</td>
+</tr>
+<tr>
+<td>「来店経緯が未記録の会計が○件」</td>
+<td>Squareの会計に対して記録していない組がある。「会計なし」扱いや別会計（1組で2会計）を見直す</td>
+</tr>
+<tr>
+<td>累計がおかしい</td>
+<td>手で直した日（<code>cumManual</code>）は自動にならない。累計欄を空にすると自動に戻る。モード（月ごと／ずっと）も確認</td>
+</tr>
+<tr>
+<td>データを退避したい</td>
+<td>履歴画面の「バックアップを保存」で <code>nippo-backup.json</code> をダウンロード</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="14-用語集">14. 用語集</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>用語</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>来店経緯</td>
+<td>お客さんがお店を知ったきっかけ（インスタ・看板・リピーター等）</td>
+</tr>
+<tr>
+<td>営業報告</td>
+<td>日報の中の、お客さん1組ずつの反応を並べた欄</td>
+</tr>
+<tr>
+<td>申し送り事項</td>
+<td>次のシフトの人に伝えること</td>
+</tr>
+<tr>
+<td>インバウンド</td>
+<td>海外からのお客さんについての記録</td>
+</tr>
+<tr>
+<td>TO</td>
+<td>テイクアウト</td>
+</tr>
+<tr>
+<td>常連カード</td>
+<td>常連さん1人ぶんの記録（あだ名・特徴・メモ）</td>
+</tr>
+<tr>
+<td>合言葉</td>
+<td><code>NIPPO_TOKEN</code>。アプリとサーバーをつなぐ鍵</td>
+</tr>
+<tr>
+<td>勤怠Bot</td>
+<td>別プロジェクト（<code>line-kintai-vercel</code>）のLINE Bot。日報をLINEグループに投稿する</td>
+</tr>
+<tr>
+<td><code>_u</code></td>
+<td>データの最終更新時刻（ミリ秒）。同期でどちらが新しいかを決める</td>
+</tr>
+<tr>
+<td><code>bot_state</code></td>
+<td>Supabase のキー・値テーブル。日報の同期データの置き場所</td>
+</tr>
+</tbody>
+</table></div>
+</main>
+<button class="theme" id="theme" type="button">表示の明暗</button>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('theme');
+try{var s=localStorage.getItem('guide_theme');if(s)r.dataset.theme=s}catch(e){}
+b.onclick=function(){var dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+r.dataset.theme=dark?'light':'dark';try{localStorage.setItem('guide_theme',r.dataset.theme)}catch(e){}};})();
+</script>
+</body>
+</html>
