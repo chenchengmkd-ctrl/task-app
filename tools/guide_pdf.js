@@ -1,4 +1,4 @@
-// nippo-guide.html を A4 の PDF にする。使い方: node tools/nippo_guide_pdf.js nippo-guide.html NIPPO_GUIDE.pdf
+// ガイドブックのHTMLを A4 の PDF にする。使い方: node tools/guide_pdf.js nippo-guide.html NIPPO_GUIDE.pdf
 const path = require('path');
 const { chromium } = require('playwright');
 (async () => {

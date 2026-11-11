@@ -7,7 +7,7 @@
 - 直す人・引き継ぐ人 → 全部（特に [4](#4-全体の仕組み) 以降）
 
 > 同じ内容のWeb版（`nippo-guide.html`、公開URL：https://chenchengmkd-ctrl.github.io/task-app/nippo-guide.html ）とPDF版（`NIPPO_GUIDE.pdf`）があります。
-> どちらもこのファイルから作っています。内容を直したら `tools/build_nippo_guide.py` と `tools/nippo_guide_pdf.js` で作り直してください。
+> どちらもこのファイルから作っています。内容を直したら `tools/build_guide_html.py` と `tools/guide_pdf.js` で作り直してください。
 
 ---
 

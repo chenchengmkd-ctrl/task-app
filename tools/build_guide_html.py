@@ -1,6 +1,6 @@
-"""NIPPO_GUIDE.md から nippo-guide.html を作る。
-使い方: pip install markdown && python3 tools/build_nippo_guide.py NIPPO_GUIDE.md nippo-guide.html
-PDFは続けて: node tools/nippo_guide_pdf.js nippo-guide.html NIPPO_GUIDE.pdf（Playwrightが必要）
+"""ガイドブックのMarkdownからHTMLを作る（タイトルはMarkdownの最初の「# 見出し」）。
+使い方: pip install markdown && python3 tools/build_guide_html.py NIPPO_GUIDE.md nippo-guide.html
+PDFは続けて: node tools/guide_pdf.js nippo-guide.html NIPPO_GUIDE.pdf（Playwrightが必要）
 """
 import re
 import sys
@@ -18,6 +18,9 @@ def gh_slug(value, separator='-'):
 
 
 src = open(md_path, encoding='utf-8').read()
+m = re.search(r'^# (.+)$', src, re.M)
+md_name = __import__('os').path.basename(md_path)
+title = m.group(1).strip() if m else 'ガイドブック'
 body = markdown.markdown(
     src,
     extensions=['tables', 'fenced_code', 'toc'],
@@ -91,13 +94,13 @@ page = f"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>日報アプリ ガイドブック</title>
+<title>{title}</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <style>{CSS}</style>
 </head>
 <body>
-<!-- このファイルは NIPPO_GUIDE.md から自動で作っています。内容を直すときは NIPPO_GUIDE.md を直してください。 -->
-<header class="top"><div class="in"><div class="k">NIPPO GUIDE</div><h1>日報アプリ ガイドブック</h1></div></header>
+<!-- このファイルは {md_name} から自動で作っています。内容を直すときは {md_name} を直してください。 -->
+<header class="top"><div class="in"><div class="k">GUIDEBOOK</div><h1>{title}</h1></div></header>
 <main>
 {body}
 </main>
