@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 91
+APP_VERSION = 92
 
 
 def _respond(start_response, status, body, cors=False):
@@ -465,10 +465,13 @@ def _handle_nippo_sync(environ, start_response):
         return _respond(start_response, '400 Bad Request', {'error': 'JSONが読めません'}, cors=True)
     from linebot import nippo_sync
     try:
+        store = body.get('store') or ''
+        if store not in nippo_sync.STORES:
+            return _respond(start_response, '400 Bad Request', {'ok': False, 'error': f'店舗 {store} はありません'}, cors=True)
         if body.get('op') == 'push':
-            result = nippo_sync.push(body.get('reports'), body.get('shared'))
+            result = nippo_sync.push(body.get('reports'), body.get('shared'), store)
         else:
-            result = nippo_sync.pull(body.get('since'))
+            result = nippo_sync.pull(body.get('since'), store)
     except Exception as e:
         return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
     status = '200 OK' if result.get('ok') else '502 Bad Gateway'

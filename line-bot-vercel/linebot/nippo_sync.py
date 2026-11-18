@@ -19,6 +19,12 @@ from .supabase_client import _headers, get_supabase
 
 PREFIX = 'nippo:r:'
 SHARED_KEY = 'nippo:shared'
+# 店ごとに保存場所を分ける（'' は今の店＝鰻。'air' はAirレジの店）
+STORES = {'': ('nippo:r:', 'nippo:shared'), 'air': ('nippo-air:r:', 'nippo-air:shared')}
+
+
+def keys_for(store):
+    return STORES.get(store or '', STORES[''])
 
 
 def _u(v):
@@ -60,8 +66,9 @@ def _existing(keys):
     return {r['key']: r.get('value') for r in rows}
 
 
-def push(reports, shared):
+def push(reports, shared, store=''):
     """端末の変更を保存する。サーバー側の方が新しいものは保存せず、そのまま返して端末に取り込ませる。"""
+    PREFIX, SHARED_KEY = keys_for(store)
     reports = reports or {}
     keys = [PREFIX + d for d in reports if isinstance(d, str) and len(d) == 10]
     if shared:
@@ -92,8 +99,9 @@ def push(reports, shared):
     return {'ok': True, 'saved': len(rows), 'reports': newer, 'shared': newer_shared}
 
 
-def pull(since=0):
+def pull(since=0, store=''):
     """`since`（ms）より後に更新された日報と、共有データを返す。since=0なら全部。"""
+    PREFIX, SHARED_KEY = keys_for(store)
     try:
         since = int(since or 0)
     except (TypeError, ValueError):
