@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 92
+APP_VERSION = 93
 
 
 def _respond(start_response, status, body, cors=False):
@@ -162,6 +162,8 @@ def _handle_health(environ, start_response):
             'GOOGLE_CALENDAR_ID': config.GOOGLE_CALENDAR_ID,
             'SQUARE_ACCESS_TOKEN': describe(config.SQUARE_ACCESS_TOKEN),
             'SQUARE_LOCATION_ID': bool(config.SQUARE_LOCATION_ID),
+            'AIRREGI_API_KEY': describe(config.AIRREGI_API_KEY),
+            'AIRREGI_API_TOKEN': describe(config.AIRREGI_API_TOKEN),
         },
     }
     # Googleカレンダーが読めるか（共有設定・カレンダーIDの確認用）
