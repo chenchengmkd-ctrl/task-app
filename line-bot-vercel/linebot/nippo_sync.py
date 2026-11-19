@@ -19,8 +19,9 @@ from .supabase_client import _headers, get_supabase
 
 PREFIX = 'nippo:r:'
 SHARED_KEY = 'nippo:shared'
-# 店ごとに保存場所を分ける（'' は今の店＝鰻。'air' はAirレジの店）
-STORES = {'': ('nippo:r:', 'nippo:shared'), 'air': ('nippo-air:r:', 'nippo-air:shared')}
+# 店ごとに保存場所を分ける（'' は今の店＝鰻。'air' はAirレジの店、'usen' はUSENレジの店）
+STORES = {'': ('nippo:r:', 'nippo:shared'), 'air': ('nippo-air:r:', 'nippo-air:shared'),
+          'usen': ('nippo-usen:r:', 'nippo-usen:shared')}
 
 
 def keys_for(store):

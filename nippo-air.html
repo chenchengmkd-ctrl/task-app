@@ -1030,7 +1030,7 @@ let sending=false;
 $('btnShare').onclick=async()=>{
   if(sending||!check())return;const t=reportText();
   const key=ls.get('nippoair_sqkey','');
-  shareSend(t);return; // Airレジ店：勤怠Botは今の店のグループに投稿するため、ここでは使わない（共有メニュー・コピーで送る）
+  shareSend(t);return; // この店では勤怠Botを使わない（今の店のグループに投稿されるため）。共有メニュー・コピーで送る
   if(!key){shareSend(t);return}
   if(!confirm('勤怠Botから、スタッフのLINEグループにこの日報を送ります。よろしいですか？'))return;
   sending=true;const btn=$('btnShare');btn.textContent='送信中…';btn.disabled=true;
