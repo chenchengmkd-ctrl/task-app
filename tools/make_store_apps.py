@@ -136,7 +136,11 @@ const csvStore=()=>ls.get('nippousen_csv',{});
 function csvSave(date,sq){const a=csvStore();a[date]=sq;Object.keys(a).sort().slice(0,-7).forEach(k=>delete a[k]);ls.set('nippousen_csv',a)}
 async function importCsv(file){
   try{
-    const text=csvDecode(await file.arrayBuffer());let p=parseUsenCsv(text,R.date);
+    const buf=await file.arrayBuffer(),head=new Uint8Array(buf.slice(0,4)),sig=String.fromCharCode(...head);
+    // CSV以外を選んだときは、何のファイルか教える（iPadではCSV以外も選べるようにしてある）
+    if(sig==='%PDF'){toast(`「${file.name}」はPDFです。USENレジの汎用検索で「CSV出力」したファイルを選んでください`);return}
+    if(sig.startsWith('PK')){toast(`「${file.name}」はExcelのファイルです。USENレジの汎用検索で「CSV出力」したファイルを選んでください`);return}
+    const text=csvDecode(buf);let p=parseUsenCsv(text,R.date);
     if(!p.orders.length){
       const other=p.dates.filter(d=>d!==R.date);
       if(other.length){toast(`このCSVは ${other.map(d=>+d.slice(5,7)+'/'+(+d.slice(8,10))).join('・')} の分です（${+R.date.slice(5,7)}/${+R.date.slice(8,10)}の会計は入っていません）`);return}
@@ -153,7 +157,7 @@ def make_usen(src):
     d = Doc(src)
     common(d, 'nippousen', 'usen', 'USENレジ店', 'USENレジ')
     d.rep('<button class="link" id="btnSq">Square更新</button>',
-          '<button class="link" id="btnSq">CSV読込</button><input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">')
+          '<button class="link" id="btnSq">CSV読込</button><input type="file" id="csvFile" style="display:none">')
     d.rep('<h2>実績<span class="sub">最後の確認用。売上はSquareから自動で入ります</span></h2>',
           '<h2>実績<span class="sub">売上はUSENレジのCSVから入ります（手で直すこともできます）</span></h2>')
     d.rep("h.textContent=ls.get('nippousen_sqkey','')?'':'設定で合言葉を入れるとSquareから自動で入ります';",

@@ -148,7 +148,7 @@
 
   <div class="card quick">
     <h2>会計を記録<span class="sub">1組ぶん選んで、いちばん下の「記録する」を押すと完了です</span>
-      <span class="r"><button class="link" id="panelReset">選び直す</button><button class="link" id="btnSq">CSV読込</button><input type="file" id="csvFile" accept=".csv,text/csv" style="display:none"></span></h2>
+      <span class="r"><button class="link" id="panelReset">選び直す</button><button class="link" id="btnSq">CSV読込</button><input type="file" id="csvFile" style="display:none"></span></h2>
     <div id="sqBox"></div>
     <div class="q-label">人数</div>
     <div class="n-row" id="nRow"></div>
@@ -795,7 +795,11 @@ const csvStore=()=>ls.get('nippousen_csv',{});
 function csvSave(date,sq){const a=csvStore();a[date]=sq;Object.keys(a).sort().slice(0,-7).forEach(k=>delete a[k]);ls.set('nippousen_csv',a)}
 async function importCsv(file){
   try{
-    const text=csvDecode(await file.arrayBuffer());let p=parseUsenCsv(text,R.date);
+    const buf=await file.arrayBuffer(),head=new Uint8Array(buf.slice(0,4)),sig=String.fromCharCode(...head);
+    // CSV以外を選んだときは、何のファイルか教える（iPadではCSV以外も選べるようにしてある）
+    if(sig==='%PDF'){toast(`「${file.name}」はPDFです。USENレジの汎用検索で「CSV出力」したファイルを選んでください`);return}
+    if(sig.startsWith('PK')){toast(`「${file.name}」はExcelのファイルです。USENレジの汎用検索で「CSV出力」したファイルを選んでください`);return}
+    const text=csvDecode(buf);let p=parseUsenCsv(text,R.date);
     if(!p.orders.length){
       const other=p.dates.filter(d=>d!==R.date);
       if(other.length){toast(`このCSVは ${other.map(d=>+d.slice(5,7)+'/'+(+d.slice(8,10))).join('・')} の分です（${+R.date.slice(5,7)}/${+R.date.slice(8,10)}の会計は入っていません）`);return}
