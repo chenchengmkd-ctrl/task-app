@@ -148,7 +148,7 @@
 
   <div class="card quick">
     <h2>会計を記録<span class="sub">1組ぶん選んで、いちばん下の「記録する」を押すと完了です</span>
-      <span class="r"><button class="link" id="panelReset">選び直す</button><button class="link" id="btnSq">読込（PDF・CSV）</button><input type="file" id="csvFile" style="display:none"></span></h2>
+      <span class="r"><button class="link" id="panelReset">選び直す</button><button class="link" id="btnSq">USEN更新</button><button class="link" id="btnCsv">読込</button><input type="file" id="csvFile" style="display:none"></span></h2>
     <div id="sqBox"></div>
     <div class="q-label">人数</div>
     <div class="n-row" id="nRow"></div>
@@ -196,7 +196,7 @@
   </div>
 
   <div class="card">
-    <h2>実績<span class="sub">売上はUSENレジのCSVから入ります（手で直すこともできます）</span></h2>
+    <h2>実績<span class="sub">最後の確認用。売上はUSENレジから自動で入ります</span></h2>
     <div class="row">
       <div><label class="t">本日売上（円）</label><input type="number" inputmode="numeric" id="sales"><div class="hint" id="salesHint"></div></div>
       <div><label class="t">累計売上（円）</label><input type="number" inputmode="numeric" id="cum"><div class="hint" id="cumHint"></div>
@@ -247,11 +247,11 @@
 <!-- ===== 設定 ===== -->
 <div class="page" id="p-set">
   <div class="card">
-    <h2>スマホ同期</h2>
+    <h2>USENレジ連携・スマホ同期</h2>
     <label class="t">合言葉</label>
     <div style="display:flex;gap:8px"><input type="password" id="sqKey" autocomplete="off" placeholder="Vercelに設定した NIPPO_TOKEN と同じ文字" style="flex:1">
       <button class="small-btn" id="sqKeyShow" type="button">表示</button></div>
-    <div class="hint">スマホでもこのページを開いて同じ合言葉を入れると、iPadで書いた日報の続きをスマホで編集・送信できます（常連リストや名前の一覧も共有されます）。</div>
+    <div class="hint">入れると、会計と本日売上がUSENレジ（伝票明細）から自動で入ります。<br>スマホでもこのページを開いて同じ合言葉を入れると、iPadで書いた日報の続きをスマホで編集・送信できます（常連リストや名前の一覧も共有されます）。</div>
     <div class="hint" id="syncState" style="margin-top:6px"></div>
   </div>
   <div class="card">
@@ -274,7 +274,7 @@
 <div id="toast"></div>
 
 <script>
-const API='https://task-app-nine-liard.vercel.app/api/nippo_sales';
+const API='https://task-app-nine-liard.vercel.app/api/nippo_usen_sales'; // USENレジの伝票明細から取る
 const $=id=>document.getElementById(id);
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}if(typeof onLsSet==='function')onLsSet(k)}};
@@ -590,7 +590,7 @@ function applySq(){
   qSqs.forEach(id=>{const o=SQ&&SQ.orders.find(x=>x.id===id);if(!o)return;const m=mapItems(o.items);if(o.takeout)take=true;
     Object.keys(m.ord).forEach(k=>ord[k]=(ord[k]||0)+m.ord[k]);if(m.other)other.push(m.other)});
   qOrd=ord;qOther=other.join('・');
-  const g=qSqs.reduce((s,id)=>{const o=SQ&&SQ.orders.find(x=>x.id===id);return s+(o&&+o.guests||0)},0);if(g&&g!==qN){qN=g;fitMap(qSrcs,qN);setTimeout(renderQuick,0)} // CSVに客数があれば人数に入れる（一覧を描いている途中なので、描き直しは後で）
+  const g=qSqs.reduce((s,id)=>{const o=SQ&&SQ.orders.find(x=>x.id===id);return s+(o&&+o.guests||0)},0);if(g&&g!==qN){qN=g;fitMap(qSrcs,qN);setTimeout(renderQuick,0)} // USENレジの人数を入れる（一覧を描いている途中なので、描き直しは後で）
   if(qSqs.length){qTake=take;const tb=document.querySelector('#nRow .tk');if(tb)tb.classList.toggle('on',qTake)} // Squareでテイクアウトの会計なら、テイクアウトを自動でオン
   renderOrdRow();
 }
@@ -599,9 +599,8 @@ function unassigned(){if(!SQ)return[];const used=new Set();R.customers.forEach(c
   return SQ.orders.filter(o=>!used.has(o.id)).slice().reverse()} // 新しい順
 function renderSqBox(){
   const box=$('sqBox');box.innerHTML='';
-  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">USENレジの管理画面の「売上管理」→「伝票明細」で今日の一覧を出し、共有（プリント）→ PDFで「ファイル」に保存して、右上の「読込」で選びます（「帳票管理」→「汎用検索」のCSVも読めます）。営業中に何度読み込み直しても、記録した会計は二重になりません。会計なしでも記録はできます</div>';return}
-  if(false){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">設定で合言葉を入れると、Squareの会計がここに並びます</div>';return}
-  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">'+(sqErr?'⚠️ Squareを読めませんでした（'+esc(sqErr)+'）。合言葉を確認してください。会計なしでも記録はできます':'Squareを読み込み中…')+'</div>';return}
+  if(!ls.get('nippousen_sqkey','')){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">設定で合言葉を入れると、USENレジの会計がここに並びます</div>';return}
+  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">'+(sqErr?'⚠️ USENレジを読めませんでした（'+esc(sqErr)+'）。右上の「読込」で伝票明細のPDF・CSVを読み込むこともできます。会計なしでも記録はできます':'USENレジを読み込み中…')+'</div>';return}
   const list=unassigned();
   qSqs=qSqs.filter(id=>list.some(o=>o.id===id));
   if(qAuto&&!qNone&&!qSqs.length&&list.length&&!Object.keys(qOrd).length){qSqs=[list[0].id];applySq()}
@@ -611,11 +610,11 @@ function renderSqBox(){
     const txt=[MENU.filter(k=>m.ord[k]).map(k=>k+'×'+m.ord[k]).join(' '),m.other].filter(Boolean).join('・')||'（明細なし）';
     b.innerHTML=`<b>${esc(o.time)}</b>${o.table?' '+esc(o.table):''} ${yen(o.total)}${o.takeout?' <b class="to">TO</b>':''}<br>${esc(txt)}`;
     b.onclick=()=>toggleSq(o.id);wrap.appendChild(b)});
-  const nb=document.createElement('button');nb.className='ord none'+(qNone?' on':'');nb.innerHTML='<b>会計なし</b><br>Squareと結びつけない';
+  const nb=document.createElement('button');nb.className='ord none'+(qNone?' on':'');nb.innerHTML='<b>会計なし</b><br>USENレジと結びつけない';
   nb.onclick=()=>{qAuto=false;qNone=!qNone;if(qNone){qSqs=[];qOrd={};qOther='';renderOrdRow()}renderSqBox()};wrap.appendChild(nb);
   box.appendChild(wrap);
-  if(!list.length){const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録の会計はありません（CSV ${SQ.orders.length}件・${SQ.at}読込）`;box.appendChild(h)}
-  else{const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録 ${list.length}件（CSV ${SQ.orders.length}件・${SQ.at}読込）。1組で別々に会計したときは、両方押して選べます`;box.appendChild(h)}
+  if(!list.length){const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録の会計はありません（USENレジ ${SQ.orders.length}件・${SQ.at}更新）`;box.appendChild(h)}
+  else{const h=document.createElement('div');h.className='hint';h.style.margin='-6px 0 10px';h.textContent=`未記録 ${list.length}件（USENレジ ${SQ.orders.length}件・${SQ.at}更新）。1組で別々に会計したときは、両方押して選べます`;box.appendChild(h)}
 }
 function doRecord(map,regId){
   pushUndo();
@@ -720,8 +719,7 @@ $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;r
 
 /* ---------- Square ---------- */
 let sqBusy=false,sqErr='';
-// USENレジ店：Squareの代わりに、その日に読み込んだCSVの会計を出す（ネットには取りに行かない）
-async function fetchSquare(manual){const st=csvStore()[R.date];SQ=st||null;renderSqBox();renderSales();return;
+async function fetchSquare(manual){
   const key=ls.get('nippousen_sqkey','');if(!key||sqBusy)return;
   if(R.date!==todayStr()&&!manual)return;
   sqBusy=true;$('btnSq').textContent='読込中…';
@@ -731,9 +729,9 @@ async function fetchSquare(manual){const st=csvStore()[R.date];SQ=st||null;rende
     if(!res.ok||!j.ok)throw new Error(j.error||res.status);
     SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};
     R.sales=String(j.total);$('sales').value=R.sales;autoCum();save(true);
-    sqErr='';if(manual)toast('Squareから更新しました');
-  }catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Squareを読めませんでした：'+sqErr)}
-  sqBusy=false;$('btnSq').textContent='Square更新';
+    sqErr='';if(manual)toast('USENレジから更新しました');
+  }catch(e){sqErr=e.message||'通信エラー';if(manual)toast('USENレジを読めませんでした：'+sqErr);if(!SQ||SQ.date!==R.date){const st=csvStore()[R.date];if(st)SQ=st}} // つながらないときは、読み込んだPDF・CSVの会計を出す
+  sqBusy=false;$('btnSq').textContent='USEN更新';
   renderSqBox();renderSales();
 }
 
@@ -987,9 +985,9 @@ function renderSales(){
   const h=$('salesHint');
   if(SQ&&SQ.date===R.date){
     const left=unassigned().length;
-    h.textContent=`USENレジのCSVから（${SQ.at}読込・会計${SQ.count}件）`;
+    h.textContent=`USENレジから自動（${SQ.at}更新・会計${SQ.count}件）`;
     h.innerHTML=esc(h.textContent)+(left?`<div class="gap">来店経緯が未記録の会計が ${left}件 あります</div>`:'');
-  }else h.textContent='「会計を記録」の「読込」で伝票明細のPDFかCSVを読み込むと入ります';
+  }else h.textContent=ls.get('nippousen_sqkey','')?'':'設定で合言葉を入れるとUSENレジから自動で入ります';
   autoCum();
   const pc=prevCum(),first=!latestBefore(R.date),sm=sqMonth();
   $('cumBaseBox').style.display=first&&sm==null?'':'none';
@@ -1092,7 +1090,8 @@ $('addCust').onclick=()=>{
   const c={id:Date.now(),src:'',n:1,takeout:false,ord:{},label:'',comment:'',time:new Date().toTimeString().slice(0,5)};
   pushUndo();R.customers.unshift(c);openId=c.id;save();renderCustomers();
 };
-$('btnSq').onclick=()=>$('csvFile').click();
+$('btnSq').onclick=()=>fetchSquare(true);
+$('btnCsv').onclick=()=>$('csvFile').click();
 $('csvFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importCsv(f)};
 $('btnNew').onclick=()=>{
   if(!confirm('今日の日報を開きますか？（今の内容は保存済みです）'))return;

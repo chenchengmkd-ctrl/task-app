@@ -6,7 +6,8 @@ nippo.html を直したら、これを実行し直すと nippo-air.html / nippo-
 置き換える場所が見つからないとエラーで止まる（nippo.html 側の書き方が変わったときは、ここを合わせる）。
 
 - nippo-air.html  … Airレジの店。売上は手入力（AirレジのAPI仕様書が届いたら自動取り込みにする）
-- nippo-usen.html … USENレジの店。USENレジの管理画面から書き出したCSV（伝票データ）を読み込む
+- nippo-usen.html … USENレジの店。サーバーがUSENレジの管理画面（伝票明細）から会計を取ってくる。
+                    つながらないときは、伝票明細のPDF・汎用検索のCSVも読み込める
 どちらも、ブラウザの保存場所・サーバーの同期の保存場所を今の店と分け、
 LINEは勤怠Bot（今の店のグループに投稿する）ではなく共有メニューで送る。
 """
@@ -183,34 +184,40 @@ async function importCsv(file){
 def make_usen(src):
     d = Doc(src)
     common(d, 'nippousen', 'usen', 'USENレジ店', 'USENレジ')
+    # 会計と売上は、サーバー（/api/nippo_usen_sales）がUSENレジの「伝票明細」から1分ごとに取ってくる。
+    # つながらないときの予備として、伝票明細のPDF・汎用検索のCSVも読み込める
+    d.rep("const API='https://task-app-nine-liard.vercel.app/api/nippo_sales';",
+          "const API='https://task-app-nine-liard.vercel.app/api/nippo_usen_sales'; // USENレジの伝票明細から取る")
     d.rep('<button class="link" id="btnSq">Square更新</button>',
-          '<button class="link" id="btnSq">読込（PDF・CSV）</button><input type="file" id="csvFile" style="display:none">')
-    d.rep('<h2>実績<span class="sub">最後の確認用。売上はSquareから自動で入ります</span></h2>',
-          '<h2>実績<span class="sub">売上はUSENレジのCSVから入ります（手で直すこともできます）</span></h2>')
+          '<button class="link" id="btnSq">USEN更新</button><button class="link" id="btnCsv">読込</button><input type="file" id="csvFile" style="display:none">')
+    d.rep("sqBusy=false;$('btnSq').textContent='Square更新';", "sqBusy=false;$('btnSq').textContent='USEN更新';")
+    d.rep("toast('Squareから更新しました')", "toast('USENレジから更新しました')")
+    d.rep("}catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Squareを読めませんでした：'+sqErr)}",
+          "}catch(e){sqErr=e.message||'通信エラー';if(manual)toast('USENレジを読めませんでした：'+sqErr);"
+          "if(!SQ||SQ.date!==R.date){const st=csvStore()[R.date];if(st)SQ=st}} // つながらないときは、読み込んだPDF・CSVの会計を出す")
+    d.rep("Squareの会計がここに並びます", "USENレジの会計がここに並びます")
+    d.rep("⚠️ Squareを読めませんでした（", "⚠️ USENレジを読めませんでした（")
+    d.rep("。合言葉を確認してください。会計なしでも記録はできます", "。右上の「読込」で伝票明細のPDF・CSVを読み込むこともできます。会計なしでも記録はできます")
+    d.rep("'Squareを読み込み中…'", "'USENレジを読み込み中…'")
+    d.rep("<br>Squareと結びつけない", "<br>USENレジと結びつけない")
+    d.rep("（Square ${SQ.orders.length}件・${SQ.at}更新）", "（USENレジ ${SQ.orders.length}件・${SQ.at}更新）", 2)
+    d.rep("h.textContent=`Squareから自動（${SQ.at}更新・会計${SQ.count}件）`;", "h.textContent=`USENレジから自動（${SQ.at}更新・会計${SQ.count}件）`;")
     d.rep("h.textContent=ls.get('nippousen_sqkey','')?'':'設定で合言葉を入れるとSquareから自動で入ります';",
-          "h.textContent='「会計を記録」の「読込」で伝票明細のPDFかCSVを読み込むと入ります';")
-    # Squareを読む代わりに、その日に読み込んだCSVの会計を出す
-    d.rep("async function fetchSquare(manual){",
-          "// USENレジ店：Squareの代わりに、その日に読み込んだCSVの会計を出す（ネットには取りに行かない）\n"
-          "async function fetchSquare(manual){const st=csvStore()[R.date];SQ=st||null;renderSqBox();renderSales();return;")
-    d.rep("function renderSqBox(){\n  const box=$('sqBox');box.innerHTML='';\n  if(!ls.get('nippousen_sqkey','')){",
-          "function renderSqBox(){\n  const box=$('sqBox');box.innerHTML='';\n"
-          "  if(!SQ){box.innerHTML='<div class=\"hint\" style=\"margin:-4px 0 10px\">USENレジの管理画面の「売上管理」→「伝票明細」で今日の一覧を出し、共有（プリント）→ PDFで「ファイル」に保存して、右上の「読込」で選びます（「帳票管理」→「汎用検索」のCSVも読めます）。営業中に何度読み込み直しても、記録した会計は二重になりません。会計なしでも記録はできます</div>';return}\n"
-          "  if(false){")
-    d.rep("h.textContent=`未記録の会計はありません（Square ${SQ.orders.length}件・${SQ.at}更新）`",
-          "h.textContent=`未記録の会計はありません（CSV ${SQ.orders.length}件・${SQ.at}読込）`")
-    d.rep("h.textContent=`未記録 ${list.length}件（Square ${SQ.orders.length}件・${SQ.at}更新）。",
-          "h.textContent=`未記録 ${list.length}件（CSV ${SQ.orders.length}件・${SQ.at}読込）。")
-    d.rep("h.textContent=`Squareから自動（${SQ.at}更新・会計${SQ.count}件）`;", "h.textContent=`USENレジのCSVから（${SQ.at}読込・会計${SQ.count}件）`;")
-    # 会計の一覧にテーブル番号も出す。会計を選んだら、CSVの客数を人数に入れる
+          "h.textContent=ls.get('nippousen_sqkey','')?'':'設定で合言葉を入れるとUSENレジから自動で入ります';")
+    d.rep('<h2>実績<span class="sub">最後の確認用。売上はSquareから自動で入ります</span></h2>',
+          '<h2>実績<span class="sub">最後の確認用。売上はUSENレジから自動で入ります</span></h2>')
+    d.rep("<h2>スマホ同期</h2>", "<h2>USENレジ連携・スマホ同期</h2>")
+    d.rep('<div class="hint">スマホでも', '<div class="hint">入れると、会計と本日売上がUSENレジ（伝票明細）から自動で入ります。<br>スマホでも')
+    # 会計の一覧にテーブル番号も出す。会計を選んだら、USENレジの人数を人数に入れる
     d.rep("b.innerHTML=`<b>${esc(o.time)}</b> ${yen(o.total)}",
           "b.innerHTML=`<b>${esc(o.time)}</b>${o.table?' '+esc(o.table):''} ${yen(o.total)}")
     d.rep("  qOrd=ord;qOther=other.join('・');\n  if(qSqs.length){qTake=take;",
           "  qOrd=ord;qOther=other.join('・');\n"
-          "  const g=qSqs.reduce((s,id)=>{const o=SQ&&SQ.orders.find(x=>x.id===id);return s+(o&&+o.guests||0)},0);if(g&&g!==qN){qN=g;fitMap(qSrcs,qN);setTimeout(renderQuick,0)} // CSVに客数があれば人数に入れる（一覧を描いている途中なので、描き直しは後で）\n"
+          "  const g=qSqs.reduce((s,id)=>{const o=SQ&&SQ.orders.find(x=>x.id===id);return s+(o&&+o.guests||0)},0);if(g&&g!==qN){qN=g;fitMap(qSrcs,qN);setTimeout(renderQuick,0)} // USENレジの人数を入れる（一覧を描いている途中なので、描き直しは後で）\n"
           "  if(qSqs.length){qTake=take;")
     d.rep("$('btnSq').onclick=()=>fetchSquare(true);",
-          "$('btnSq').onclick=()=>$('csvFile').click();\n$('csvFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importCsv(f)};")
+          "$('btnSq').onclick=()=>fetchSquare(true);\n$('btnCsv').onclick=()=>$('csvFile').click();\n"
+          "$('csvFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importCsv(f)};")
     d.rep("/* ---------- 画面描画 ---------- */", USEN_CSV_JS + "\n/* ---------- 画面描画 ---------- */")
     return d.s
 
