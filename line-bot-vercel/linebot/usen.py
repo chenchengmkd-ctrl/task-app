@@ -260,3 +260,34 @@ def _month_before(date_iso):
     total = sum(o['total'] for o in parse_slips(_search(first, prev)))
     set_state(key, {'total': total})
     return total
+
+
+# ---------- 伝票の詳細（注文の中身） ----------
+_DETAIL_ARGS = re.compile(r"postdata\('/slip_detail/C_slip_detail/open_detail'\s*,\s*'([^']*)'\s*,\s*'([^']*)'\s*,\s*'([^']*)'\s*,\s*'([^']*)'")
+
+
+def _open_detail(s, list_html, args):
+    """伝票明細の一覧ページのフォームを使って、1件の詳細ページを開く。args=(店舗コード,伝票番号,枝番,営業日)"""
+    data = [(k, v) for k, v in _form_defaults(list_html)
+            if k not in ('mode', 'my_store_code', 'voucher_number', 'voucher_branch_number', 'sum_target_date')]
+    data += [('my_store_code', args[0]), ('voucher_number', args[1]), ('voucher_branch_number', args[2]), ('sum_target_date', args[3])]
+    return s.post(urljoin(BASE, '/slip_detail/C_slip_detail/open_detail'), data=data, timeout=40).text
+
+
+def probe_detail(date_iso):
+    """1件目の伝票の詳細ページの「形」を返す（表の見出し・行数・数字を伏せた最初の数行）。"""
+    s = _session()
+    html = _search(date_iso, date_iso)
+    args = _DETAIL_ARGS.findall(html)
+    if not args:
+        return {'ok': False, 'error': '詳細を開くリンクが見つかりません'}
+    d = _open_detail(s, html, args[0])
+    tables = []
+    for t in re.findall(r'<table.*?</table>', d, re.S)[:6]:
+        heads = [_text(h)[:20] for h in re.findall(r'<th[^>]*>(.*?)</th>', t, re.S)]
+        rows = [r for r in re.findall(r'<tr[^>]*>(.*?)</tr>', t, re.S) if '<td' in r]
+        sample = [[re.sub(r'\d', '#', _text(c))[:30] for c in re.findall(r'<td[^>]*>(.*?)</td>', r, re.S)] for r in rows[:4]]
+        tables.append({'headers': heads[:20], 'rows': len(rows), 'sample_masked': sample})
+    return {'ok': True, 'title': _text((re.search(r'<title>(.*?)</title>', d, re.S) or [None, ''])[1])[:40],
+            'arg_shape': [re.sub(r'\d', '#', a) for a in args[0]], 'tables': tables,
+            'labels': sorted(set(re.findall(r'(商品名|メニュー名|品名|数量|単価|金額|小計|オーダー|注文)', d)))}
