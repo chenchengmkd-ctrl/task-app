@@ -40,6 +40,10 @@ SQUARE_LOCATION_ID = _env('SQUARE_LOCATION_ID')
 # API仕様書がまだ公開されていないため、今は保存しておくだけ（届いたら売上の自動取り込みに使う）
 AIRREGI_API_KEY = _env('AIRREGI_API_KEY')
 AIRREGI_API_TOKEN = _env('AIRREGI_API_TOKEN')
+# USENレジ（管理画面にログインして伝票明細を読む）。この連携専用の担当者を作って、そのコードとパスワードを入れる
+USEN_COMPANY_CODE = _env('USEN_COMPANY_CODE')
+USEN_USER_ID = _env('USEN_USER_ID')
+USEN_PASSWORD = _env('USEN_PASSWORD')
 
 # 「思考トレース」Webアプリ（study.html）用。
 # MENTOR_APP_TOKEN … 設定するとAPIの呼び出しにこのトークン（HTTPヘッダ X-App-Token）が必須になる。

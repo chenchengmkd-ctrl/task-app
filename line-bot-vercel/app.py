@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 94
+APP_VERSION = 95
 
 
 def _respond(start_response, status, body, cors=False):
@@ -164,6 +164,9 @@ def _handle_health(environ, start_response):
             'SQUARE_LOCATION_ID': bool(config.SQUARE_LOCATION_ID),
             'AIRREGI_API_KEY': describe(config.AIRREGI_API_KEY),
             'AIRREGI_API_TOKEN': describe(config.AIRREGI_API_TOKEN),
+            'USEN_COMPANY_CODE': bool(config.USEN_COMPANY_CODE),
+            'USEN_USER_ID': bool(config.USEN_USER_ID),
+            'USEN_PASSWORD': describe(config.USEN_PASSWORD),
         },
     }
     # Googleカレンダーが読めるか（共有設定・カレンダーIDの確認用）
@@ -454,6 +457,23 @@ def _handle_nippo_sales(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
+def _handle_usen_probe(environ, start_response):
+    """USENレジの管理画面にログインして、画面の構造（リンク・フォーム項目・表の見出し）だけを返す。
+    伝票の取り込みを作るための調査用。売上や客の値は返さない。合言葉は NIPPO_TOKEN。"""
+    if not config.NIPPO_TOKEN or environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
+    from linebot import usen
+    if not usen.is_enabled():
+        return _respond(start_response, '503 Service Unavailable',
+                        {'ok': False, 'error': 'USEN_COMPANY_CODE / USEN_USER_ID / USEN_PASSWORD が未設定です'}, cors=True)
+    body = _read_json_body(environ) or {}
+    try:
+        result = usen.probe(body.get('path'))
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK', result, cors=True)
+
+
 def _handle_nippo_sync(environ, start_response):
     """日報アプリ（nippo.html）の端末間同期。iPadとスマホで同じ日報を編集・送信できるようにする。"""
     if not config.NIPPO_TOKEN:
@@ -489,6 +509,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_sales(environ, start_response)
+
+    if path == '/api/usen_probe':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_usen_probe(environ, start_response)
 
     if path == '/api/nippo_sync':
         if method == 'OPTIONS':
