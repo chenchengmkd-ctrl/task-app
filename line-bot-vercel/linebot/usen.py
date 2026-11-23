@@ -162,3 +162,99 @@ def probe_search(date_iso):
     first = [re.sub(r'\d', '#', _text(c))[:60] for c in re.findall(r'<td[^>]*>(.*?)</td>', data_rows[0], re.S)] if data_rows else []
     return {'ok': True, 'sent_fields': [k for k, _ in sent], 'headers': heads, 'rows': len(data_rows), 'first_row_masked': first,
             'has_table': bool(t), 'empty_msg': '検索結果はありませんでした' in html}
+
+
+# ---------- 日報アプリ向け：その日の会計の一覧 ----------
+# 1分ごとに呼ばれるので、ログインしたセッションを少しの間使い回す（毎回ログインしない）
+_SESSION = {'s': None, 'at': 0}
+
+
+def _session():
+    import time
+    if _SESSION['s'] is None or time.time() - _SESSION['at'] > 600:
+        _SESSION['s'], _ = login()
+        _SESSION['at'] = time.time()
+    return _SESSION['s']
+
+
+def _search(date_from, date_to):
+    """伝票明細を期間で検索して、結果のHTMLを返す。セッションが切れていたらログインし直す。"""
+    for attempt in range(2):
+        s = _session()
+        page = s.get(urljoin(BASE, SLIP_LIST), timeout=30).text
+        if 'name="company_code"' in page:  # ログイン画面に戻された
+            _SESSION['s'] = None
+            continue
+        data = [(k, v) for k, v in _form_defaults(page) if k not in ('mode', 'search_sum_target_date_from', 'search_sum_target_date_to')]
+        data += [('mode', 'search'), ('search_sum_target_date_from', date_from.replace('-', '')),
+                 ('search_sum_target_date_to', date_to.replace('-', ''))]
+        html = s.post(urljoin(BASE, SLIP_LIST), data=data, timeout=60).text
+        if 'name="company_code"' in html:
+            _SESSION['s'] = None
+            continue
+        return html
+    raise RuntimeError('USENレジにログインできませんでした')
+
+
+def _yen(text):
+    m = re.search(r'金額\s*:?\s*[￥¥]?\s*([\d,]+)', text)
+    return int(m.group(1).replace(',', '')) if m else 0
+
+
+def parse_slips(html):
+    """検索結果の表から、会計済みの伝票を [{id,time,total,table,guests,takeout,date,items}] にする。"""
+    t = re.search(r'<table[^>]*id="slip-list"[^>]*>(.*?)</table>', html, re.S) or re.search(r'<table[^>]*>(.*?)</table>', html, re.S)
+    out = []
+    for row in re.findall(r'<tr[^>]*>(.*?)</tr>', t.group(1) if t else '', re.S):
+        cells = [_text(c) for c in re.findall(r'<td[^>]*>(.*?)</td>', row, re.S)]
+        if len(cells) < 7:
+            continue
+        joined = ' '.join(cells)
+        if '会計済' not in joined:  # 取消・未会計などは数えない
+            continue
+        slip = re.sub(r'\s+', '', cells[0])
+        table = cells[2].split('/')[-1].strip() if '/' in cells[2] else cells[2].strip()
+        out_t = re.search(r'退店\s*:?\s*\d{4}/\d{1,2}/\d{1,2}\s*(\d{1,2}:\d{2})', joined)
+        in_t = re.search(r'入店\s*:?\s*\d{4}/\d{1,2}/\d{1,2}\s*(\d{1,2}:\d{2})', joined)
+        day = re.search(r'営業日\s*:?\s*(\d{4})/(\d{1,2})/(\d{1,2})', joined)
+        ppl = re.search(r'人数\s*:?\s*(\d+)', joined)
+        tm = (out_t or in_t).group(1) if (out_t or in_t) else ''
+        out.append({
+            'id': 'usen-' + slip,
+            'time': tm.zfill(5),
+            'total': _yen(joined),
+            'table': table,
+            'guests': int(ppl.group(1)) if ppl else 0,
+            'takeout': bool(re.search(r'テイクアウト|持ち帰り', cells[2])),
+            'date': f'{day.group(1)}-{int(day.group(2)):02d}-{int(day.group(3)):02d}' if day else '',
+            'items': [],
+        })
+    out.sort(key=lambda o: o['time'])
+    return out
+
+
+def day_sales(date_iso):
+    """日報アプリ（nippo-usen.html）用。Squareの day_sales と同じ形で返す。"""
+    if not is_enabled():
+        return {'ok': False, 'error': 'USENレジのログイン情報が未設定です'}
+    orders = [o for o in parse_slips(_search(date_iso, date_iso)) if not o['date'] or o['date'] == date_iso]
+    total = sum(o['total'] for o in orders)
+    return {'ok': True, 'date': date_iso, 'total': total, 'count': len(orders), 'orders': orders,
+            'month_total': _month_before(date_iso) + total}
+
+
+def _month_before(date_iso):
+    """その月の1日から前日までの合計。日中は変わらないので、日付ごとに保存して使い回す。"""
+    from datetime import date, timedelta
+    from .supabase_client import get_state, set_state
+    d = date.fromisoformat(date_iso)
+    if d.day == 1:
+        return 0
+    key = f'usen:month_before:{date_iso}'
+    cached = get_state(key)
+    if isinstance(cached, dict) and 'total' in cached:
+        return int(cached['total'])
+    first, prev = d.replace(day=1).isoformat(), (d - timedelta(days=1)).isoformat()
+    total = sum(o['total'] for o in parse_slips(_search(first, prev)))
+    set_state(key, {'total': total})
+    return total

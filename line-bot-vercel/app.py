@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 98
+APP_VERSION = 99
 
 
 def _respond(start_response, status, body, cors=False):
@@ -480,6 +480,23 @@ def _handle_usen_probe(environ, start_response):
     return _respond(start_response, '200 OK', result, cors=True)
 
 
+def _handle_nippo_usen_sales(environ, start_response):
+    """日報アプリ（USENレジ店）用。その日のUSENレジの伝票（会計済み）と売上を返す。形は /api/nippo_sales と同じ。"""
+    if not config.NIPPO_TOKEN:
+        return _respond(start_response, '503 Service Unavailable', {'ok': False, 'error': 'NIPPO_TOKEN が未設定です'}, cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
+    body = _read_json_body(environ)
+    if not body or not body.get('date'):
+        return _respond(start_response, '400 Bad Request', {'ok': False, 'error': 'date がありません'}, cors=True)
+    from linebot import usen
+    try:
+        result = usen.day_sales(body['date'])
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK' if result.get('ok') else '502 Bad Gateway', result, cors=True)
+
+
 def _handle_nippo_sync(environ, start_response):
     """日報アプリ（nippo.html）の端末間同期。iPadとスマホで同じ日報を編集・送信できるようにする。"""
     if not config.NIPPO_TOKEN:
@@ -515,6 +532,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_sales(environ, start_response)
+
+    if path == '/api/nippo_usen_sales':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_nippo_usen_sales(environ, start_response)
 
     if path == '/api/usen_probe':
         if method == 'OPTIONS':
