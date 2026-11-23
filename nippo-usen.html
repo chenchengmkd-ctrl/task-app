@@ -452,7 +452,7 @@ function mapItems(items){
   (items||[]).forEach(i=>{const n=i.name||'';let k=null;
     if(n.includes('おにぎり'))k='おにぎり';
     else if(n.includes('混ぜ'))k='混ぜご飯';
-    else if(n.includes('重'))k=n.includes('特')?'特上':n.includes('並')?'並':'上';
+    else if(/重|ひつまぶし|まぶし|丼|蒲焼/.test(n))k=n.includes('特')?'特上':n.includes('並')?'並':'上';
     if(k)ord[k]=(ord[k]||0)+i.qty;else other.push(n+(i.qty>1?'×'+i.qty:''))});
   return {ord,other:other.join('・')};
 }

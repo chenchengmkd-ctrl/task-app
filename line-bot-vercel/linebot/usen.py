@@ -215,6 +215,7 @@ def parse_slips(html):
         if '会計済' not in joined:  # 取消・未会計などは数えない
             continue
         slip = re.sub(r'\s+', '', cells[0])
+        args = _DETAIL_ARGS.search(row)
         table = cells[2].split('/')[-1].strip() if '/' in cells[2] else cells[2].strip()
         out_t = re.search(r'退店\s*:?\s*\d{4}/\d{1,2}/\d{1,2}\s*(\d{1,2}:\d{2})', joined)
         in_t = re.search(r'入店\s*:?\s*\d{4}/\d{1,2}/\d{1,2}\s*(\d{1,2}:\d{2})', joined)
@@ -230,16 +231,70 @@ def parse_slips(html):
             'takeout': bool(re.search(r'テイクアウト|持ち帰り', cells[2])),
             'date': f'{day.group(1)}-{int(day.group(2)):02d}-{int(day.group(3)):02d}' if day else '',
             'items': [],
+            'args': list(args.groups()) if args else None,  # 詳細を開くための値（返す前に外す）
         })
     out.sort(key=lambda o: o['time'])
     return out
+
+
+def _items_from_detail(html):
+    """詳細ページの「商品名・単価・数量…」の表から [{name, qty}] を作る。取消の注文は外す。"""
+    for t in re.findall(r'<table.*?</table>', html, re.S):
+        heads = [_text(h) for h in re.findall(r'<th[^>]*>(.*?)</th>', t, re.S)]
+        if '商品名' not in heads:
+            continue
+        ni, qi = heads.index('商品名'), (heads.index('数量') if '数量' in heads else None)
+        si = next((i for i, h in enumerate(heads) if 'ステータス' in h), None)
+        items = []
+        for r in re.findall(r'<tr[^>]*>(.*?)</tr>', t, re.S):
+            c = [_text(x) for x in re.findall(r'<td[^>]*>(.*?)</td>', r, re.S)]
+            if len(c) <= ni or not c[ni]:
+                continue
+            if si is not None and si < len(c) and re.search(r'取消|キャンセル', c[si]):
+                continue
+            q = re.sub(r'[^\d-]', '', c[qi]) if qi is not None and qi < len(c) else ''
+            items.append({'name': c[ni], 'qty': int(q) if q.lstrip('-').isdigit() else 1})
+        return items
+    return None
+
+
+def _fill_items(date_iso, list_html, orders, limit=15):
+    """会計ごとの注文の中身を詳細ページから取る。会計済みの伝票は変わらないので、一度取ったら保存して使い回す。"""
+    from .supabase_client import get_state, set_state
+    key = f'usen:items:{date_iso}'
+    cache = get_state(key) or {}
+    missing = [o for o in orders if o['id'] not in cache and o.get('args')][:limit]  # 1回の呼び出しで開くのは最大15件（時間がかかりすぎないように）
+    if missing:
+        s, page = _session(), list_html
+        for o in missing:
+            try:
+                d = _open_detail(s, page, o['args'])
+            except requests.RequestException:
+                break
+            items = _items_from_detail(d)
+            if items is None:  # 一覧に戻されたなど。次の呼び出しでやり直す
+                page = _search(date_iso, date_iso)
+                continue
+            cache[o['id']] = items
+            if 'name="voucher_number"' in d and 'csrf_token_name' in d:
+                page = d  # 次の詳細は、今開いたページのフォームから開く（合言葉が新しくなっている場合に備えて）
+        set_state(key, cache)
+    for o in orders:
+        o['items'] = cache.get(o['id'], [])
 
 
 def day_sales(date_iso):
     """日報アプリ（nippo-usen.html）用。Squareの day_sales と同じ形で返す。"""
     if not is_enabled():
         return {'ok': False, 'error': 'USENレジのログイン情報が未設定です'}
-    orders = [o for o in parse_slips(_search(date_iso, date_iso)) if not o['date'] or o['date'] == date_iso]
+    html = _search(date_iso, date_iso)
+    orders = [o for o in parse_slips(html) if not o['date'] or o['date'] == date_iso]
+    try:
+        _fill_items(date_iso, html, orders)
+    except Exception as e:  # 注文の中身が取れなくても、会計の一覧と売上は返す
+        print('usen items failed:', e)
+    for o in orders:
+        o.pop('args', None)
     total = sum(o['total'] for o in orders)
     return {'ok': True, 'date': date_iso, 'total': total, 'count': len(orders), 'orders': orders,
             'month_total': _month_before(date_iso) + total}

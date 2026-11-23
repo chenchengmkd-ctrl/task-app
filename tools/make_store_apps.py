@@ -218,6 +218,9 @@ def make_usen(src):
     d.rep("$('btnSq').onclick=()=>fetchSquare(true);",
           "$('btnSq').onclick=()=>fetchSquare(true);\n$('btnCsv').onclick=()=>$('csvFile').click();\n"
           "$('csvFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importCsv(f)};")
+    # USENレジ店のメニュー名（例「ひつまぶし)特上」）も、特上・上・並に振り分ける
+    d.rep("    else if(n.includes('重'))k=n.includes('特')?'特上':n.includes('並')?'並':'上';",
+          "    else if(/重|ひつまぶし|まぶし|丼|蒲焼/.test(n))k=n.includes('特')?'特上':n.includes('並')?'並':'上';")
     d.rep("/* ---------- 画面描画 ---------- */", USEN_CSV_JS + "\n/* ---------- 画面描画 ---------- */")
     return d.s
 
