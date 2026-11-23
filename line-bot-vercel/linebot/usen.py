@@ -151,9 +151,10 @@ def search_slips(date_iso):
     return r.text, data
 
 
-def probe_search(date_iso):
-    """検索結果の「形」だけを返す（見出し・行数・1行目の数字を伏せたもの）。"""
+def probe_search(date_iso, find=None):
+    """検索結果の「形」だけを返す（見出し・行数・1行目の数字を伏せたもの）。find の前後のHTMLも、数字を伏せて返す。"""
     html, sent = search_slips(date_iso)
+    near = [re.sub(r'\d', '#', html[max(0, m.start() - 400):m.end() + 400]) for m in re.finditer(re.escape(find), html)][:4] if find else []
     t = re.search(r'<table[^>]*id="slip-list"[^>]*>(.*?)</table>', html, re.S) or re.search(r'<table[^>]*>(.*?)</table>', html, re.S)
     body = t.group(1) if t else ''
     heads = [_text(h)[:20] for h in re.findall(r'<th[^>]*>(.*?)</th>', body, re.S)]
@@ -161,7 +162,8 @@ def probe_search(date_iso):
     data_rows = [r for r in rows if '<td' in r]
     first = [re.sub(r'\d', '#', _text(c))[:60] for c in re.findall(r'<td[^>]*>(.*?)</td>', data_rows[0], re.S)] if data_rows else []
     return {'ok': True, 'sent_fields': [k for k, _ in sent], 'headers': heads, 'rows': len(data_rows), 'first_row_masked': first,
-            'has_table': bool(t), 'empty_msg': '検索結果はありませんでした' in html}
+            'has_table': bool(t), 'empty_msg': '検索結果はありませんでした' in html, 'near': near,
+            'ajax_urls': sorted(set(re.findall(r'''["'](/?[A-Za-z0-9_]+/C_[A-Za-z0-9_]+/[A-Za-z0-9_]+)["']''', html)))[:60]}
 
 
 # ---------- 日報アプリ向け：その日の会計の一覧 ----------
