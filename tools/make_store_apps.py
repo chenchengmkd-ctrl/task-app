@@ -184,18 +184,18 @@ def make_usen(src):
     d = Doc(src)
     common(d, 'nippousen', 'usen', 'USENレジ店', 'USENレジ')
     d.rep('<button class="link" id="btnSq">Square更新</button>',
-          '<button class="link" id="btnSq">CSV読込</button><input type="file" id="csvFile" style="display:none">')
+          '<button class="link" id="btnSq">読込（PDF・CSV）</button><input type="file" id="csvFile" style="display:none">')
     d.rep('<h2>実績<span class="sub">最後の確認用。売上はSquareから自動で入ります</span></h2>',
           '<h2>実績<span class="sub">売上はUSENレジのCSVから入ります（手で直すこともできます）</span></h2>')
     d.rep("h.textContent=ls.get('nippousen_sqkey','')?'':'設定で合言葉を入れるとSquareから自動で入ります';",
-          "h.textContent='「会計を記録」の「CSV読込」でUSENレジのCSVを読み込むと入ります';")
+          "h.textContent='「会計を記録」の「読込」で伝票明細のPDFかCSVを読み込むと入ります';")
     # Squareを読む代わりに、その日に読み込んだCSVの会計を出す
     d.rep("async function fetchSquare(manual){",
           "// USENレジ店：Squareの代わりに、その日に読み込んだCSVの会計を出す（ネットには取りに行かない）\n"
           "async function fetchSquare(manual){const st=csvStore()[R.date];SQ=st||null;renderSqBox();renderSales();return;")
     d.rep("function renderSqBox(){\n  const box=$('sqBox');box.innerHTML='';\n  if(!ls.get('nippousen_sqkey','')){",
           "function renderSqBox(){\n  const box=$('sqBox');box.innerHTML='';\n"
-          "  if(!SQ){box.innerHTML='<div class=\"hint\" style=\"margin:-4px 0 10px\">USENレジの管理画面で「帳票管理」→「汎用検索」→ データ形式「売上データ(伝票)」・期間を今日にして「CSV出力」し、右上の「CSV読込」で選びます。営業中に何度読み込み直しても、記録した会計は二重になりません。会計なしでも記録はできます</div>';return}\n"
+          "  if(!SQ){box.innerHTML='<div class=\"hint\" style=\"margin:-4px 0 10px\">USENレジの管理画面の「売上管理」→「伝票明細」で今日の一覧を出し、共有（プリント）→ PDFで「ファイル」に保存して、右上の「読込」で選びます（「帳票管理」→「汎用検索」のCSVも読めます）。営業中に何度読み込み直しても、記録した会計は二重になりません。会計なしでも記録はできます</div>';return}\n"
           "  if(false){")
     d.rep("h.textContent=`未記録の会計はありません（Square ${SQ.orders.length}件・${SQ.at}更新）`",
           "h.textContent=`未記録の会計はありません（CSV ${SQ.orders.length}件・${SQ.at}読込）`")

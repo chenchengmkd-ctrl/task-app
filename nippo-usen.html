@@ -148,7 +148,7 @@
 
   <div class="card quick">
     <h2>会計を記録<span class="sub">1組ぶん選んで、いちばん下の「記録する」を押すと完了です</span>
-      <span class="r"><button class="link" id="panelReset">選び直す</button><button class="link" id="btnSq">CSV読込</button><input type="file" id="csvFile" style="display:none"></span></h2>
+      <span class="r"><button class="link" id="panelReset">選び直す</button><button class="link" id="btnSq">読込（PDF・CSV）</button><input type="file" id="csvFile" style="display:none"></span></h2>
     <div id="sqBox"></div>
     <div class="q-label">人数</div>
     <div class="n-row" id="nRow"></div>
@@ -599,7 +599,7 @@ function unassigned(){if(!SQ)return[];const used=new Set();R.customers.forEach(c
   return SQ.orders.filter(o=>!used.has(o.id)).slice().reverse()} // 新しい順
 function renderSqBox(){
   const box=$('sqBox');box.innerHTML='';
-  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">USENレジの管理画面で「帳票管理」→「汎用検索」→ データ形式「売上データ(伝票)」・期間を今日にして「CSV出力」し、右上の「CSV読込」で選びます。営業中に何度読み込み直しても、記録した会計は二重になりません。会計なしでも記録はできます</div>';return}
+  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">USENレジの管理画面の「売上管理」→「伝票明細」で今日の一覧を出し、共有（プリント）→ PDFで「ファイル」に保存して、右上の「読込」で選びます（「帳票管理」→「汎用検索」のCSVも読めます）。営業中に何度読み込み直しても、記録した会計は二重になりません。会計なしでも記録はできます</div>';return}
   if(false){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">設定で合言葉を入れると、Squareの会計がここに並びます</div>';return}
   if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">'+(sqErr?'⚠️ Squareを読めませんでした（'+esc(sqErr)+'）。合言葉を確認してください。会計なしでも記録はできます':'Squareを読み込み中…')+'</div>';return}
   const list=unassigned();
@@ -989,7 +989,7 @@ function renderSales(){
     const left=unassigned().length;
     h.textContent=`USENレジのCSVから（${SQ.at}読込・会計${SQ.count}件）`;
     h.innerHTML=esc(h.textContent)+(left?`<div class="gap">来店経緯が未記録の会計が ${left}件 あります</div>`:'');
-  }else h.textContent='「会計を記録」の「CSV読込」でUSENレジのCSVを読み込むと入ります';
+  }else h.textContent='「会計を記録」の「読込」で伝票明細のPDFかCSVを読み込むと入ります';
   autoCum();
   const pc=prevCum(),first=!latestBefore(R.date),sm=sqMonth();
   $('cumBaseBox').style.display=first&&sm==null?'':'none';
