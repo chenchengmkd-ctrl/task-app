@@ -220,6 +220,10 @@ def parse_slips(html):
             continue
         slip = re.sub(r'\s+', '', cells[0])
         args = _DETAIL_ARGS.search(row)
+        # 分割会計：元の伝票（番号に「-」なし）に全部の注文と合計が入り、分けた分は「-1」「-2」…の伝票になる。
+        # 二重に数えないよう、元の伝票だけを残す
+        if '分割' in cells[3] and (re.search(r'-\d+$', slip) or (args and args.group(3) not in ('', '0'))):
+            continue
         table = cells[2].split('/')[-1].strip() if '/' in cells[2] else cells[2].strip()
         out_t = re.search(r'退店\s*:?\s*\d{4}/\d{1,2}/\d{1,2}\s*(\d{1,2}:\d{2})', joined)
         in_t = re.search(r'入店\s*:?\s*\d{4}/\d{1,2}/\d{1,2}\s*(\d{1,2}:\d{2})', joined)
@@ -311,7 +315,7 @@ def _month_before(date_iso):
     d = date.fromisoformat(date_iso)
     if d.day == 1:
         return 0
-    key = f'usen:month_before:{date_iso}'
+    key = f'usen:month_before2:{date_iso}'  # 2: 分割会計の二重計上を直したあとの値
     cached = get_state(key)
     if isinstance(cached, dict) and 'total' in cached:
         return int(cached['total'])
