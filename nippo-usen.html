@@ -790,6 +790,32 @@ function parseUsenCsv(text,want){
   const orders=[...by.values()].map(o=>{if(o._tot!=null)o.total=o._tot;delete o._tot;return o}).filter(o=>o.total||o.items.length)
     .sort((a,b)=>(a.time||'').localeCompare(b.time||''));
   return {orders,total:orders.reduce((s,o)=>s+o.total,0),dates:[...dates].sort()}}
+// 「売上管理」→「伝票明細」の画面を印刷→PDFで保存したもの（またはその画面の文字）から会計を拾う。
+// 1件ごとに「伝票番号 … テーブル/T3 … 会計済 … 金額:¥4,100 … 人数:1 … 営業日:2026/11/23 … 退店:2026/11/23 14:30」と並んでいる
+function parseUsenSlipText(text,want){
+  const flat=String(text).replace(/\s+/g,' '),rx=/(?:^|[^\d])(20\d{5})\s?(\d{8})(?!\d)/g,hits=[];let m;
+  while((m=rx.exec(flat)))hits.push({id:m[1]+m[2],at:m.index+m[0].length});
+  const orders=[],dates=new Set(),seen=new Set();
+  hits.forEach((h,i)=>{
+    const seg=flat.slice(h.at,i+1<hits.length?hits[i+1].at:flat.length),tight=seg.replace(/\s+/g,'');
+    const amt=tight.match(/金額:?[¥￥]?([\d,]+)/);if(!amt)return; // 金額のない番号（検索欄の日付など）は会計ではない
+    if(seen.has(h.id))return;seen.add(h.id);
+    if(/取消|キャンセル|返品|削除/.test(tight)&&!/会計済/.test(tight))return;
+    const day=seg.match(/営\s*業\s*日\s*:?\s*(\d{4}\/\d{1,2}\/\d{1,2})/),out=seg.match(/退\s*店\s*:?\s*(\d{4}\/\d{1,2}\/\d{1,2})\s*(\d{1,2}:\d{2})/),
+      inn=seg.match(/入\s*店\s*:?\s*(\d{4}\/\d{1,2}\/\d{1,2})\s*(\d{1,2}:\d{2})/);
+    const d=csvDate(day?day[1]:out?out[1]:inn?inn[1]:'');if(d)dates.add(d);if(want&&d&&d!==want)return;
+    const tb=tight.match(/(テーブル|カウンター|座敷|個室|テラス|テイクアウト|持ち帰り)[^\/]{0,6}\/([A-Za-z0-9０-９\-]+)/),ppl=tight.match(/人数:?(\d+)/);
+    orders.push({id:'usen-'+h.id,time:csvTime(out?out[2]:inn?inn[2]:''),total:csvNum(amt[1]),items:[],table:tb?tb[2]:'',guests:ppl?+ppl[1]:0,
+      takeout:!!(tb&&/テイクアウト|持ち帰り/.test(tb[1]))})});
+  orders.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  return {orders,total:orders.reduce((s,o)=>s+o.total,0),dates:[...dates].sort()}}
+// PDFの文字を取り出す（pdf.js を必要なときだけ読み込む）
+async function pdfText(buf){
+  if(!window.pdfjsLib)await new Promise((ok,ng)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';sc.onload=ok;sc.onerror=()=>ng(new Error('PDFを読む部品を読み込めませんでした（電波を確認してください）'));document.head.appendChild(sc)});
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise,out=[];
+  for(let i=1;i<=pdf.numPages;i++){const c=await (await pdf.getPage(i)).getTextContent();out.push(c.items.map(x=>x.str+(x.hasEOL?'\n':' ')).join(''))}
+  return out.join('\n')}
 // 読み込んだ会計は日付ごとに端末に残す（開き直しても一覧が消えないように。1週間分）
 const csvStore=()=>ls.get('nippousen_csv',{});
 function csvSave(date,sq){const a=csvStore();a[date]=sq;Object.keys(a).sort().slice(0,-7).forEach(k=>delete a[k]);ls.set('nippousen_csv',a)}
@@ -797,16 +823,17 @@ async function importCsv(file){
   try{
     const buf=await file.arrayBuffer(),head=new Uint8Array(buf.slice(0,4)),sig=String.fromCharCode(...head);
     // CSV以外を選んだときは、何のファイルか教える（iPadではCSV以外も選べるようにしてある）
-    if(sig==='%PDF'){toast(`「${file.name}」はPDFです。USENレジの汎用検索で「CSV出力」したファイルを選んでください`);return}
-    if(sig.startsWith('PK')){toast(`「${file.name}」はExcelのファイルです。USENレジの汎用検索で「CSV出力」したファイルを選んでください`);return}
-    const text=csvDecode(buf);let p=parseUsenCsv(text,R.date);
+    if(sig.startsWith('PK')){toast(`「${file.name}」はExcelのファイルです。CSVか、伝票明細を印刷→PDFで保存したものを選んでください`);return}
+    let p;
+    if(sig==='%PDF'){toast('PDFを読み込んでいます…');p=parseUsenSlipText(await pdfText(buf),R.date);if(!p.orders.length&&!p.dates.length)throw new Error('PDFの中に伝票（伝票番号と金額）が見つかりません。「売上管理」→「伝票明細」の一覧を印刷→PDFで保存したものを選んでください')}
+    else{const text=csvDecode(buf);try{p=parseUsenCsv(text,R.date)}catch(e){p=parseUsenSlipText(text,R.date);if(!p.orders.length&&!p.dates.length)throw e}}
     if(!p.orders.length){
       const other=p.dates.filter(d=>d!==R.date);
       if(other.length){toast(`このCSVは ${other.map(d=>+d.slice(5,7)+'/'+(+d.slice(8,10))).join('・')} の分です（${+R.date.slice(5,7)}/${+R.date.slice(8,10)}の会計は入っていません）`);return}
       toast('会計が見つかりませんでした');return}
     SQ={total:p.total,count:p.orders.length,orders:p.orders,at:new Date().toTimeString().slice(0,5),date:R.date};csvSave(R.date,SQ);
     R.sales=String(p.total);$('sales').value=R.sales;autoCum();save(true);
-    qAuto=true;renderSqBox();renderSales();toast(`CSVを読み込みました：会計${p.orders.length}件・${yen(p.total)}`);
+    qAuto=true;renderSqBox();renderSales();toast(`読み込みました：会計${p.orders.length}件・${yen(p.total)}`);
   }catch(e){toast('CSVを読めませんでした：'+(e.message||e))}
 }
 
