@@ -82,13 +82,20 @@ def _tables(html):
     return out
 
 
-def probe(path=None):
-    """ログインして、トップ（または path）の画面の構造を返す。売上・客の値は返さない。"""
+def probe(path=None, find=None, method='get', data=None):
+    """ログインして、トップ（または path）の画面の構造を返す。売上・客の値は返さない。
+    find を渡すと、その言葉の前後のHTML（画面の作り）を返す。数字はすべて # に伏せる。"""
     s, r = login()
     url = urljoin(BASE, path) if path else r.url
     if path:
-        r = s.get(url, timeout=20)
+        r = s.post(url, data=data or {}, timeout=30) if method == 'post' else s.get(url, timeout=30)
     html = r.text
+    near = []
+    if find:
+        for m in re.finditer(re.escape(find), html):
+            near.append(re.sub(r'\d', '#', html[max(0, m.start() - 300):m.end() + 300]))
+            if len(near) >= 8:
+                break
     links = _links(html, r.url)
     keep = re.compile(r'売上|伝票|帳票|汎用|検索|精算|日報|実績|CSV|csv', re.I)
     return {
@@ -100,5 +107,7 @@ def probe(path=None):
         'forms': _forms(html, r.url),
         'tables': _tables(html),
         'scripts': sorted(set(re.findall(r'src="([^"]+\.js)[^"]*"', html)))[:20],
-        'ajax_urls': sorted(set(re.findall(r'''["'](/[A-Za-z0-9_/]+/C_[A-Za-z0-9_/]+)["']''', html)))[:40],
+        'ajax_urls': sorted(set(re.findall(r'''["'](/[A-Za-z0-9_/]+/C_[A-Za-z0-9_/]+)["']''', html)))[:60],
+        'status': r.status_code,
+        'near': near,
     }
