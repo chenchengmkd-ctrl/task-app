@@ -163,6 +163,10 @@ def probe_search(date_iso, find=None):
     first = [re.sub(r'\d', '#', _text(c))[:60] for c in re.findall(r'<td[^>]*>(.*?)</td>', data_rows[0], re.S)] if data_rows else []
     return {'ok': True, 'sent_fields': [k for k, _ in sent], 'headers': heads, 'rows': len(data_rows), 'first_row_masked': first,
             'has_table': bool(t), 'empty_msg': '検索結果はありませんでした' in html, 'near': near,
+            'rows_shape': [{'c0': re.sub(r'\d', '#', _text(cs[0])) if cs else '', 'c3': _text(cs[3]) if len(cs) > 3 else '',
+                            'branch': (_DETAIL_ARGS.search(r).group(3) if _DETAIL_ARGS.search(r) else None),
+                            'c0_html': re.sub(r'\d', '#', re.sub(r'\s+', ' ', re.findall(r'<td[^>]*>(.*?)</td>', r, re.S)[0]))[:200] if cs else ''}
+                           for r in data_rows for cs in [[c for c in re.findall(r'<td[^>]*>(.*?)</td>', r, re.S)]]],
             'ajax_urls': sorted(set(re.findall(r'''["'](/?[A-Za-z0-9_]+/C_[A-Za-z0-9_]+/[A-Za-z0-9_]+)["']''', html)))[:60]}
 
 
