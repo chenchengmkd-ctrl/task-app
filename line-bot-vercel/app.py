@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 95
+APP_VERSION = 96
 
 
 def _respond(start_response, status, body, cors=False):
@@ -460,7 +460,10 @@ def _handle_nippo_sales(environ, start_response):
 def _handle_usen_probe(environ, start_response):
     """USENレジの管理画面にログインして、画面の構造（リンク・フォーム項目・表の見出し）だけを返す。
     伝票の取り込みを作るための調査用。売上や客の値は返さない。合言葉は NIPPO_TOKEN。"""
-    if not config.NIPPO_TOKEN or environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+    sent = environ.get('HTTP_X_APP_TOKEN', '').strip()
+    if sent.lower().startswith('bearer '):  # 「Bearer 合言葉」の形で届いても受け付ける
+        sent = sent[7:].strip()
+    if not config.NIPPO_TOKEN or sent != config.NIPPO_TOKEN:
         return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
     from linebot import usen
     if not usen.is_enabled():
