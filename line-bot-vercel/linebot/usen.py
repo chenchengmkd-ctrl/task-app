@@ -290,4 +290,7 @@ def probe_detail(date_iso):
         tables.append({'headers': heads[:20], 'rows': len(rows), 'sample_masked': sample})
     return {'ok': True, 'title': _text((re.search(r'<title>(.*?)</title>', d, re.S) or [None, ''])[1])[:40],
             'arg_shape': [re.sub(r'\d', '#', a) for a in args[0]], 'tables': tables,
-            'labels': sorted(set(re.findall(r'(商品名|メニュー名|品名|数量|単価|金額|小計|オーダー|注文)', d)))}
+            'labels': sorted(set(re.findall(r'(商品名|メニュー名|品名|数量|単価|金額|小計|オーダー|注文)', d))),
+            'breadcrumb': _text((re.search(r'<ul class="breadcrumbs">(.*?)</ul>', d, re.S) or [None, ''])[1]),
+            'main_text_masked': re.sub(r'\d', '#', _text((re.search(r'<div class="wrap[^"]*">(.*)', d, re.S) or [None, d])[1]))[:1500],
+            'forms': [f['action'] for f in _forms(d, BASE)]}
