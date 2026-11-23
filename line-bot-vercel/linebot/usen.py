@@ -269,9 +269,23 @@ _DETAIL_ARGS = re.compile(r"postdata\('/slip_detail/C_slip_detail/open_detail'\s
 def _open_detail(s, list_html, args):
     """伝票明細の一覧ページのフォームを使って、1件の詳細ページを開く。args=(店舗コード,伝票番号,枝番,営業日)"""
     data = [(k, v) for k, v in _form_defaults(list_html)
-            if k not in ('mode', 'my_store_code', 'voucher_number', 'voucher_branch_number', 'sum_target_date')]
+            if k not in ('my_store_code', 'voucher_number', 'voucher_branch_number', 'sum_target_date')]  # mode は画面のまま送る（元のボタンと同じ）
     data += [('my_store_code', args[0]), ('voucher_number', args[1]), ('voucher_branch_number', args[2]), ('sum_target_date', args[3])]
     return s.post(urljoin(BASE, '/slip_detail/C_slip_detail/open_detail'), data=data, timeout=40).text
+
+
+def _preview(s, list_html, i=0):
+    """伝票プレビュー（レシートの形）を取る。一覧の各行の slip-preview-icon-cell に付いている data-* をそのまま送る。"""
+    cells = re.findall(r'<td[^>]*class="[^"]*slip-preview-icon-cell[^"]*"([^>]*)>', list_html)
+    if len(cells) <= i:
+        return None, []
+    data = {k.replace('-', '_'): unescape(v) for k, v in re.findall(r'data-([a-z0-9_-]+)="([^"]*)"', cells[i])}
+    csrf = re.search(r'name="csrf_token_name" value="([^"]*)"', list_html)
+    if csrf:
+        data['csrf_token_name'] = csrf.group(1)
+    r = s.post(urljoin(BASE, '/electronic_journal/C_electronic_journal/get_preview_content'), data=data, timeout=40,
+               headers={'X-Requested-With': 'XMLHttpRequest'})
+    return r.text, sorted(data)
 
 
 def probe_detail(date_iso):
@@ -293,4 +307,13 @@ def probe_detail(date_iso):
             'labels': sorted(set(re.findall(r'(商品名|メニュー名|品名|数量|単価|金額|小計|オーダー|注文)', d))),
             'breadcrumb': _text((re.search(r'<ul class="breadcrumbs">(.*?)</ul>', d, re.S) or [None, ''])[1]),
             'main_text_masked': re.sub(r'\d', '#', _text((re.search(r'<div class="wrap[^"]*">(.*)', d, re.S) or [None, d])[1]))[:1500],
-            'forms': [f['action'] for f in _forms(d, BASE)]}
+            'forms': [f['action'] for f in _forms(d, BASE)],
+            **_probe_preview(s, html)}
+
+
+def _probe_preview(s, html):
+    pv, keys = _preview(s, html)
+    if pv is None:
+        return {'preview': None}
+    return {'preview_keys': keys, 'preview_len': len(pv),
+            'preview_text_masked': re.sub(r'\d', '#', _text(pv))[:1500]}
