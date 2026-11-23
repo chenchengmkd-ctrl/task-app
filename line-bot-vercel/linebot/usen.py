@@ -111,3 +111,54 @@ def probe(path=None, find=None, method='get', data=None):
         'status': r.status_code,
         'near': near,
     }
+
+
+# ---------- 伝票明細の検索 ----------
+SLIP_LIST = '/slip_detail/C_slip_detail/store_table_list'
+
+
+def _form_defaults(html):
+    """伝票明細の検索フォームの、今入っている値（hidden・チェック済み・選択中）を集める。"""
+    m = re.search(r'<form[^>]*>(.*?)</form>', html, re.S)
+    body = m.group(1) if m else html
+    data = []
+    for tag in re.findall(r'<input[^>]*>', body):
+        name = re.search(r'name="([^"]+)"', tag)
+        if not name:
+            continue
+        typ = (re.search(r'type="([^"]+)"', tag) or [None, 'text'])[1].lower()
+        val = unescape((re.search(r'value="([^"]*)"', tag) or [None, ''])[1])
+        if typ in ('button', 'submit'):
+            continue
+        if typ in ('checkbox', 'radio') and 'checked' not in tag:
+            continue
+        data.append((name.group(1), val))
+    for name, inner in re.findall(r'<select[^>]*name="([^"]+)"[^>]*>(.*?)</select>', body, re.S):
+        opts = re.findall(r'<option([^>]*)value="([^"]*)"', inner)
+        sel = next((v for a, v in opts if 'selected' in a), opts[0][1] if opts else '')
+        data.append((name, unescape(sel)))
+    return data
+
+
+def search_slips(date_iso):
+    """その日の伝票明細の検索結果ページ（HTML）を返す。"""
+    s, _ = login()
+    page = s.get(urljoin(BASE, SLIP_LIST), timeout=30).text
+    ymd = date_iso.replace('-', '')
+    data = [(k, v) for k, v in _form_defaults(page) if k not in ('mode', 'search_sum_target_date_from', 'search_sum_target_date_to')]
+    data += [('mode', 'search'), ('search_sum_target_date_from', ymd), ('search_sum_target_date_to', ymd)]
+    r = s.post(urljoin(BASE, SLIP_LIST), data=data, timeout=40)
+    return r.text, data
+
+
+def probe_search(date_iso):
+    """検索結果の「形」だけを返す（見出し・行数・1行目の数字を伏せたもの）。"""
+    html, sent = search_slips(date_iso)
+    t = re.search(r'<table[^>]*id="slip-list"[^>]*>(.*?)</table>', html, re.S) or re.search(r'<table[^>]*>(.*?)</table>', html, re.S)
+    body = t.group(1) if t else ''
+    heads = [_text(h)[:20] for h in re.findall(r'<th[^>]*>(.*?)</th>', body, re.S)]
+    rows = re.findall(r'<tr[^>]*>(.*?)</tr>', body, re.S)
+    data_rows = [r for r in rows if '<td' in r]
+    first = [re.sub(r'\d', '#', _text(c))[:60] for c in re.findall(r'<td[^>]*>(.*?)</td>', data_rows[0], re.S)] if data_rows else []
+    return {'ok': True, 'sent_fields': [k for k, _ in sent], 'headers': heads, 'rows': len(data_rows), 'first_row_masked': first,
+            'has_table': bool(t), 'empty_msg': '検索結果はありませんでした' in html}

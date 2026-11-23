@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 97
+APP_VERSION = 98
 
 
 def _respond(start_response, status, body, cors=False):
@@ -471,7 +471,10 @@ def _handle_usen_probe(environ, start_response):
                         {'ok': False, 'error': 'USEN_COMPANY_CODE / USEN_USER_ID / USEN_PASSWORD が未設定です'}, cors=True)
     body = _read_json_body(environ) or {}
     try:
-        result = usen.probe(body.get('path'), body.get('find'), body.get('method') or 'get', body.get('data'))
+        if body.get('search_date'):
+            result = usen.probe_search(body['search_date'])
+        else:
+            result = usen.probe(body.get('path'), body.get('find'), body.get('method') or 'get', body.get('data'))
     except Exception as e:
         return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
     return _respond(start_response, '200 OK', result, cors=True)
