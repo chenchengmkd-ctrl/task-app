@@ -600,7 +600,7 @@ function unassigned(){if(!SQ)return[];const used=new Set();R.customers.forEach(c
 function renderSqBox(){
   const box=$('sqBox');box.innerHTML='';
   if(!ls.get('nippousen_sqkey','')){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">設定で合言葉を入れると、USENレジの会計がここに並びます</div>';return}
-  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">'+(sqErr?'⚠️ USENレジを読めませんでした（'+esc(sqErr)+'）。右上の「読込」で伝票明細のPDF・CSVを読み込むこともできます。会計なしでも記録はできます':'USENレジを読み込み中…')+'</div>';return}
+  if(!SQ){box.innerHTML='<div class="hint" style="margin:-4px 0 10px">'+(sqErr?'⚠️ USENレジを読めませんでした（'+esc(sqErr)+'）。右上の「読込」で伝票明細のPDF・CSVを読み込むこともできます。会計なしでも記録はできます':'まだ読み込んでいません。右上の「USEN更新」を押すと、USENレジの会計がここに並びます')+'</div>';return}
   const list=unassigned();
   qSqs=qSqs.filter(id=>list.some(o=>o.id===id));
   if(qAuto&&!qNone&&!qSqs.length&&list.length&&!Object.keys(qOrd).length){qSqs=[list[0].id];applySq()}
@@ -720,6 +720,7 @@ $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;r
 /* ---------- Square ---------- */
 let sqBusy=false,sqErr='';
 async function fetchSquare(manual){
+  if(!manual){const st=csvStore()[R.date];if(st&&(!SQ||SQ.date!==R.date)){SQ=st;renderSqBox();renderSales()}return} // 自動では読みに行かない
   const key=ls.get('nippousen_sqkey','');if(!key||sqBusy)return;
   if(R.date!==todayStr()&&!manual)return;
   sqBusy=true;$('btnSq').textContent='読込中…';
@@ -727,7 +728,7 @@ async function fetchSquare(manual){
     const res=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify({date:R.date})});
     const j=await res.json();
     if(!res.ok||!j.ok)throw new Error(j.error||res.status);
-    SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};
+    SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};csvSave(R.date,SQ);
     R.sales=String(j.total);$('sales').value=R.sales;autoCum();save(true);
     sqErr='';if(manual)toast('USENレジから更新しました');
   }catch(e){sqErr=e.message||'通信エラー';if(manual)toast('USENレジを読めませんでした：'+sqErr);if(!SQ||SQ.date!==R.date){const st=csvStore()[R.date];if(st)SQ=st}} // つながらないときは、読み込んだPDF・CSVの会計を出す
@@ -1084,7 +1085,7 @@ $('cumBase').addEventListener('input',()=>{R.cumBase=$('cumBase').value;cumTouch
 $('date').addEventListener('change',()=>{
   const o=allReports()[$('date').value];SQ=null;autoToday=$('date').value===todayStr();
   if(o)load(o);else{const keep={who:R.who,whos:R.whos||[],weather:R.weather};load(Object.assign(blank($('date').value),keep))}
-  fetchSquare(true);
+  fetchSquare(false); // 日付を変えただけでは読みに行かない
 });
 $('addCust').onclick=()=>{
   const c={id:Date.now(),src:'',n:1,takeout:false,ord:{},label:'',comment:'',time:new Date().toTimeString().slice(0,5)};

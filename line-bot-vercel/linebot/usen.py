@@ -167,7 +167,7 @@ def probe_search(date_iso, find=None):
 
 
 # ---------- 日報アプリ向け：その日の会計の一覧 ----------
-# 1分ごとに呼ばれるので、ログインしたセッションを少しの間使い回す（毎回ログインしない）
+# 続けて呼ばれたときのために、ログインしたセッションを少しの間使い回す（毎回ログインしない）
 _SESSION = {'s': None, 'at': 0}
 
 
@@ -258,12 +258,12 @@ def _items_from_detail(html):
     return None
 
 
-def _fill_items(date_iso, list_html, orders, limit=15):
+def _fill_items(date_iso, list_html, orders, limit=30):
     """会計ごとの注文の中身を詳細ページから取る。会計済みの伝票は変わらないので、一度取ったら保存して使い回す。"""
     from .supabase_client import get_state, set_state
     key = f'usen:items:{date_iso}'
     cache = get_state(key) or {}
-    missing = [o for o in orders if o['id'] not in cache and o.get('args')][:limit]  # 1回の呼び出しで開くのは最大15件（時間がかかりすぎないように）
+    missing = [o for o in orders if o['id'] not in cache and o.get('args')][:limit]  # 1回で開くのは最大30件（時間がかかりすぎないように。残りは次に押したときに取る）
     if missing:
         s, page = _session(), list_html
         for o in missing:

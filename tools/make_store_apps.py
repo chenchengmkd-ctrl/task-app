@@ -184,7 +184,7 @@ async function importCsv(file){
 def make_usen(src):
     d = Doc(src)
     common(d, 'nippousen', 'usen', 'USENレジ店', 'USENレジ')
-    # 会計と売上は、サーバー（/api/nippo_usen_sales）がUSENレジの「伝票明細」から1分ごとに取ってくる。
+    # 会計と売上は、「USEN更新」を押すと、サーバー（/api/nippo_usen_sales）がUSENレジの「伝票明細」から取ってくる。
     # つながらないときの予備として、伝票明細のPDF・汎用検索のCSVも読み込める
     d.rep("const API='https://task-app-nine-liard.vercel.app/api/nippo_sales';",
           "const API='https://task-app-nine-liard.vercel.app/api/nippo_usen_sales'; // USENレジの伝票明細から取る")
@@ -192,13 +192,19 @@ def make_usen(src):
           '<button class="link" id="btnSq">USEN更新</button><button class="link" id="btnCsv">読込</button><input type="file" id="csvFile" style="display:none">')
     d.rep("sqBusy=false;$('btnSq').textContent='Square更新';", "sqBusy=false;$('btnSq').textContent='USEN更新';")
     d.rep("toast('Squareから更新しました')", "toast('USENレジから更新しました')")
+    # 規約への配慮で、自動では読みに行かない（「USEN更新」を押したときだけ）。読んだ一覧は端末に残して、開き直しても出す
+    d.rep("async function fetchSquare(manual){",
+          "async function fetchSquare(manual){\n  if(!manual){const st=csvStore()[R.date];if(st&&(!SQ||SQ.date!==R.date)){SQ=st;renderSqBox();renderSales()}return} // 自動では読みに行かない")
+    d.rep("SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};",
+          "SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};csvSave(R.date,SQ);")
+    d.rep("  fetchSquare(true);\n});", "  fetchSquare(false); // 日付を変えただけでは読みに行かない\n});")
     d.rep("}catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Squareを読めませんでした：'+sqErr)}",
           "}catch(e){sqErr=e.message||'通信エラー';if(manual)toast('USENレジを読めませんでした：'+sqErr);"
           "if(!SQ||SQ.date!==R.date){const st=csvStore()[R.date];if(st)SQ=st}} // つながらないときは、読み込んだPDF・CSVの会計を出す")
     d.rep("Squareの会計がここに並びます", "USENレジの会計がここに並びます")
     d.rep("⚠️ Squareを読めませんでした（", "⚠️ USENレジを読めませんでした（")
     d.rep("。合言葉を確認してください。会計なしでも記録はできます", "。右上の「読込」で伝票明細のPDF・CSVを読み込むこともできます。会計なしでも記録はできます")
-    d.rep("'Squareを読み込み中…'", "'USENレジを読み込み中…'")
+    d.rep("'Squareを読み込み中…'", "'まだ読み込んでいません。右上の「USEN更新」を押すと、USENレジの会計がここに並びます'")
     d.rep("<br>Squareと結びつけない", "<br>USENレジと結びつけない")
     d.rep("（Square ${SQ.orders.length}件・${SQ.at}更新）", "（USENレジ ${SQ.orders.length}件・${SQ.at}更新）", 2)
     d.rep("h.textContent=`Squareから自動（${SQ.at}更新・会計${SQ.count}件）`;", "h.textContent=`USENレジから自動（${SQ.at}更新・会計${SQ.count}件）`;")
