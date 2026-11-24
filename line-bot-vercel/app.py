@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 108
+APP_VERSION = 109
 
 
 def _respond(start_response, status, body, cors=False):
@@ -515,7 +515,10 @@ def _handle_airregi_probe(environ, start_response):
                         {'ok': False, 'error': 'AIRREGI_LOGIN_ID / AIRREGI_LOGIN_PASSWORD が未設定です'}, cors=True)
     body = _read_json_body(environ) or {}
     try:
-        result = airregi_web.probe(body.get('path'), body.get('find'))
+        if body.get('api'):
+            result = airregi_web.api_probe(body['api'], body.get('payload'))
+        else:
+            result = airregi_web.probe(body.get('path'), body.get('find'))
     except Exception as e:
         return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
     return _respond(start_response, '200 OK', result, cors=True)

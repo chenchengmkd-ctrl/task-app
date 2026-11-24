@@ -118,3 +118,44 @@ def probe(path=None, find=None):
         'api_urls': sorted(set(_mask(u) for u in re.findall(r'''["'](/[A-Za-z0-9_\-/]*(?:api|json|ajax|data)[A-Za-z0-9_\-/]*)["']''', html, re.I)))[:40],
         'near': near,
     }
+
+
+# ---------- 管理画面の内部API（画面が使っているもの） ----------
+def api(path, payload):
+    """管理画面が使っている /api/... を、画面と同じ形（JSONをPOST、XSRF-TOKENを見出しに）で呼ぶ。"""
+    s = _session()
+    if not s.cookies.get('XSRF-TOKEN', domain='airregi.jp') and not s.cookies.get('XSRF-TOKEN'):
+        s.get('https://airregi.jp/CLP/view/salesJournal/', timeout=30)  # 取引履歴の画面を開いて、合言葉のクッキーをもらう
+    token = s.cookies.get('XSRF-TOKEN') or ''
+    r = s.post('https://airregi.jp/CLP' + path,
+               json=payload, timeout=60,
+               headers={'X-XSRF-TOKEN': token, 'Accept': 'application/json, text/plain, */*', 'Referer': 'https://airregi.jp/CLP/view/salesJournal/'})
+    if urlparse(r.url).netloc == 'connect.airregi.jp':
+        _SESSION['s'] = None
+        raise RuntimeError('ログインが切れました（もう一度呼ぶとログインし直します）')
+    return r
+
+
+def _shape(v, depth=0):
+    """JSONの「形」だけ（キーと型、配列の長さ）。値は数字を # に伏せ、文字は先頭だけ。"""
+    if depth > 4:
+        return '…'
+    if isinstance(v, dict):
+        return {k: _shape(x, depth + 1) for k, x in list(v.items())[:40]}
+    if isinstance(v, list):
+        return {'_len': len(v), '_first': _shape(v[0], depth + 1) if v else None}
+    if isinstance(v, str):
+        return _mask(v[:24])
+    if isinstance(v, (int, float)):
+        return '#'
+    return v
+
+
+def api_probe(path, payload):
+    r = api(path, payload or {})
+    out = {'ok': True, 'status': r.status_code, 'type': r.headers.get('content-type', '')}
+    try:
+        out['shape'] = _shape(r.json())
+    except ValueError:
+        out['text_masked'] = _mask(_text(r.text))[:400]
+    return out
