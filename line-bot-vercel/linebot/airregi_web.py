@@ -23,7 +23,7 @@ from . import config
 
 START = 'https://airregi.jp/CLP/view/top/'
 UA = 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
-_SESSION = {'s': None, 'at': 0, 'url': ''}
+_SESSION = {'s': None, 'at': 0, 'url': '', 'app': None}
 
 
 def is_enabled():
@@ -76,7 +76,7 @@ def login():
 def _session():
     if _SESSION['s'] is None or time.time() - _SESSION['at'] > 600:
         _SESSION['s'], r = login()
-        _SESSION['at'], _SESSION['url'] = time.time(), r.url
+        _SESSION['at'], _SESSION['url'], _SESSION['app'] = time.time(), r.url, None
     return _SESSION['s']
 
 
@@ -122,16 +122,34 @@ def probe(path=None, find=None):
 
 # ---------- 管理画面の内部API（画面が使っているもの） ----------
 def api(path, payload):
-    """管理画面が使っている /api/... を、画面と同じ形（JSONをPOST、XSRF-TOKENを見出しに）で呼ぶ。"""
+    """管理画面が使っている /api/... を、画面と同じ形で呼ぶ。
+    画面の作り：paramStr=（JSON文字列）をフォームでPOST。見出しに corClpKeyCd（画面の APP 設定の値）と
+    Native-Application-Version を付ける（XSRF-TOKEN クッキーがあれば X-XSRF-TOKEN にも）。"""
+    import json
     s = _session()
-    if not s.cookies.get('XSRF-TOKEN', domain='airregi.jp') and not s.cookies.get('XSRF-TOKEN'):
-        s.get('https://airregi.jp/CLP/view/salesJournal/', timeout=30)  # 取引履歴の画面を開いて、合言葉のクッキーをもらう
-    token = s.cookies.get('XSRF-TOKEN') or ''
-    r = s.post('https://airregi.jp/CLP' + path,
-               json=payload, timeout=60,
-               headers={'X-XSRF-TOKEN': token, 'Accept': 'application/json, text/plain, */*', 'Referer': 'https://airregi.jp/CLP/view/salesJournal/'})
+    if not _SESSION.get('app'):
+        page = s.get('https://airregi.jp/CLP/view/salesJournal/', timeout=30)
+        if urlparse(page.url).netloc == 'connect.airregi.jp':
+            _SESSION['s'] = None
+            raise RuntimeError('ログインが切れました（もう一度呼ぶとログインし直します）')
+        app = {}
+        for k in ('basepath', 'corClpKeyCd', 'nativeAplicationVersion'):
+            m = re.search(k + r"""\s*[:=]\s*["']([^"']*)["']""", page.text)
+            app[k] = m.group(1) if m else ''
+        _SESSION['app'] = app
+    app = _SESSION['app']
+    headers = {'Accept': 'application/json, text/plain, */*', 'Referer': 'https://airregi.jp/CLP/view/salesJournal/',
+               'corClpKeyCd': app.get('corClpKeyCd', ''), 'Native-Application-Version': app.get('nativeAplicationVersion', ''),
+               'If-Unmodified-Since': time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime())}
+    token = s.cookies.get('XSRF-TOKEN')
+    if token:
+        headers['X-XSRF-TOKEN'] = token
+    base = (app.get('basepath') or '/CLP').rstrip('/')
+    r = s.post('https://airregi.jp' + base + path, data={'paramStr': json.dumps(payload or {}, ensure_ascii=False)},
+               headers=headers, timeout=60)
     if urlparse(r.url).netloc == 'connect.airregi.jp':
         _SESSION['s'] = None
+        _SESSION['app'] = None
         raise RuntimeError('ログインが切れました（もう一度呼ぶとログインし直します）')
     return r
 
@@ -153,7 +171,9 @@ def _shape(v, depth=0):
 
 def api_probe(path, payload):
     r = api(path, payload or {})
-    out = {'ok': True, 'status': r.status_code, 'type': r.headers.get('content-type', '')}
+    app = _SESSION.get('app') or {}
+    out = {'ok': True, 'status': r.status_code, 'type': r.headers.get('content-type', ''),
+           'app_found': {k: bool(v) for k, v in app.items()}, 'basepath': app.get('basepath')}
     try:
         out['shape'] = _shape(r.json())
     except ValueError:
