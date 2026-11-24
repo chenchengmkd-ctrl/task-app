@@ -40,6 +40,9 @@ SQUARE_LOCATION_ID = _env('SQUARE_LOCATION_ID')
 # API仕様書がまだ公開されていないため、今は保存しておくだけ（届いたら売上の自動取り込みに使う）
 AIRREGI_API_KEY = _env('AIRREGI_API_KEY')
 AIRREGI_API_TOKEN = _env('AIRREGI_API_TOKEN')
+# Airレジの管理画面にログインして読み取る（公式APIの審査中の暫定。オーナーの判断）
+AIRREGI_LOGIN_ID = _env('AIRREGI_LOGIN_ID')
+AIRREGI_LOGIN_PASSWORD = _env('AIRREGI_LOGIN_PASSWORD')
 # USENレジ（管理画面にログインして伝票明細を読む）。この連携専用の担当者を作って、そのコードとパスワードを入れる
 USEN_COMPANY_CODE = _env('USEN_COMPANY_CODE')
 USEN_USER_ID = _env('USEN_USER_ID')

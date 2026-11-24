@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 107
+APP_VERSION = 108
 
 
 def _respond(start_response, status, body, cors=False):
@@ -164,6 +164,8 @@ def _handle_health(environ, start_response):
             'SQUARE_LOCATION_ID': bool(config.SQUARE_LOCATION_ID),
             'AIRREGI_API_KEY': describe(config.AIRREGI_API_KEY),
             'AIRREGI_API_TOKEN': describe(config.AIRREGI_API_TOKEN),
+            'AIRREGI_LOGIN_ID': bool(config.AIRREGI_LOGIN_ID),
+            'AIRREGI_LOGIN_PASSWORD': describe(config.AIRREGI_LOGIN_PASSWORD),
             'USEN_COMPANY_CODE': bool(config.USEN_COMPANY_CODE),
             'USEN_USER_ID': bool(config.USEN_USER_ID),
             'USEN_PASSWORD': describe(config.USEN_PASSWORD),
@@ -499,6 +501,26 @@ def _handle_nippo_usen_sales(environ, start_response):
     return _respond(start_response, '200 OK' if result.get('ok') else '502 Bad Gateway', result, cors=True)
 
 
+def _handle_airregi_probe(environ, start_response):
+    """Airレジの管理画面にログインして、画面の構造だけを返す（会計の取り込みを作るための調査用）。
+    売上や客の値は返さない（数字は # に伏せる）。合言葉は NIPPO_TOKEN。"""
+    sent = environ.get('HTTP_X_APP_TOKEN', '').strip()
+    if sent.lower().startswith('bearer '):
+        sent = sent[7:].strip()
+    if not config.NIPPO_TOKEN or sent != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
+    from linebot import airregi_web
+    if not airregi_web.is_enabled():
+        return _respond(start_response, '503 Service Unavailable',
+                        {'ok': False, 'error': 'AIRREGI_LOGIN_ID / AIRREGI_LOGIN_PASSWORD が未設定です'}, cors=True)
+    body = _read_json_body(environ) or {}
+    try:
+        result = airregi_web.probe(body.get('path'), body.get('find'))
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK', result, cors=True)
+
+
 def _handle_nippo_sync(environ, start_response):
     """日報アプリ（nippo.html）の端末間同期。iPadとスマホで同じ日報を編集・送信できるようにする。"""
     if not config.NIPPO_TOKEN:
@@ -540,6 +562,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_usen_sales(environ, start_response)
+
+    if path == '/api/airregi_probe':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_airregi_probe(environ, start_response)
 
     if path == '/api/usen_probe':
         if method == 'OPTIONS':
