@@ -204,7 +204,11 @@ def probe_receipt(date_iso):
     if first:
         r = api('/api/receiptData/getText/', {'visStoreId': first['visStoreId'], 'journalRecordType': first['journalRecordType']})
         try:
-            out['receipt_shape'] = _shape(r.json())
+            j = r.json()
+            out['receipt_shape'] = _shape(j)
+            h = (((j.get('results') or {}).get('resultsData') or {}).get('receiptHtmlElement')) or ''
+            out['receipt_rows_masked'] = [[_mask(_text(c))[:30] for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.S)]
+                                          for tr in re.findall(r'<tr[^>]*>(.*?)</tr>', h, re.S)][:40]
         except ValueError:
             out['receipt_text_masked'] = _mask(_text(r.text))[:600]
     return out
