@@ -145,7 +145,9 @@ def api(path, payload):
     if token:
         headers['X-XSRF-TOKEN'] = token
     base = (app.get('basepath') or '/CLP').rstrip('/')
-    r = s.post('https://airregi.jp' + base + path, data={'paramStr': json.dumps(payload or {}, ensure_ascii=False)},
+    if not base.startswith('http'):  # 画面の設定は「https://airregi.jp/CLP」のように丸ごと入っていることがある
+        base = 'https://airregi.jp' + base
+    r = s.post(base + path, data={'paramStr': json.dumps(payload or {}, ensure_ascii=False)},
                headers=headers, timeout=60)
     if urlparse(r.url).netloc == 'connect.airregi.jp':
         _SESSION['s'] = None
