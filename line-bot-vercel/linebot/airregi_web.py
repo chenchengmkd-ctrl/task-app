@@ -181,3 +181,30 @@ def api_probe(path, payload):
     except ValueError:
         out['text_masked'] = _mask(_text(r.text))[:400]
     return out
+
+
+def _journal(date_iso):
+    """その営業日の取引履歴（一覧）。"""
+    ymd = date_iso.replace('-', '')
+    r = api('/api/searchReceipt/execute/', {'businessDayFrom': ymd, 'businessDayTo': ymd, 'salesJournalSearchType': '0'})
+    res = (r.json() or {}).get('results') or {}
+    if res.get('resultsData') is None:
+        raise RuntimeError('取引履歴を読めませんでした（' + str(res.get('errMsg') or res.get('returnCode')) + '）')
+    return res['resultsData'].get('journal') or []
+
+
+def probe_receipt(date_iso):
+    """その日の最初の会計（C/S）のレシート内容の「形」を返す（数字は # に伏せる）。"""
+    rows = _journal(date_iso)
+    types = {}
+    for j in rows:
+        types[j.get('journalRecordType')] = types.get(j.get('journalRecordType'), 0) + 1
+    first = next((j for j in rows if j.get('journalRecordType') in ('C', 'S', 'CV', 'SV')), None)
+    out = {'ok': True, 'types': types}
+    if first:
+        r = api('/api/receiptData/getText/', {'visStoreId': first['visStoreId'], 'journalRecordType': first['journalRecordType']})
+        try:
+            out['receipt_shape'] = _shape(r.json())
+        except ValueError:
+            out['receipt_text_masked'] = _mask(_text(r.text))[:600]
+    return out
