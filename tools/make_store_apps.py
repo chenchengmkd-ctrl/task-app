@@ -5,7 +5,7 @@
 nippo.html を直したら、これを実行し直すと nippo-air.html / nippo-usen.html にも反映される。
 置き換える場所が見つからないとエラーで止まる（nippo.html 側の書き方が変わったときは、ここを合わせる）。
 
-- nippo-air.html  … Airレジの店。売上は手入力（AirレジのAPI仕様書が届いたら自動取り込みにする）
+- nippo-air.html  … Airレジの店。「Airレジ更新」を押すと、サーバーがAirレジの管理画面（取引履歴）から会計を取ってくる
 - nippo-usen.html … USENレジの店。サーバーがUSENレジの管理画面（伝票明細）から会計を取ってくる。
                     つながらないときは、伝票明細のPDF・汎用検索のCSVも読み込める
 どちらも、ブラウザの保存場所・サーバーの同期の保存場所を今の店と分け、
@@ -65,16 +65,41 @@ $('cumBase').addEventListener('input',""")
 def make_air(src):
     d = Doc(src)
     common(d, 'nippoair', 'air', 'Airレジ店', 'Airレジ')
-    d.rep('<button class="link" id="btnSq">Square更新</button>', '<button class="link" id="btnSq" style="display:none">Square更新</button>')
-    d.rep('<div id="sqBox"></div>', '<div id="sqBox" style="display:none"></div>')
+    # 会計と売上は、「Airレジ更新」を押すと、サーバー（/api/nippo_air_sales）がAirレジの管理画面（取引履歴）から取ってくる。
+    # （公式の「データ連携API」の審査が通ったら、そちらに切り替える）。規約への配慮で、押したときだけ読みに行く
+    d.rep("const API='https://task-app-nine-liard.vercel.app/api/nippo_sales';",
+          "const API='https://task-app-nine-liard.vercel.app/api/nippo_air_sales'; // Airレジの取引履歴から取る")
+    d.rep('<button class="link" id="btnSq">Square更新</button>', '<button class="link" id="btnSq">Airレジ更新</button>')
+    d.rep("sqBusy=false;$('btnSq').textContent='Square更新';", "sqBusy=false;$('btnSq').textContent='Airレジ更新';")
+    d.rep("toast('Squareから更新しました')", "toast('Airレジから更新しました')")
     d.rep("async function fetchSquare(manual){",
-          "// Airレジ店：レジとの自動連携は、Airレジの「API仕様書」が届くまでお休み（売上は手入力）。\n"
-          "// 仕様書が届いたら、ここでAirレジの売上・会計を取り込むようにする\nasync function fetchSquare(manual){return;")
-    d.rep("function renderSqBox(){\n  const box=$('sqBox');box.innerHTML='';", "function renderSqBox(){\n  const box=$('sqBox');box.innerHTML='';return;")
-    d.rep('<h2>実績<span class="sub">最後の確認用。売上はSquareから自動で入ります</span></h2>',
-          '<h2>実績<span class="sub">売上はAirレジの精算画面を見て入力します</span></h2>')
+          "// 読んだ会計は日付ごとに端末に残す（開き直しても一覧が消えないように。1週間分）\n"
+          "const airStore=()=>ls.get('nippoair_reg',{});\n"
+          "function airSave(date,sq){const a=airStore();a[date]=sq;Object.keys(a).sort().slice(0,-7).forEach(k=>delete a[k]);ls.set('nippoair_reg',a)}\n"
+          "async function fetchSquare(manual){\n  if(!manual){const st=airStore()[R.date];if(st&&(!SQ||SQ.date!==R.date)){SQ=st;renderSqBox();renderSales()}return} // 自動では読みに行かない")
+    d.rep("SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};",
+          "SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};airSave(R.date,SQ);")
+    d.rep("  fetchSquare(true);\n});", "  fetchSquare(false); // 日付を変えただけでは読みに行かない\n});")
+    d.rep("}catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Squareを読めませんでした：'+sqErr)}",
+          "}catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Airレジを読めませんでした：'+sqErr)}")
+    d.rep("Squareの会計がここに並びます", "Airレジの会計がここに並びます")
+    d.rep("⚠️ Squareを読めませんでした（", "⚠️ Airレジを読めませんでした（")
+    d.rep("。合言葉を確認してください。会計なしでも記録はできます", "。会計なしでも記録はできます（売上は「営業おわり」で手入力できます）")
+    d.rep("'Squareを読み込み中…'", "'まだ読み込んでいません。右上の「Airレジ更新」を押すと、Airレジの会計がここに並びます'")
+    d.rep("<br>Squareと結びつけない", "<br>Airレジと結びつけない")
+    d.rep("（Square ${SQ.orders.length}件・${SQ.at}更新）", "（Airレジ ${SQ.orders.length}件・${SQ.at}更新）", 2)
+    d.rep("h.textContent=`Squareから自動（${SQ.at}更新・会計${SQ.count}件）`;", "h.textContent=`Airレジから自動（${SQ.at}更新・会計${SQ.count}件）`;")
     d.rep("h.textContent=ls.get('nippoair_sqkey','')?'':'設定で合言葉を入れるとSquareから自動で入ります';",
-          "h.textContent='Airレジの精算画面の売上（税込）を入れます';")
+          "h.textContent=ls.get('nippoair_sqkey','')?'':'設定で合言葉を入れるとAirレジから自動で入ります';")
+    d.rep('<h2>実績<span class="sub">最後の確認用。売上はSquareから自動で入ります</span></h2>',
+          '<h2>実績<span class="sub">最後の確認用。売上はAirレジから自動で入ります</span></h2>')
+    d.rep("<h2>スマホ同期</h2>", "<h2>Airレジ連携・スマホ同期</h2>")
+    d.rep('<div class="hint">スマホでも', '<div class="hint">入れると、会計と本日売上がAirレジ（取引履歴）から入ります（「Airレジ更新」を押したとき）。<br>スマホでも')
+    # 会計を選んだら、Airレジの人数を人数に入れる
+    d.rep("  qOrd=ord;qOther=other.join('・');\n  if(qSqs.length){qTake=take;",
+          "  qOrd=ord;qOther=other.join('・');\n"
+          "  const g=qSqs.reduce((s,id)=>{const o=SQ&&SQ.orders.find(x=>x.id===id);return s+(o&&+o.guests||0)},0);if(g&&g!==qN){qN=g;fitMap(qSrcs,qN);setTimeout(renderQuick,0)} // Airレジの人数を入れる（一覧を描いている途中なので、描き直しは後で）\n"
+          "  if(qSqs.length){qTake=take;")
     return d.s
 
 
