@@ -10,6 +10,7 @@ iPadで書き始めた日報を、スマホでも続けて編集・送信でき�
 競合は「`_u` が新しい方が勝つ」。同じ日報を2台で同時に触った場合は、後から保存した方になる。
 """
 import json
+import re
 from urllib.parse import quote
 
 import requests
@@ -21,7 +22,16 @@ PREFIX = 'nippo:r:'
 SHARED_KEY = 'nippo:shared'
 # 店ごとに保存場所を分ける（'' は今の店＝鰻。'air' はAirレジの店、'usen' はUSENレジの店）
 STORES = {'': ('nippo:r:', 'nippo:shared'), 'air': ('nippo-air:r:', 'nippo-air:shared'),
-          'usen': ('nippo-usen:r:', 'nippo-usen:shared')}
+          'usen': ('nippo-usen:r:', 'nippo-usen:shared'),
+          # 定期報告アプリ（teiki.html）。資金報告は日付ごと、ほかのデータ（タスク・予定・支払いなど）は
+          # 「k.保存名」ごとに1件として持つ
+          'teiki': ('teiki:r:', 'teiki:shared')}
+# 1件の名前：日付（YYYY-MM-DD）か、定期報告アプリの「k.保存名」
+_ENTRY = re.compile(r'\d{4}-\d{2}-\d{2}|k\.[A-Za-z0-9_]{1,40}')
+
+
+def _entry_ok(d):
+    return isinstance(d, str) and _ENTRY.fullmatch(d) is not None
 
 
 def keys_for(store):
@@ -71,13 +81,13 @@ def push(reports, shared, store=''):
     """端末の変更を保存する。サーバー側の方が新しいものは保存せず、そのまま返して端末に取り込ませる。"""
     PREFIX, SHARED_KEY = keys_for(store)
     reports = reports or {}
-    keys = [PREFIX + d for d in reports if isinstance(d, str) and len(d) == 10]
+    keys = [PREFIX + d for d in reports if _entry_ok(d)]
     if shared:
         keys.append(SHARED_KEY)
     cur = _existing(keys)
     rows, newer = [], {}
     for d, rep in reports.items():
-        if not isinstance(rep, dict) or not isinstance(d, str) or len(d) != 10:
+        if not isinstance(rep, dict) or not _entry_ok(d):
             continue
         old = cur.get(PREFIX + d)
         if _has_content(old) and not _has_content(rep) and not rep.get('_del'):
