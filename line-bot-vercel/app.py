@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 94
+APP_VERSION = 115
 
 
 def _respond(start_response, status, body, cors=False):
@@ -164,6 +164,11 @@ def _handle_health(environ, start_response):
             'SQUARE_LOCATION_ID': bool(config.SQUARE_LOCATION_ID),
             'AIRREGI_API_KEY': describe(config.AIRREGI_API_KEY),
             'AIRREGI_API_TOKEN': describe(config.AIRREGI_API_TOKEN),
+            'AIRREGI_LOGIN_ID': bool(config.AIRREGI_LOGIN_ID),
+            'AIRREGI_LOGIN_PASSWORD': describe(config.AIRREGI_LOGIN_PASSWORD),
+            'USEN_COMPANY_CODE': bool(config.USEN_COMPANY_CODE),
+            'USEN_USER_ID': bool(config.USEN_USER_ID),
+            'USEN_PASSWORD': describe(config.USEN_PASSWORD),
         },
     }
     # Googleカレンダーが読めるか（共有設定・カレンダーIDの確認用）
@@ -454,6 +459,90 @@ def _handle_nippo_sales(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
+def _handle_usen_probe(environ, start_response):
+    """USENレジの管理画面にログインして、画面の構造（リンク・フォーム項目・表の見出し）だけを返す。
+    伝票の取り込みを作るための調査用。売上や客の値は返さない。合言葉は NIPPO_TOKEN。"""
+    sent = environ.get('HTTP_X_APP_TOKEN', '').strip()
+    if sent.lower().startswith('bearer '):  # 「Bearer 合言葉」の形で届いても受け付ける
+        sent = sent[7:].strip()
+    if not config.NIPPO_TOKEN or sent != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
+    from linebot import usen
+    if not usen.is_enabled():
+        return _respond(start_response, '503 Service Unavailable',
+                        {'ok': False, 'error': 'USEN_COMPANY_CODE / USEN_USER_ID / USEN_PASSWORD が未設定です'}, cors=True)
+    body = _read_json_body(environ) or {}
+    try:
+        if body.get('detail_date'):
+            result = usen.probe_detail(body['detail_date'])
+        elif body.get('search_date'):
+            result = usen.probe_search(body['search_date'], body.get('find'))
+        else:
+            result = usen.probe(body.get('path'), body.get('find'), body.get('method') or 'get', body.get('data'))
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK', result, cors=True)
+
+
+def _handle_nippo_usen_sales(environ, start_response):
+    """日報アプリ（USENレジ店）用。その日のUSENレジの伝票（会計済み）と売上を返す。形は /api/nippo_sales と同じ。"""
+    if not config.NIPPO_TOKEN:
+        return _respond(start_response, '503 Service Unavailable', {'ok': False, 'error': 'NIPPO_TOKEN が未設定です'}, cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
+    body = _read_json_body(environ)
+    if not body or not body.get('date'):
+        return _respond(start_response, '400 Bad Request', {'ok': False, 'error': 'date がありません'}, cors=True)
+    from linebot import usen
+    try:
+        result = usen.day_sales(body['date'])
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK' if result.get('ok') else '502 Bad Gateway', result, cors=True)
+
+
+def _handle_nippo_air_sales(environ, start_response):
+    """日報アプリ（Airレジ店）用。その日のAirレジの会計と売上を返す。形は /api/nippo_sales と同じ。"""
+    if not config.NIPPO_TOKEN:
+        return _respond(start_response, '503 Service Unavailable', {'ok': False, 'error': 'NIPPO_TOKEN が未設定です'}, cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
+    body = _read_json_body(environ)
+    if not body or not body.get('date'):
+        return _respond(start_response, '400 Bad Request', {'ok': False, 'error': 'date がありません'}, cors=True)
+    from linebot import airregi_web
+    try:
+        result = airregi_web.day_sales(body['date'])
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK' if result.get('ok') else '502 Bad Gateway', result, cors=True)
+
+
+def _handle_airregi_probe(environ, start_response):
+    """Airレジの管理画面にログインして、画面の構造だけを返す（会計の取り込みを作るための調査用）。
+    売上や客の値は返さない（数字は # に伏せる）。合言葉は NIPPO_TOKEN。"""
+    sent = environ.get('HTTP_X_APP_TOKEN', '').strip()
+    if sent.lower().startswith('bearer '):
+        sent = sent[7:].strip()
+    if not config.NIPPO_TOKEN or sent != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
+    from linebot import airregi_web
+    if not airregi_web.is_enabled():
+        return _respond(start_response, '503 Service Unavailable',
+                        {'ok': False, 'error': 'AIRREGI_LOGIN_ID / AIRREGI_LOGIN_PASSWORD が未設定です'}, cors=True)
+    body = _read_json_body(environ) or {}
+    try:
+        if body.get('receipt_date'):
+            result = airregi_web.probe_receipt(body['receipt_date'])
+        elif body.get('api'):
+            result = airregi_web.api_probe(body['api'], body.get('payload'))
+        else:
+            result = airregi_web.probe(body.get('path'), body.get('find'))
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK', result, cors=True)
+
+
 def _handle_nippo_sync(environ, start_response):
     """日報アプリ（nippo.html）の端末間同期。iPadとスマホで同じ日報を編集・送信できるようにする。"""
     if not config.NIPPO_TOKEN:
@@ -489,6 +578,30 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_sales(environ, start_response)
+
+    if path == '/api/nippo_usen_sales':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_nippo_usen_sales(environ, start_response)
+
+    if path == '/api/nippo_air_sales':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_nippo_air_sales(environ, start_response)
+
+    if path == '/api/airregi_probe':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_airregi_probe(environ, start_response)
+
+    if path == '/api/usen_probe':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_usen_probe(environ, start_response)
 
     if path == '/api/nippo_sync':
         if method == 'OPTIONS':
