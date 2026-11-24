@@ -156,14 +156,14 @@ def api(path, payload):
     return r
 
 
-def _shape(v, depth=0):
+def _shape(v, depth=0, limit=9):
     """JSONの「形」だけ（キーと型、配列の長さ）。値は数字を # に伏せ、文字は先頭だけ。"""
-    if depth > 4:
+    if depth > limit:
         return '…'
     if isinstance(v, dict):
-        return {k: _shape(x, depth + 1) for k, x in list(v.items())[:40]}
+        return {k: _shape(x, depth + 1, limit) for k, x in list(v.items())[:60]}
     if isinstance(v, list):
-        return {'_len': len(v), '_first': _shape(v[0], depth + 1) if v else None}
+        return {'_len': len(v), '_first': _shape(v[0], depth + 1, limit) if v else None}
     if isinstance(v, str):
         return _mask(v[:24])
     if isinstance(v, (int, float)):
