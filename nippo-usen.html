@@ -163,6 +163,7 @@
     <div class="scroll-row" id="ageRow" style="margin-top:6px"></div>
     <div class="q-label">どんなお客さん（任意）</div>
     <div class="scroll-row" id="whoRow"></div>
+    <div id="ctyBox" style="display:none"><div class="q-label">どこの国の方（インバウンド）</div><div class="scroll-row" id="ctyRow"></div></div>
     <input type="text" id="whoText" class="free" placeholder="今回のお客さんを書く（例：名古屋からの出張の方々）">
     <div class="q-label">反応（任意）</div>
     <div class="scroll-row" id="reactRow"></div>
@@ -282,7 +283,7 @@ const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
    日報は1日ずつ、常連・名前・よく使う言葉・表示設定はまとめてサーバーに置く。
    各データの _u（最終更新時刻）が新しい方が勝つ。合言葉（設定）が入っている端末だけ同期する。 */
 var SYNC_API='https://task-app-nine-liard.vercel.app/api/nippo_sync',SYNC_STORE='usen'; // 今の店（鰻）と別の場所に保存する
-var SHARED_KEYS=['nippousen_src_custom','nippousen_regs','nippousen_names','nippousen_kw_who','nippousen_kw_react','nippousen_kw_hand','nippousen_cummode','nippousen_repmode'];
+var SHARED_KEYS=['nippousen_src_custom','nippousen_regs','nippousen_names','nippousen_kw_who','nippousen_countries','nippousen_kw_react','nippousen_kw_hand','nippousen_cummode','nippousen_repmode'];
 var syncApplying=false,syncTimer=null,syncBusy=false,syncAgain=false,syncMsg='',onRemote=null;
 function onLsSet(k){if(syncApplying||!SHARED_KEYS.includes(k))return;ls.set('nippousen_shared_u',Date.now());ls.set('nippousen_shared_dirty',true);syncSoon()}
 function markDirty(d){const q=ls.get('nippousen_dirty',[]);if(!q.includes(d)){q.push(d);ls.set('nippousen_dirty',q)}syncSoon()}
@@ -373,9 +374,24 @@ const KW_REACT=[
   ['やっぱり美味しい','「やっぱり美味しいね」とのお言葉。'],['友達を連れてくる','「今度は友達を連れてきます」とのこと。'],
   ['口コミを書いてくれた','口コミを書いていただきました。'],['お吸い物が欲しい','ご意見：お吸い物が欲しい。'],
 ];
-const KW_WHO=['出張の方','観光の方','近隣の会社','近所にお住まい','仕事で神田に来られる方','サラリーマン','カップル','ご夫婦','家族連れ','鰻好きの方','海外の方','久しぶりのご来店','以前から気になっていた'];
+const KW_WHO=['出張の方','観光の方','近隣の会社','近所にお住まい','仕事で神田に来られる方','サラリーマン','カップル','ご夫婦','家族連れ','鰻好きの方','インバウンド','海外の方','久しぶりのご来店','以前から気になっていた'];
 const SEXES=['男性','女性'];
 const AGES=['10代','20代','30代','40代','50代','60代','70代以上'];
+// インバウンド（海外の方）の国。「どんなお客さん」で「インバウンド」か「海外の方」を選ぶと出てくる。「＋追加」で足した国（nippo_countries）は後ろに並ぶ
+const COUNTRIES=['韓国','台湾','中国','香港','タイ','シンガポール','アメリカ','オーストラリア','イギリス','フランス','ドイツ'];
+const INBOUND_WORDS=['インバウンド','海外の方'];
+const countries=()=>COUNTRIES.concat(ls.get('nippousen_countries',[]).filter(x=>x&&!COUNTRIES.includes(x)));
+const isInbound=words=>words.some(w=>INBOUND_WORDS.some(k=>String(w||'').includes(k)));
+// 国のボタン（1つだけ選ぶ。もう一度押すと外す）
+function countryChips(el,get,set){
+  el.innerHTML='';
+  countries().forEach(t=>{const b=document.createElement('button');b.className='chip'+(get()===t?' on':'');b.textContent=t;
+    b.onclick=()=>{set(get()===t?'':t);countryChips(el,get,set)};el.appendChild(b)});
+  const a=document.createElement('button');a.className='chip add';a.textContent='＋追加';
+  a.onclick=()=>{const w=(prompt('国を追加します（例：ベトナム）')||'').trim();if(!w)return;
+    if(!countries().includes(w))ls.set('nippousen_countries',ls.get('nippousen_countries',[]).concat(w));set(w);countryChips(el,get,set)};
+  el.appendChild(a);
+}
 const KW_HAND=[
   ['人通り多い','人通りが多かったです。'],['人通り少ない','人通りが少なかったです。'],['雨','雨で人通りが少なかったです。'],
   ['11時台に集中','11時台に来店が集中しました。'],['12時台が弱い','12時台は来店が少なかったです。'],
@@ -388,7 +404,7 @@ const KW_HAND=[
 function addText(el,t){const v=el.value.replace(/\s+$/,'');el.value=v?(v.endsWith('。')||v.endsWith('」')?v+t:v+'。'+t):t;el.dispatchEvent(new Event('input'))}
 function kwChips(defs,onTap,customKey){
   const box=document.createElement('div');box.className='chips kw';
-  defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(customKey,[]).map(x=>[x,x])).forEach(([lab,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=lab;b.onclick=()=>onTap(t,b);box.appendChild(b)});
+  defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(customKey,[]).filter(x=>!defs.some(d=>(Array.isArray(d)?d[0]:d)===x)).map(x=>[x,x])).forEach(([lab,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=lab;b.onclick=()=>onTap(t,b);box.appendChild(b)});
   const a=document.createElement('button');a.className='chip add';a.textContent='＋追加';
   a.onclick=()=>{const w=prompt('いつも使う言葉を、ボタンとして追加します');if(w&&w.trim()){const q=ls.get(customKey,[]);q.push(w.trim());ls.set(customKey,q);box.replaceWith(kwChips(defs,onTap,customKey))}};
   box.appendChild(a);return box;
@@ -406,7 +422,7 @@ let R;              // 編集中の日報
 let openId=null;    // 開いているお客さんカード
 let cumTouched=false;
 let qN=1,qTake=false;
-let qWhoText='',qReactText='';
+let qWhoText='',qReactText='',qCountry='';
 const qSex=[],qAge=[];
 let qSqs=[],qNone=false,qAuto=true; // 選んだSquareの会計（複数可）／「会計なし」／一番新しい会計を自動で選ぶか
 let qSrcs={},qReg=null; // qSrcs: 来店経緯ごとの人数 {インスタ:1, 看板:2}
@@ -459,17 +475,17 @@ function mapItems(items){
 
 /* ---------- 元に戻す／やり直す ---------- */
 let UNDO=[],REDO=[];
-const panelState=()=>({qN,qTake,qSqs:qSqs.slice(),qNone,qAuto,qSex:qSex.slice(),qAge:qAge.slice(),qSrcs:Object.assign({},qSrcs),qReg,qOrd:Object.assign({},qOrd),qOther,qWho:qWho.slice(),qReact:qReact.slice(),qWhoText,qReactText});
-function setPanel(x){qN=x.qN;qTake=x.qTake;qSqs=(x.qSqs||[]).slice();qNone=!!x.qNone;qAuto=!!x.qAuto;qSex.length=0;qSex.push(...(x.qSex||[]));qAge.length=0;qAge.push(...(x.qAge||[]));qSrcs=Object.assign({},x.qSrcs);qReg=x.qReg;qOrd=Object.assign({},x.qOrd);qOther=x.qOther;qWho.length=0;qWho.push(...x.qWho);qReact.length=0;qReact.push(...x.qReact);qWhoText=x.qWhoText||'';qReactText=x.qReactText||''}
+const panelState=()=>({qN,qTake,qSqs:qSqs.slice(),qNone,qAuto,qSex:qSex.slice(),qAge:qAge.slice(),qSrcs:Object.assign({},qSrcs),qReg,qOrd:Object.assign({},qOrd),qOther,qWho:qWho.slice(),qReact:qReact.slice(),qWhoText,qReactText,qCountry});
+function setPanel(x){qN=x.qN;qTake=x.qTake;qSqs=(x.qSqs||[]).slice();qNone=!!x.qNone;qAuto=!!x.qAuto;qSex.length=0;qSex.push(...(x.qSex||[]));qAge.length=0;qAge.push(...(x.qAge||[]));qSrcs=Object.assign({},x.qSrcs);qReg=x.qReg;qOrd=Object.assign({},x.qOrd);qOther=x.qOther;qWho.length=0;qWho.push(...x.qWho);qReact.length=0;qReact.push(...x.qReact);qWhoText=x.qWhoText||'';qReactText=x.qReactText||'';qCountry=x.qCountry||''}
 const snapNow=()=>({r:JSON.stringify(R),q:panelState()});
 function updUndo(){$('btnUndo').disabled=!UNDO.length;$('btnRedo').disabled=!REDO.length}
 function pushUndo(){UNDO.push(snapNow());if(UNDO.length>40)UNDO.shift();REDO=[];updUndo()}
 function applySnap(e){R=JSON.parse(e.r);openId=null;setPanel(e.q);renderAll();save();updUndo()}
 function undo(){if(!UNDO.length){toast('戻せる操作はありません');return}REDO.push(snapNow());applySnap(UNDO.pop());toast('元に戻しました')}
 function redo(){if(!REDO.length){toast('やり直せる操作はありません');return}UNDO.push(snapNow());applySnap(REDO.pop());toast('やり直しました')}
-$('whoText').oninput=()=>{qWhoText=$('whoText').value};$('reactText').oninput=()=>{qReactText=$('reactText').value};
+$('whoText').oninput=()=>{qWhoText=$('whoText').value;drawCountry()};$('reactText').oninput=()=>{qReactText=$('reactText').value};
 $('btnUndo').onclick=undo;$('btnRedo').onclick=redo;
-function resetPanel(){qN=1;qTake=false;qSqs=[];qNone=false;qAuto=true;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSex.length=0;qAge.length=0;qSrcs={};qReg=null;qWhoText='';qReactText=''}
+function resetPanel(){qN=1;qTake=false;qSqs=[];qNone=false;qAuto=true;qOrd={};qOther='';qWho.length=0;qReact.length=0;qSex.length=0;qAge.length=0;qSrcs={};qReg=null;qWhoText='';qReactText='';qCountry=''}
 $('panelReset').onclick=()=>{resetPanel();renderQuick();toast('選び直せます')};
 
 /* ---------- 来店経緯の人数わけ（1組の中で人ごとに違うとき）---------- */
@@ -516,11 +532,15 @@ function renderQuick(){
   $('whoText').value=qWhoText;$('reactText').value=qReactText;
   trimLimited(qSex,qN);trimLimited(qAge,qN);
   toggleChips($('sexRow'),SEXES,qSex,()=>qN);toggleChips($('ageRow'),AGES,qAge,()=>qN);
-  panelChips($('whoRow'),KW_WHO,'nippousen_kw_who',qWho);
+  panelChips($('whoRow'),KW_WHO,'nippousen_kw_who',qWho,drawCountry);
+  drawCountry();
   panelChips($('reactRow'),KW_REACT,'nippousen_kw_react',qReact);
   renderSrc();
   renderSqBox();
 }
+// 「インバウンド」「海外の方」を選んだ時だけ、国のボタンを出す
+function drawCountry(){const on=isInbound(qWho.concat([qWhoText]));$('ctyBox').style.display=on?'':'none';
+  if(on)countryChips($('ctyRow'),()=>qCountry,v=>{qCountry=v})}
 // 来店経緯は「選ぶだけ」。記録は下の「この会計を記録する」で確定
 function renderSrc(){
   $('srcBtns').innerHTML='';
@@ -565,13 +585,13 @@ function renderOrdRow(){
 }
 $('ordClear').onclick=()=>{qOrd={};qOther='';renderOrdRow()};
 // 押すたびに選択／解除できる言葉ボタン（記録パネル用）
-function panelChips(el,defs,key,sel){
+function panelChips(el,defs,key,sel,onChange){
   el.innerHTML='';
-  defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(key,[]).map(x=>[x,x])).forEach(([lab,t])=>{
+  defs.map(d=>Array.isArray(d)?d:[d,d]).concat(ls.get(key,[]).filter(x=>!defs.some(d=>(Array.isArray(d)?d[0]:d)===x)).map(x=>[x,x])).forEach(([lab,t])=>{
     const b=document.createElement('button');b.className='chip'+(sel.includes(t)?' on':'');b.textContent=lab;
-    b.onclick=()=>{const i=sel.indexOf(t);if(i>=0)sel.splice(i,1);else sel.push(t);b.classList.toggle('on',i<0)};el.appendChild(b)});
+    b.onclick=()=>{const i=sel.indexOf(t);if(i>=0)sel.splice(i,1);else sel.push(t);b.classList.toggle('on',i<0);if(onChange)onChange()};el.appendChild(b)});
   const a=document.createElement('button');a.className='chip add';a.textContent='＋追加';
-  a.onclick=()=>{const w=prompt('いつも使う言葉を、ボタンとして追加します');if(w&&w.trim()){const q=ls.get(key,[]);q.push(w.trim());ls.set(key,q);panelChips(el,defs,key,sel)}};
+  a.onclick=()=>{const w=prompt('いつも使う言葉を、ボタンとして追加します');if(w&&w.trim()){const q=ls.get(key,[]);q.push(w.trim());ls.set(key,q);panelChips(el,defs,key,sel,onChange)}};
   el.appendChild(a);
 }
 // 押すたびに選択／解除（追加ボタンなし）
@@ -620,7 +640,7 @@ function doRecord(map,regId){
   pushUndo();
   const sel=qSqs.map(id=>SQ&&SQ.orders.find(x=>x.id===id)).filter(Boolean);
   const keys=Object.keys(map);
-  const c={id:Date.now(),src:mainSrc(map),srcs:keys.length>1?Object.assign({},map):null,n:qN,takeout:qTake,ord:Object.assign({},qOrd),other:qOther,label:qWho.concat(qWhoText.trim()?[qWhoText.trim()]:[]).join('・'),comment:qReact.join('')+qReactText.trim(),regId,
+  const c={id:Date.now(),src:mainSrc(map),srcs:keys.length>1?Object.assign({},map):null,n:qN,takeout:qTake,ord:Object.assign({},qOrd),other:qOther,label:qWho.concat(qWhoText.trim()?[qWhoText.trim()]:[]).join('・'),country:isInbound(qWho.concat([qWhoText]))?qCountry:'',comment:qReact.join('')+qReactText.trim(),regId,
     sex:qSex.slice(),age:qAge.slice(),
     sqIds:sel.map(o=>o.id),time:sel.length?sel.map(o=>o.time).sort()[0]:new Date().toTimeString().slice(0,5)};
   R.customers.unshift(c);save();
@@ -898,6 +918,7 @@ function custTitle(c){
   if(!c.srcs)parts.push((+c.n||1)+'名');
   (c.sex||[]).concat(c.age||[]).forEach(x=>parts.push(x));
   if(c.label)parts.push(c.label);
+  if(c.country&&!(c.label||'').includes(c.country))parts.push(c.country);
   return type+'｜'+parts.join('・');
 }
 const ordText=c=>[MENU.filter(m=>+(c.ord||{})[m]).map(m=>m+'×'+c.ord[m]).join(' '),c.other].filter(Boolean).join('・');
@@ -933,6 +954,10 @@ function editor(c){
   // 見出しの言葉は「・」区切りで足す／もう一度押すと外す
   l.appendChild(kwChips(KW_WHO,t=>{const p=li.value.split('・').map(s=>s.trim()).filter(Boolean);
     const i=p.indexOf(t);if(i>=0)p.splice(i,1);else p.push(t);li.value=p.join('・');li.dispatchEvent(new Event('input'))},'nippousen_kw_who'));
+  const cb=document.createElement('div');cb.innerHTML='<label class="t">どこの国の方（インバウンド）</label>';
+  const cr=document.createElement('div');cr.className='chips';cb.appendChild(cr);l.appendChild(cb);
+  const drawC=()=>{const on=isInbound([li.value]);cb.style.display=on?'':'none';if(on)countryChips(cr,()=>c.country||'',v=>{c.country=v;save()})};
+  li.addEventListener('input',drawC);drawC();
   e.appendChild(l);
   const s=document.createElement('div');s.innerHTML='<label class="t">来店経緯（人ごとに違うときは、別のボタンも押します。同じボタンをもう一度押すと人数が増えます）</label>';
   const sc=document.createElement('div');sc.className='chips';
@@ -1016,7 +1041,11 @@ function reportText(){
     .filter(c=>!only||(c.comment||'').trim()||c.label||(c.sex||[]).length||(c.age||[]).length||c.regId)
     .forEach(c=>{const o=ordLine(c);L.push('',custTitle(c),((c.comment||'').trim()+(o?`（${o}）`:'')).trim())});
   L.push('','▼申し送り事項');if((R.handover||'').trim())L.push(R.handover.trim());
-  L.push('','▼インバウンド');if((R.inbound||'').trim())L.push(R.inbound.trim());
+  L.push('','▼インバウンド');
+  const ib={};R.customers.forEach(c=>{if(c.country||isInbound([c.label]))ib[c.country||'国不明']=(ib[c.country||'国不明']||0)+(+c.n||1)});
+  const ibk=Object.keys(ib).sort((a,b)=>(a==='国不明')-(b==='国不明')||ib[b]-ib[a]);
+  if(ibk.length)L.push('ご来店：'+ibk.map(k=>k+' '+ib[k]+'名').join('・'));
+  if((R.inbound||'').trim())L.push(R.inbound.trim());
   L.push('',`話せた方：${+R.talked||0}人`,`口コミ依頼できた人数：${+R.review||0}人`);
   return L.join('\n');
 }
