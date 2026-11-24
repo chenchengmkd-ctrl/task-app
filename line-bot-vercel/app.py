@@ -31,7 +31,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 114
+APP_VERSION = 115
 
 
 def _respond(start_response, status, body, cors=False):
@@ -501,6 +501,23 @@ def _handle_nippo_usen_sales(environ, start_response):
     return _respond(start_response, '200 OK' if result.get('ok') else '502 Bad Gateway', result, cors=True)
 
 
+def _handle_nippo_air_sales(environ, start_response):
+    """日報アプリ（Airレジ店）用。その日のAirレジの会計と売上を返す。形は /api/nippo_sales と同じ。"""
+    if not config.NIPPO_TOKEN:
+        return _respond(start_response, '503 Service Unavailable', {'ok': False, 'error': 'NIPPO_TOKEN が未設定です'}, cors=True)
+    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+        return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
+    body = _read_json_body(environ)
+    if not body or not body.get('date'):
+        return _respond(start_response, '400 Bad Request', {'ok': False, 'error': 'date がありません'}, cors=True)
+    from linebot import airregi_web
+    try:
+        result = airregi_web.day_sales(body['date'])
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK' if result.get('ok') else '502 Bad Gateway', result, cors=True)
+
+
 def _handle_airregi_probe(environ, start_response):
     """Airレジの管理画面にログインして、画面の構造だけを返す（会計の取り込みを作るための調査用）。
     売上や客の値は返さない（数字は # に伏せる）。合言葉は NIPPO_TOKEN。"""
@@ -567,6 +584,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_nippo_usen_sales(environ, start_response)
+
+    if path == '/api/nippo_air_sales':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_nippo_air_sales(environ, start_response)
 
     if path == '/api/airregi_probe':
         if method == 'OPTIONS':

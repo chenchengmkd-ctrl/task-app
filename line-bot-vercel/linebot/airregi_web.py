@@ -212,3 +212,84 @@ def probe_receipt(date_iso):
         except ValueError:
             out['receipt_text_masked'] = _mask(_text(r.text))[:600]
     return out
+
+
+# ---------- 日報アプリ向け：その日の会計の一覧 ----------
+# 売上に数える取引：会計(C)・分割会計(S)・修正した会計(CV/SV)。
+# 返品(RT)・返品された会計(CR/SR/CVR/SVR)・レジ操作(RC/RR/RP/RF/RE)・未会計(UC)は数えない
+PAID_TYPES = ('C', 'S', 'CV', 'SV')
+_SKIP_ROWS = re.compile(r'^(小計|合計|\(|（|お預り|お預かり|おつり|お釣り|クレジット|現金|電子マネー|QR|ポイント|値引|割引)')
+
+
+def _receipt_items(html):
+    """レシートの表から [{name, qty}] を作る。品目の下の「ソース/…」などの1マスの行はオプションなので数えない。"""
+    items = []
+    for tr in re.findall(r'<tr[^>]*>(.*?)</tr>', html or '', re.S):
+        cells = [_text(c) for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.S)]
+        if len(cells) < 3 or not cells[0] or _SKIP_ROWS.search(cells[0]):
+            continue
+        q = re.sub(r'[^\d]', '', cells[2]) if len(cells) >= 4 else ''
+        if q.isdigit():
+            items.append({'name': cells[0], 'qty': int(q)})
+    return items
+
+
+def _paid(rows):
+    return [j for j in rows if j.get('journalRecordType') in PAID_TYPES and str(j.get('delFlg', '0')) in ('0', '', 'None')]
+
+
+def _yen(v):
+    try:
+        return int(float(str(v).replace(',', '')))
+    except (TypeError, ValueError):
+        return 0
+
+
+def day_sales(date_iso):
+    """日報アプリ（nippo-air.html）用。Squareの day_sales と同じ形で返す。"""
+    from .supabase_client import get_state, set_state
+    if not is_enabled():
+        return {'ok': False, 'error': 'Airレジのログイン情報が未設定です'}
+    rows = _paid(_journal(date_iso))
+    key = f'airregi:receipts:{date_iso}'
+    cache = get_state(key) or {}
+    missing = [j for j in rows if j['visStoreId'] not in cache][:30]  # 1回で開くのは最大30件（残りは次に押したときに取る）
+    for j in missing:
+        try:
+            r = api('/api/receiptData/getText/', {'visStoreId': j['visStoreId'], 'journalRecordType': j['journalRecordType']})
+            d = ((r.json() or {}).get('results') or {}).get('resultsData') or {}
+        except (requests.RequestException, ValueError):
+            break
+        cache[j['visStoreId']] = {'items': _receipt_items(d.get('receiptHtmlElement')), 'guests': _yen(d.get('visitorNum'))}
+    if missing:
+        set_state(key, cache)
+    orders = []
+    for j in rows:
+        c = cache.get(j['visStoreId']) or {}
+        t = re.search(r'(\d{1,2}):(\d{2})', str(j.get('visStoreDate') or ''))
+        orders.append({'id': 'air-' + j['visStoreId'], 'time': f'{int(t.group(1)):02d}:{t.group(2)}' if t else '',
+                       'total': _yen(j.get('moneyAmount')), 'items': c.get('items', []), 'guests': c.get('guests', 0),
+                       'table': '', 'takeout': False})
+    orders.sort(key=lambda o: o['time'])
+    total = sum(o['total'] for o in orders)
+    return {'ok': True, 'date': date_iso, 'total': total, 'count': len(orders), 'orders': orders,
+            'month_total': _month_before(date_iso) + total}
+
+
+def _month_before(date_iso):
+    """その月の1日から前日までの売上。日中は変わらないので、日付ごとに保存して使い回す。"""
+    from datetime import date, timedelta
+    from .supabase_client import get_state, set_state
+    d = date.fromisoformat(date_iso)
+    if d.day == 1:
+        return 0
+    key = f'airregi:month_before:{date_iso}'
+    cached = get_state(key)
+    if isinstance(cached, dict) and 'total' in cached:
+        return int(cached['total'])
+    first, prev = d.replace(day=1).strftime('%Y%m%d'), (d - timedelta(days=1)).strftime('%Y%m%d')
+    r = api('/api/searchReceipt/execute/', {'businessDayFrom': first, 'businessDayTo': prev, 'salesJournalSearchType': '0'})
+    rows = (((r.json() or {}).get('results') or {}).get('resultsData') or {}).get('journal') or []
+    total = sum(_yen(j.get('moneyAmount')) for j in _paid(rows))
+    set_state(key, {'total': total})
+    return total
