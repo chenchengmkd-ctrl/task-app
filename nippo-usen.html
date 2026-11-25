@@ -123,6 +123,7 @@
   .stock-grid .tx{min-width:0;flex:1}
   .stock-grid .tx small{white-space:normal;overflow:visible}
   .stock-grid select.cnt{width:84px}
+  .cust .home-line{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
   @media (min-width:600px){.stock-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   #toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:14px;opacity:0;transition:.25s;pointer-events:none;z-index:30;display:flex;gap:14px;align-items:center;white-space:nowrap;font-size:14px}
   #toast.show{opacity:1;pointer-events:auto}
@@ -255,8 +256,12 @@
 
 <!-- ===== 在庫・棚卸 ===== -->
 <div class="page" id="p-stock">
+  <div class="card" id="stockBringCard" style="display:none">
+    <h2>家から持ってくるもの<span class="sub">お店の数が「補充点」以下で、家に残っている品目</span></h2>
+    <div id="stockBring"></div>
+  </div>
   <div class="card">
-    <h2>発注が必要なもの<span class="sub">最後に数えた数が「発注点」以下の品目</span></h2>
+    <h2>発注が必要なもの<span class="sub">数が「発注点」以下の品目（家にも置いている品目は、お店＋家の合計で見る）</span></h2>
     <div id="stockOrder"></div>
   </div>
   <div class="card">
@@ -321,7 +326,7 @@ function markDirty(d){const q=ls.get('nippousen_dirty',[]);if(!q.includes(d)){q.
 function syncSoon(){clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,1500)}
 const uOf=o=>+((o&&o._u)||0);
 // 人が書いた中身があるか（記入者・天気・記録・申し送りなど）。中身のある日報を、空の日報で上書きしないために使う
-const hasContent=o=>!!(o&&((o.customers||[]).length||o.who||o.weather||(o.handover||'').trim()||(o.inbound||'').trim()||+o.talked||+o.review||Object.keys(o.inv||{}).length));
+const hasContent=o=>!!(o&&((o.customers||[]).length||o.who||o.weather||(o.handover||'').trim()||(o.inbound||'').trim()||+o.talked||+o.review||Object.keys(o.inv||{}).length||Object.keys(o.invh||{}).length));
 // サーバーから来た日報・共有データを取り込む。今開いている日報が変わったら onRemote で画面を描き直す
 function applyRemote(reports,shared){
   let touched=[];
@@ -771,7 +776,9 @@ $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;r
 /* ---------- 在庫・棚卸 ---------- */
 // 品目リスト（nippo_stock_items。端末間で共有）：
 //   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,step:数える刻み,
-//    vendor:発注先の名前,place:置き場所,open:使いかけも数えるか(未設定なら刻みが1未満の品目だけ数える),memo}
+//    vendor:発注先の名前,place:置き場所,open:使いかけも数えるか(未設定なら刻みが1未満の品目だけ数える),
+//    home:家にも置いているか,refill:補充点(お店の数がこれ以下なら家から持ってくる),bring:持ってくる目安の数,memo}
+// 家の数は、その日の日報の R.invh = {品目id: 数} に入れる（お店の数は R.inv）
 // 発注先リスト（nippo_vendors。端末間で共有）：{id,name,how:発注のしかた,lead:届くまでの日数,off:[休みの曜日0-6],cutoff:'10:00'(この時刻までの注文はその日に発送),contact:URL・電話,memo}
 // 数えた数は、その日の日報の R.inv = {品目id: 数} に入れる（日報と一緒に同期され、勤怠botからも読める）
 // 発注数は今までのスプレッドシートと同じ計算：在庫が発注点以下なら「発注点 − 在庫 + いつもの発注数」
@@ -798,7 +805,7 @@ const fmtN=(n,st)=>{const d=st<1?(String(st).split('.')[1]||'').length:0;return 
 // 選択肢の値。刻みに乗らない数（直接入力した3.7など）は、丸めずにそのまま
 const cntKey=(n,st)=>Math.abs(+fmtN(n,st)-(+n))<1e-9?fmtN(n,st):String(+n);
 // スクロールで選ぶ数の一覧。0から、発注点・発注数・前回の数より十分大きいところまで（多くても400個）
-function countChoices(it,cur){const st=stepOf(it);const lc=lastCount(it.id,R.date);
+function countChoices(it,cur,last){const st=stepOf(it);const lc=last!==undefined?last:lastCount(it.id,R.date);
   const hi=Math.max(st*30,(+it.par||0)*3,(+it.qty||0)*3,(lc?+lc.n:0)*2,cur!=null?+cur:0);
   const n=Math.min(400,Math.ceil(hi/st));const out=[];for(let i=0;i<=n;i++)out.push(fmtN(i*st,st));
   if(cur!=null&&!out.includes(cntKey(cur,st)))out.push(cntKey(cur,st));
@@ -828,8 +835,18 @@ function lastCount(id,before){const a=allReports();
   const d=Object.keys(a).filter(x=>x<before&&a[x].inv&&a[x].inv[id]!=null).sort().pop();return d?{date:d,n:a[d].inv[id]}:null}
 // 今の数（今日数えていれば今日の数、無ければ最後に数えた数）
 const curCount=it=>{const v=(R.inv||{})[it.id];return v!=null?{date:R.date,n:v}:lastCount(it.id,R.date)};
-const needOrder=it=>{const c=curCount(it);return hasPar(it)&&!!c&&+c.n<=+it.par};
-const orderQty=it=>needOrder(it)?r2(+it.par-(+curCount(it).n)+(+it.qty||0)):0;
+// 家の数（家にも置いている品目だけ）。今日入れていれば今日の数、無ければ最後に入れた数
+function lastHome(id,before){const a=allReports();
+  const d=Object.keys(a).filter(x=>x<before&&a[x].invh&&a[x].invh[id]!=null).sort().pop();return d?{date:d,n:a[d].invh[id]}:null}
+const curHome=it=>{if(!it.home)return null;const v=(R.invh||{})[it.id];return v!=null?{date:R.date,n:v}:lastHome(it.id,R.date)};
+// 発注の判断に使う数：家にも置いている品目は お店＋家 の合計
+const totalCount=it=>{const c=curCount(it);if(!c)return null;const h=curHome(it);return h?r2(+c.n+(+h.n)):+c.n};
+const needOrder=it=>{const t=totalCount(it);return hasPar(it)&&t!=null&&t<=+it.par};
+const orderQty=it=>needOrder(it)?r2(+it.par-totalCount(it)+(+it.qty||0)):0;
+// 家から持ってくる：お店の数が補充点以下で、家に残っている
+const needBring=it=>{if(!it.home||it.refill===''||it.refill==null)return false;const c=curCount(it),h=curHome(it);return !!c&&+c.n<=+it.refill&&(!h||+h.n>0)};
+function setCount(key,it,val){R[key]=Object.assign({},R[key]);if(val===''||val==null)delete R[key][it.id];else R[key][it.id]=+val;
+  if(!Object.keys(R[key]).length)delete R[key]}
 const ounitOf=it=>it.ounit||it.unit||'';
 // 今日数える品目か
 //   曜日：決めた曜日か、前回から7日以上たった時／毎月○日：その日（その月に無い日なら月末）以降、まだ数えていない時
@@ -839,9 +856,24 @@ function stockDue(it){const d=new Date(R.date+'T00:00');
     if(d.getDate()<day)return false;
     const from=R.date.slice(0,8)+String(day).padStart(2,'0');const lc=lastCount(it.id,R.date);return !lc||lc.date<from}
   return true}
+// 数を選ぶ欄（スクロールで選ぶ。iPad・iPhoneではくるくる回す選び方になる）。刻みは品目ごと。一覧に無い数は「直接入力」
+function countSelect(it,key,v,last,label){
+  const inp=document.createElement('select');inp.className='cnt';
+  inp.innerHTML='<option value="">—</option>'+countChoices(it,v,last).map(x=>`<option value="${x}">${x}</option>`).join('')+'<option value="__other">直接入力</option>';
+  inp.value=v!=null?cntKey(v,stepOf(it)):'';
+  inp.onchange=()=>{let val=inp.value;
+    if(val==='__other'){const w=prompt(`${it.name}${label}（${it.unit||''}）`,v!=null?v:'');if(w==null||w.trim()===''||isNaN(+w)){renderStock();return}val=String(+w)}
+    setCount(key,it,val);save();renderStock()};
+  return inp}
 function renderStock(){
   const items=stockItems().filter(it=>it.name);
   const need=items.filter(needOrder);
+  const bring=items.filter(needBring);
+  $('stockBringCard').style.display=items.some(it=>it.home)?'':'none';
+  $('stockBring').innerHTML=bring.length?bring.map(it=>{const c=curCount(it),h=curHome(it);
+    return `<div class="visit"><b>${esc(it.name)}</b>${it.bring?`　<b style="color:#c2410c">${it.bring}${esc(it.unit||'')} 持ってくる</b>`:''}`
+      +`<br><small>お店 ${c.n}${esc(it.unit||'')}・家 ${h?h.n+esc(it.unit||'')+'（'+md(h.date)+'）':'未入力'}・補充点 ${it.refill}${esc(it.unit||'')}</small></div>`}).join('')
+    :'<div class="hint">今、家から持ってくるものはありません</div>';
   // 発注先ごとにまとめる（買い物・注文のリストとしてそのまま使える）
   const byV={};need.forEach(it=>{const k=it.vendor||'';(byV[k]=byV[k]||[]).push(it)});
   const today=todayStr();
@@ -851,8 +883,9 @@ function renderStock(){
       +(v.contact?'・'+(/^[^@\s]+@[^@\s]+$/.test(v.contact)?`<a href="mailto:${esc(v.contact)}">${esc(v.contact)}</a>`:/^https?:/.test(v.contact)?`<a href="${esc(v.contact)}" target="_blank" rel="noopener">注文ページ</a>`:/^[\d\-+() ]{6,}$/.test(v.contact)?`<a href="tel:${esc(v.contact.replace(/[^\d+]/g,''))}">${esc(v.contact)}</a>`:esc(v.contact)):'')+'</small>':'')
       :'<b>■ 発注先が未設定</b>';
     return `<div class="visit">${head}`+byV[k].map(it=>{const c=curCount(it);
+      const h=curHome(it);
       return `<div style="margin:4px 0 0 12px">${esc(it.name)}　<b style="color:#b91c1c">${orderQty(it)}${esc(ounitOf(it))}</b>`
-        +`<small style="color:var(--muted)">　在庫 ${c.n}${esc(it.unit||'')}（${md(c.date)}）${it.place?'・'+esc(it.place):''}</small></div>`}).join('')+'</div>'}).join('')
+        +`<small style="color:var(--muted)">　${h?'お店 '+c.n+'＋家 '+h.n+'＝'+totalCount(it):'在庫 '+c.n}${esc(it.unit||'')}（${md(c.date)}）${it.place?'・'+esc(it.place):''}</small></div>`}).join('')+'</div>'}).join('')
     :'<div class="hint">今、発注が必要なものはありません</div>';
   $('stockDate').textContent=md(R.date)+' の棚卸';
   const tabs=$('stockTabs');tabs.innerHTML='';
@@ -877,18 +910,23 @@ function renderStock(){
     grp.forEach(it=>{
       const lc=lastCount(it.id,R.date),v=(R.inv||{})[it.id];
       const row=document.createElement('div');row.className='cust';
-      row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))} 発注</span>`:''}`
-        +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${grpBy!=='place'&&it.place?'・📍'+esc(it.place):''}<br>${openOf(it)?'使いかけも数える':'未開封だけ数える'}</small></div></div>`;
-      // 数はスクロールで選ぶ（iPad・iPhoneではくるくる回す選び方になる）。刻みは品目ごと。一覧に無い数は「直接入力」
-      const inp=document.createElement('select');inp.className='cnt';
-      inp.innerHTML='<option value="">—</option>'+countChoices(it,v).map(x=>`<option value="${x}">${x}</option>`).join('')+'<option value="__other">直接入力</option>';
-      inp.value=v!=null?cntKey(v,stepOf(it)):'';
-      inp.onchange=()=>{let val=inp.value;
-        if(val==='__other'){const w=prompt(`${it.name}の数（${it.unit||''}）`,v!=null?v:'');if(w==null||w.trim()===''||isNaN(+w)){renderStock();return}val=String(+w)}
-        R.inv=Object.assign({},R.inv);if(val==='')delete R.inv[it.id];else R.inv[it.id]=+val;
-        if(!Object.keys(R.inv).length)delete R.inv;save();renderStock()};
-      const u=document.createElement('span');u.textContent=it.unit||'';u.style.cssText='min-width:28px;font-size:14px';
-      row.querySelector('.sum').append(inp,u);grid.appendChild(row)});
+      const tags=(needBring(it)?`<span class="reg-tag" style="background:#ea580c">家から</span>`:'')
+        +(needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))} 発注</span>`:'');
+      row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${tags}`
+        +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${it.home&&it.refill!==''&&it.refill!=null?'・補充点 '+it.refill+esc(it.unit||''):''}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||'')+(it.home?'（合計）':''):''}${grpBy!=='place'&&it.place?'・📍'+esc(it.place):''}<br>${openOf(it)?'使いかけも数える':'未開封だけ数える'}</small></div></div>`;
+      const u=()=>{const x=document.createElement('span');x.textContent=it.unit||'';x.style.cssText='min-width:28px;font-size:14px';return x};
+      row.querySelector('.sum').append(countSelect(it,'inv',v,lc,'の数（お店）'),u());
+      // 家にも置いている品目は、家の数と「持ってきた」
+      if(it.home){const hv=(R.invh||{})[it.id],hl=lastHome(it.id,R.date);
+        const line=document.createElement('div');line.className='sum home-line';
+        line.innerHTML=`<div class="tx"><small>🏠 家${hl?'（前回 '+md(hl.date)+'：'+hl.n+esc(it.unit||'')+'）':''}</small></div>`;
+        const mv=document.createElement('button');mv.className='small-btn';mv.textContent='持ってきた';
+        mv.onclick=()=>{const w=prompt(`${it.name}を家から何${it.unit||''}持ってきましたか？\n（家の数が減って、お店の数が増えます）`,it.bring||'');
+          if(w==null||w.trim()===''||isNaN(+w)||+w<=0)return;
+          const c=curCount(it),h=curHome(it);setCount('inv',it,r2((c?+c.n:0)+(+w)));setCount('invh',it,r2(Math.max(0,(h?+h.n:0)-(+w))));
+          save();renderStock();toast(`${it.name}：家から${+w}${it.unit||''}持ってきました`)};
+        line.append(mv,countSelect(it,'invh',hv,hl,'の数（家）'),u());row.appendChild(line)}
+      grid.appendChild(row)});
   });
   renderVendors();
   renderStockItems();
@@ -996,8 +1034,16 @@ function stockForm(it){
   const [opW,opC]=box('開封済み（使いかけ）');
   const drawOp=()=>{opC.innerHTML='';[[true,'使いかけも数える（0.3本など）'],[false,'未開封だけ数える']].forEach(([v,l])=>{const b=document.createElement('button');
     b.className='chip'+(openOf(it)===v?' on':'');b.textContent=l;b.onclick=()=>{upd('open',v);drawOp()};opC.appendChild(b)})};
-  drawCat();drawFr();drawSt();drawOp();
-  e.firstElementChild.after(catW,frW,wdW,mdW,stW,opW);
+  const [hmW,hmC]=box('家にも置いている（お店が減ったら家から持ってくる）');
+  const hmF=document.createElement('div');hmF.className='row';
+  hmF.innerHTML=`<div><label class="t">補充点（お店の数がこれ以下なら持ってくる）</label><input type="number" inputmode="decimal" step="any" min="0" data-h="refill" placeholder="例：10"></div>
+    <div><label class="t">持ってくる目安の数</label><input type="number" inputmode="decimal" step="any" min="0" data-h="bring" placeholder="例：25"></div>`;
+  hmF.querySelectorAll('[data-h]').forEach(i=>{const k=i.dataset.h;i.value=it[k]!=null?it[k]:'';i.oninput=()=>upd(k,i.value===''?'':+i.value)});
+  const drawHm=()=>{hmC.innerHTML='';[[true,'はい'],[false,'いいえ']].forEach(([v,l])=>{const b=document.createElement('button');
+    b.className='chip'+(!!it.home===v?' on':'');b.textContent=l;b.onclick=()=>{upd('home',v);drawHm()};hmC.appendChild(b)});hmF.style.display=it.home?'':'none'};
+  hmW.appendChild(hmF);
+  drawCat();drawFr();drawSt();drawOp();drawHm();
+  e.firstElementChild.after(catW,frW,wdW,mdW,stW,opW,hmW);
   const btns=document.createElement('div');btns.className='row';
   const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
   del.onclick=()=>{if(!confirm(`「${it.name||'この品目'}」を品目リストから削除しますか？（数えた記録は日報に残ります）`))return;

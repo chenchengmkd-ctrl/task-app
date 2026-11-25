@@ -50,7 +50,7 @@ def _has_content(v):
     if not isinstance(v, dict) or v.get('_del'):
         return False
     return bool(v.get('customers') or v.get('who') or v.get('weather') or (v.get('handover') or '').strip()
-                or (v.get('inbound') or '').strip() or v.get('talked') or v.get('review') or v.get('inv'))
+                or (v.get('inbound') or '').strip() or v.get('talked') or v.get('review') or v.get('inv') or v.get('invh'))
 
 
 def _upsert(rows):
