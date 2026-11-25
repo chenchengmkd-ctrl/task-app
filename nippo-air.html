@@ -268,6 +268,8 @@
     <h2><span id="stockDate"></span><span class="sub">数を入れると、この日の日報と一緒に保存・同期されます（鰻と米は今までどおり在庫日報へ）</span></h2>
     <div class="chips" id="stockTabs"></div>
     <div id="stockCount"></div>
+    <button class="reg new" id="stockSend" style="margin-top:16px">LINEで送る（画像）</button>
+    <div class="hint" id="stockSendHint">勤怠Botから、スタッフのLINEグループに在庫の表の画像を送ります（家から持ってくるもの・発注・今日数えた品目）</div>
   </div>
   <div class="card">
     <h2>発注先<span class="sub">発注のしかた・届くまでの日数（リードタイム）・連絡先（スマホとiPadで共有）</span></h2>
@@ -776,6 +778,9 @@ $('regSearch').oninput=renderRegs;
 $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;renderRegs()})};
 
 /* ---------- 在庫・棚卸 ---------- */
+// 「LINEで送る（画像）」：勤怠Botが表の画像にして、スタッフのグループに送る（合言葉は日報の「LINEで送る」と同じ）
+const STOCK_BOT=false;
+const STOCK_API='https://line-kintai-vercel.vercel.app/api/stock_post';
 // 品目リスト（nippo_stock_items。端末間で共有）：
 //   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,step:数える刻み,
 //    vendor:発注先の名前,place:置き場所,open:使いかけも数えるか(未設定なら刻みが1未満の品目だけ数える),
@@ -906,6 +911,7 @@ function renderStock(){
         +`<small style="color:var(--muted)">　${h?'お店 '+c.n+'＋家 '+h.n+'＝'+totalCount(it):'在庫 '+c.n}${esc(it.unit||'')}（${md(c.date)}）${it.place?'・'+esc(it.place):''}</small></div>`}).join('')+'</div>'}).join('')
     :'<div class="hint">今、発注が必要なものはありません</div>';
   $('stockDate').textContent=md(R.date)+' の棚卸';
+  $('stockSend').style.display=$('stockSendHint').style.display=STOCK_BOT&&items.length?'':'none';
   const tabs=$('stockTabs');tabs.innerHTML='';
   [['due','今日数えるもの'],['all','全部']].forEach(([k,l])=>{const b=document.createElement('button');b.className='chip'+(stockTab===k?' on':'');b.textContent=l;
     b.onclick=()=>{stockTab=k;renderStock()};tabs.appendChild(b)});
@@ -1071,6 +1077,40 @@ function stockForm(it){
   ok.onclick=()=>{if(!it.name){saveStockItems(stockItems().filter(x=>x.id!==it.id))}stockOpen=null;renderStock()};
   btns.append(del,ok);e.appendChild(btns);return e;
 }
+// 送る中身（画像に描く文字）。数え方・発注数はこの画面と同じ計算
+function stockSnap(){
+  const items=stockItems().filter(it=>it.name);const u=it=>it.unit||'';
+  const bring=items.filter(needBring).map(it=>{const c=curCount(it),h=curHome(it);
+      return {name:it.name,qty:it.bring?it.bring+u(it):'',note:`お店 ${c.n}${u(it)}・家 ${h?h.n+u(it):'未入力'}`}})
+    .concat(items.filter(it=>needOrder(it)&&fromHome(it)).map(it=>{const v=vendorOf(it.vendor);
+      return {name:it.name,qty:orderQty(it)+ounitOf(it)+perText(it),note:(v&&v.memo)||it.vendor}}));
+  const byV={};items.filter(it=>needOrder(it)&&!fromHome(it)).forEach(it=>{(byV[it.vendor||'']=byV[it.vendor||'']||[]).push(it)});
+  const orders=Object.keys(byV).sort((a,b)=>(a==='')-(b==='')).map(k=>{const v=vendorOf(k);
+    const when=v?[v.how,arrivalText(v).replace(/^・/,''),(v.off||[]).length?'（'+v.off.slice().sort().map(i=>WDS[i]).join('・')+'休み）':''].filter(Boolean).join('・').replace('・（','（'):'';
+    return {vendor:k||'発注先が未設定',when,items:byV[k].map(it=>{const c=curCount(it),h=curHome(it);
+      return {name:it.name,qty:orderQty(it)+ounitOf(it)+perText(it),note:h?`お店 ${c.n}＋家 ${h.n}＝${totalCount(it)}${u(it)}`:`在庫 ${c.n}${u(it)}`}})}});
+  const rows=items.filter(it=>(R.inv||{})[it.id]!=null||(R.invh||{})[it.id]!=null).map(it=>{const sv=(R.inv||{})[it.id],hv=(R.invh||{})[it.id];
+    return {name:it.name,store:sv!=null?sv+u(it):'—',home:it.home&&hv!=null?hv+u(it):'',par:hasPar(it)?it.par+u(it):'',
+      mark:needBring(it)||(needOrder(it)&&fromHome(it))?'家から':needOrder(it)?'発注 '+orderQty(it)+ounitOf(it):''}});
+  return {date:R.date,writer:R.who||'',bring,orders,rows};
+}
+async function sendStock(){
+  const key=ls.get('nippoair_sqkey','');
+  if(!key){toast('設定で合言葉を入れると、LINEに送れます');return}
+  const snap=stockSnap();
+  if(!snap.rows.length&&!snap.bring.length&&!snap.orders.length){toast('送るものがありません（今日の数を入れてください）');return}
+  if(!snap.rows.length&&!confirm('今日数えた品目がまだありません。発注・家から持ってくるものだけ送りますか？'))return;
+  if(!confirm(`勤怠Botから、スタッフのLINEグループに在庫の画像を送ります。\n（今日数えた品目 ${snap.rows.length}・家から ${snap.bring.length}・発注 ${snap.orders.reduce((a,o)=>a+o.items.length,0)}）\nよろしいですか？`))return;
+  const b=$('stockSend');b.disabled=true;b.textContent='送っています…';
+  try{
+    const res=await fetch(STOCK_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify(snap)});
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok||!j.ok)throw new Error(j.error||res.status);
+    toast(j.duplicate?'同じ内容はもう送ってあります':'LINEグループに送りました');
+  }catch(e){toast('送れませんでした：'+(e.message||'通信エラー'))}
+  b.disabled=false;b.textContent='LINEで送る（画像）';
+}
+$('stockSend').onclick=sendStock;
 $('stockAdd').onclick=()=>{const it={id:Date.now(),name:'',cat:'備品',unit:'',freq:'daily',wds:[],mday:25,par:'',qty:'',ounit:'',vendor:'',place:'',memo:''};
   saveStockItems(stockItems().concat(it));stockOpen=it.id;renderStockItems();
   setTimeout(()=>{const i=document.querySelector('#stockItems .cust.open input[data-k=name]');if(i)i.focus()},50)};
