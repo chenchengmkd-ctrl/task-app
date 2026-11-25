@@ -135,6 +135,7 @@
   <h1>日報<small>Airレジ店</small><small id="hDate"></small></h1>
   <button data-go="hist">履歴</button>
   <button data-go="reg">常連</button>
+  <button data-go="stock">在庫</button>
   <button data-go="set">設定</button>
   <button id="btnNew">新規</button>
 </header>
@@ -245,6 +246,24 @@
   </div>
 </div>
 
+<!-- ===== 在庫・棚卸 ===== -->
+<div class="page" id="p-stock">
+  <div class="card">
+    <h2>発注が必要なもの<span class="sub">最後に数えた数が「発注点」以下の品目</span></h2>
+    <div id="stockOrder"></div>
+  </div>
+  <div class="card">
+    <h2><span id="stockDate"></span><span class="sub">数を入れると、この日の日報と一緒に保存・同期されます（鰻と米は今までどおり在庫日報へ）</span></h2>
+    <div class="chips" id="stockTabs"></div>
+    <div id="stockCount"></div>
+  </div>
+  <div class="card">
+    <h2>品目リスト<span class="sub">数えたい食材・調味料・備品を登録します（スマホとiPadで共有）</span></h2>
+    <button class="reg new" id="stockAdd">＋ 品目を追加</button>
+    <div id="stockItems"></div>
+  </div>
+</div>
+
 <!-- ===== 設定 ===== -->
 <div class="page" id="p-set">
   <div class="card">
@@ -283,14 +302,14 @@ const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
    日報は1日ずつ、常連・名前・よく使う言葉・表示設定はまとめてサーバーに置く。
    各データの _u（最終更新時刻）が新しい方が勝つ。合言葉（設定）が入っている端末だけ同期する。 */
 var SYNC_API='https://task-app-nine-liard.vercel.app/api/nippo_sync',SYNC_STORE='air'; // 今の店（鰻）と別の場所に保存する
-var SHARED_KEYS=['nippoair_src_custom','nippoair_regs','nippoair_names','nippoair_kw_who','nippoair_countries','nippoair_kw_react','nippoair_kw_hand','nippoair_cummode','nippoair_repmode'];
+var SHARED_KEYS=['nippoair_src_custom','nippoair_regs','nippoair_stock_items','nippoair_names','nippoair_kw_who','nippoair_countries','nippoair_kw_react','nippoair_kw_hand','nippoair_cummode','nippoair_repmode'];
 var syncApplying=false,syncTimer=null,syncBusy=false,syncAgain=false,syncMsg='',onRemote=null;
 function onLsSet(k){if(syncApplying||!SHARED_KEYS.includes(k))return;ls.set('nippoair_shared_u',Date.now());ls.set('nippoair_shared_dirty',true);syncSoon()}
 function markDirty(d){const q=ls.get('nippoair_dirty',[]);if(!q.includes(d)){q.push(d);ls.set('nippoair_dirty',q)}syncSoon()}
 function syncSoon(){clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,1500)}
 const uOf=o=>+((o&&o._u)||0);
 // 人が書いた中身があるか（記入者・天気・記録・申し送りなど）。中身のある日報を、空の日報で上書きしないために使う
-const hasContent=o=>!!(o&&((o.customers||[]).length||o.who||o.weather||(o.handover||'').trim()||(o.inbound||'').trim()||+o.talked||+o.review));
+const hasContent=o=>!!(o&&((o.customers||[]).length||o.who||o.weather||(o.handover||'').trim()||(o.inbound||'').trim()||+o.talked||+o.review||Object.keys(o.inv||{}).length));
 // サーバーから来た日報・共有データを取り込む。今開いている日報が変わったら onRemote で画面を描き直す
 function applyRemote(reports,shared){
   let touched=[];
@@ -737,6 +756,103 @@ function renderRegs(){
 $('regSearch').oninput=renderRegs;
 $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;renderRegs()})};
 
+/* ---------- 在庫・棚卸 ---------- */
+// 品目リスト（nippo_stock_items。端末間で共有）：{id,name,cat,unit,freq:'daily'|'weekly'|'monthly',wd:曜日0-6,par:発注点,vendor:発注先,memo}
+// 数えた数は、その日の日報の R.inv = {品目id: 数} に入れる（日報と一緒に同期され、勤怠botからも読める）
+const STOCK_CATS=['食材','調味料','備品','その他'];
+const FREQS=[['daily','毎日'],['weekly','週1回'],['monthly','月末']];
+const WDS='日月火水木金土';
+const stockItems=()=>ls.get('nippoair_stock_items',[]);
+const saveStockItems=a=>ls.set('nippoair_stock_items',a);
+const hasPar=it=>it.par!==''&&it.par!=null;
+let stockTab='due',stockOpen=null;
+// before の日より前（その日を含まない）に、最後に数えた数 {date,n}
+function lastCount(id,before){const a=allReports();
+  const d=Object.keys(a).filter(x=>x<before&&a[x].inv&&a[x].inv[id]!=null).sort().pop();return d?{date:d,n:a[d].inv[id]}:null}
+// 今の数（今日数えていれば今日の数、無ければ最後に数えた数）
+const curCount=it=>{const v=(R.inv||{})[it.id];return v!=null?{date:R.date,n:v}:lastCount(it.id,R.date)};
+const needOrder=it=>{const c=curCount(it);return hasPar(it)&&!!c&&+c.n<=+it.par};
+// 今日数える品目か。週1回は決めた曜日か、前回から7日以上たった時。月末は月の最後の3日間
+function stockDue(it){const d=new Date(R.date+'T00:00');
+  if(it.freq==='weekly'){const lc=lastCount(it.id,R.date);return d.getDay()===(+it.wd||0)||!lc||(d-new Date(lc.date+'T00:00'))/864e5>=7}
+  if(it.freq==='monthly')return d.getDate()>=new Date(d.getFullYear(),d.getMonth()+1,0).getDate()-2;
+  return true}
+function renderStock(){
+  const items=stockItems().filter(it=>it.name);
+  const need=items.filter(needOrder);
+  $('stockOrder').innerHTML=need.length?need.map(it=>{const c=curCount(it);
+    return `<div class="visit"><b>${esc(it.name)}</b>　残り ${c.n}${esc(it.unit||'')}（発注点 ${it.par}${esc(it.unit||'')}・${md(c.date)}に数えた数）${it.vendor?'<br>発注先：'+esc(it.vendor):''}</div>`}).join('')
+    :'<div class="hint">今、発注が必要なものはありません</div>';
+  $('stockDate').textContent=md(R.date)+' の棚卸';
+  const tabs=$('stockTabs');tabs.innerHTML='';
+  [['due','今日数えるもの'],['all','全部']].forEach(([k,l])=>{const b=document.createElement('button');b.className='chip'+(stockTab===k?' on':'');b.textContent=l;
+    b.onclick=()=>{stockTab=k;renderStock()};tabs.appendChild(b)});
+  const box=$('stockCount');box.innerHTML='';
+  const list=items.filter(it=>stockTab==='all'||stockDue(it));
+  if(!items.length)box.innerHTML='<div class="hint" style="margin-top:10px">下の「品目リスト」から、数えたいものを登録してください</div>';
+  else if(!list.length)box.innerHTML='<div class="hint" style="margin-top:10px">今日数えるものはありません（「全部」から数えることもできます）</div>';
+  STOCK_CATS.concat(['']).forEach(cat=>{
+    const grp=list.filter(it=>cat?it.cat===cat:!STOCK_CATS.includes(it.cat));if(!grp.length)return;
+    const h=document.createElement('div');h.className='q-label';h.textContent=cat||'分類なし';box.appendChild(h);
+    grp.forEach(it=>{
+      const lc=lastCount(it.id,R.date),v=(R.inv||{})[it.id];
+      const row=document.createElement('div');row.className='cust';
+      row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${needOrder(it)?'<span class="reg-tag" style="background:#dc2626">発注</span>':''}`
+        +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}</small></div></div>`;
+      const inp=document.createElement('input');inp.type='number';inp.inputMode='decimal';inp.step='any';inp.min='0';inp.placeholder='数';
+      inp.style.cssText='width:90px;flex:none';inp.value=v!=null?v:'';
+      inp.onchange=()=>{R.inv=Object.assign({},R.inv);if(inp.value==='')delete R.inv[it.id];else R.inv[it.id]=+inp.value;
+        if(!Object.keys(R.inv).length)delete R.inv;save();renderStock()};
+      const u=document.createElement('span');u.textContent=it.unit||'';u.style.cssText='min-width:28px;font-size:14px';
+      row.querySelector('.sum').append(inp,u);box.appendChild(row)});
+  });
+  renderStockItems();
+}
+function renderStockItems(){
+  const box=$('stockItems');box.innerHTML='';
+  const items=stockItems();
+  if(!items.length)box.innerHTML='<div class="hint" style="margin-top:10px">まだ品目がありません</div>';
+  items.forEach(it=>{
+    const d=document.createElement('div');d.className='cust'+(stockOpen===it.id?' open':'');
+    const fq=(FREQS.find(f=>f[0]===it.freq)||FREQS[0])[1]+(it.freq==='weekly'?'（'+WDS[+it.wd||0]+'）':'');
+    d.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name||'（品名未入力）')}</b><small>${esc(it.cat||'分類なし')}・${esc(it.unit||'単位なし')}・${fq}`
+      +`${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${it.vendor?'・'+esc(it.vendor):''}</small></div></div>`;
+    if(stockOpen!==it.id){const b=document.createElement('button');b.className='small-btn';b.textContent='直す';
+      b.onclick=()=>{stockOpen=it.id;renderStockItems()};d.querySelector('.sum').appendChild(b);box.appendChild(d);return}
+    d.appendChild(stockForm(it));box.appendChild(d)});
+}
+function stockForm(it){
+  const e=document.createElement('div');e.className='ed';
+  const upd=(k,v)=>{const a=stockItems();const x=a.find(y=>y.id===it.id);if(!x)return;x[k]=v;it[k]=v;saveStockItems(a)};
+  e.innerHTML=`<div><label class="t">品名</label><input type="text" data-k="name" placeholder="例：タレ"></div>
+    <div class="row"><div><label class="t">単位</label><input type="text" data-k="unit" placeholder="本・袋・kg・個"></div>
+    <div><label class="t">発注点（この数以下で発注）</label><input type="number" inputmode="decimal" step="any" min="0" data-k="par" placeholder="例：2"></div></div>
+    <div><label class="t">発注先</label><input type="text" data-k="vendor" placeholder="例：○○商店・Amazon"></div>
+    <div><label class="t">メモ</label><input type="text" data-k="memo" placeholder="置き場所・発注のしかた など"></div>`;
+  e.querySelectorAll('[data-k]').forEach(i=>{const k=i.dataset.k;i.value=it[k]!=null?it[k]:'';
+    i.oninput=()=>upd(k,i.type==='number'?(i.value===''?'':+i.value):i.value.trim())});
+  const chips=(label,opts,get,set)=>{const w=document.createElement('div');w.innerHTML=`<label class="t">${label}</label>`;
+    const c=document.createElement('div');c.className='chips';w.appendChild(c);
+    const draw=()=>{c.innerHTML='';opts.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+(get()===v?' on':'');b.textContent=l;
+      b.onclick=()=>{set(v);draw();wdW.style.display=it.freq==='weekly'?'':'none'};c.appendChild(b)})};
+    draw();return w};
+  const catW=chips('分類',STOCK_CATS.map(x=>[x,x]),()=>it.cat,v=>upd('cat',v));
+  const frW=chips('数える頻度',FREQS,()=>it.freq||'daily',v=>upd('freq',v));
+  const wdW=chips('数える曜日',[...WDS].map((x,i)=>[i,x]),()=>+it.wd||0,v=>upd('wd',v));
+  wdW.style.display=it.freq==='weekly'?'':'none';
+  e.firstElementChild.after(catW,frW,wdW);
+  const btns=document.createElement('div');btns.className='row';
+  const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
+  del.onclick=()=>{if(!confirm(`「${it.name||'この品目'}」を品目リストから削除しますか？（数えた記録は日報に残ります）`))return;
+    const old=stockItems();saveStockItems(old.filter(x=>x.id!==it.id));stockOpen=null;renderStock();toast('削除しました',()=>{saveStockItems(old);renderStock()})};
+  const ok=document.createElement('button');ok.className='done-btn';ok.textContent='閉じる';
+  ok.onclick=()=>{if(!it.name){saveStockItems(stockItems().filter(x=>x.id!==it.id))}stockOpen=null;renderStock()};
+  btns.append(del,ok);e.appendChild(btns);return e;
+}
+$('stockAdd').onclick=()=>{const it={id:Date.now(),name:'',cat:'食材',unit:'',freq:'weekly',wd:0,par:'',vendor:'',memo:''};
+  saveStockItems(stockItems().concat(it));stockOpen=it.id;renderStockItems();
+  setTimeout(()=>{const i=document.querySelector('#stockItems .cust.open input[data-k=name]');if(i)i.focus()},50)};
+
 /* ---------- Square ---------- */
 let sqBusy=false,sqErr='';
 // 読んだ会計は日付ごとに端末に残す（開き直しても一覧が消えないように。1週間分）
@@ -957,15 +1073,16 @@ function reportText(){
 let page='form',lastMain='form';
 function go(p){
   page=p;if(p==='form'||p==='end')lastMain=p;
-  ['form','end','start','prev','hist','reg','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  ['form','end','start','prev','hist','reg','stock','set'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='end'||p==='prev')?'flex':'none';
   $('btnPrev').textContent=p==='prev'?'入力に戻る':'プレビュー';
-  document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':({hist:'履歴',reg:'常連',set:'設定'}[b.dataset.go]));
+  document.querySelectorAll('[data-go]').forEach(b=>b.textContent=b.dataset.go===p?'戻る':({hist:'履歴',reg:'常連',stock:'在庫',set:'設定'}[b.dataset.go]));
   if(p==='prev')$('prevText').textContent=reportText();
   if(p==='hist')renderHist();
   if(p==='set')renderSettings();
   if(p==='start')renderStart();
   if(p==='reg'){regOpen=null;renderRegs()}
+  if(p==='stock'){stockOpen=null;renderStock()}
   if(p==='form'){renderQuick();fetchSquare(false)}
   if(p==='end'){renderSales();renderCounts();fetchSquare(false)}
   scrollTo(0,0);
