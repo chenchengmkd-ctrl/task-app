@@ -782,7 +782,7 @@ const FREQS=[['daily','毎日'],['weekly','曜日を決める'],['monthly','毎�
 const WDS='日月火水木金土';
 // 今の店のスプレッドシート【在庫確認】（2026-11-25 時点）の品目。「今の在庫表の品目を入れる」で一度に登録できる
 const STOCK_PRESET=[];
-// 発注先（岩国魚市場はオーナー確認済み。ほかは10〜11月のレシートからの推定）。[名前, 発注のしかた, 届くまでの日数]
+// 発注先（岩国魚市場・シモジマ・自宅で印刷はオーナー確認済み。ほかは10〜11月のレシートからの推定）。[名前, 発注のしかた, 届くまでの日数]
 const VENDOR_PRESET=[];
 const stockItems=()=>ls.get('nippoair_stock_items',[]);
 const saveStockItems=a=>ls.set('nippoair_stock_items',a);
