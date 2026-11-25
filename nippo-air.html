@@ -268,6 +268,8 @@
     <h2><span id="stockDate"></span><span class="sub">数を入れると、この日の日報と一緒に保存・同期されます（鰻と米は今までどおり在庫日報へ）</span></h2>
     <div class="chips" id="stockTabs"></div>
     <div id="stockCount"></div>
+    <button class="reg new" id="stockSend" style="margin-top:16px">LINEで送る（画像）</button>
+    <div class="hint" id="stockSendHint">勤怠Botから、スタッフのLINEグループに在庫の表の画像を送ります（家から持ってくるもの・発注・今日数えた品目）</div>
   </div>
   <div class="card">
     <h2>発注先<span class="sub">発注のしかた・届くまでの日数（リードタイム）・連絡先（スマホとiPadで共有）</span></h2>
@@ -776,6 +778,9 @@ $('regSearch').oninput=renderRegs;
 $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;renderRegs()})};
 
 /* ---------- 在庫・棚卸 ---------- */
+// 「LINEで送る（画像）」：勤怠Botが表の画像にして、スタッフのグループに送る（合言葉は日報の「LINEで送る」と同じ）
+const STOCK_BOT=false;
+const STOCK_API='https://line-kintai-vercel.vercel.app/api/stock_post';
 // 品目リスト（nippo_stock_items。端末間で共有）：
 //   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,step:数える刻み,
 //    vendor:発注先の名前,place:置き場所,open:使いかけも数えるか(未設定なら刻みが1未満の品目だけ数える),
@@ -796,8 +801,10 @@ const stockItems=()=>ls.get('nippoair_stock_items',[]);
 const saveStockItems=a=>ls.set('nippoair_stock_items',a);
 const hasPar=it=>it.par!==''&&it.par!=null;
 const wdsOf=it=>Array.isArray(it.wds)?it.wds:(it.wd!=null?[+it.wd]:[]);
+// 毎月数える日（複数可。以前の品目は mday の1日だけ）
+const mdaysOf=it=>{const a=(Array.isArray(it.mdays)&&it.mdays.length?it.mdays:[+it.mday||25]).map(Number).filter(n=>n>=1&&n<=31);return [...new Set(a)].sort((x,y)=>x-y)};
 const freqText=it=>it.freq==='weekly'?(wdsOf(it).length?'毎週（'+wdsOf(it).slice().sort().map(i=>WDS[i]).join('・')+'）':'曜日未設定')
-  :it.freq==='monthly'?'毎月'+(+it.mday||25)+'日':'毎日';
+  :it.freq==='monthly'?'毎月'+mdaysOf(it).join('・')+'日':'毎日';
 const r2=n=>Math.round(n*100)/100;
 // 数える刻み（スクロールで選ぶ数の間隔）。未設定の品目は、発注点・発注数に小数があれば0.1、無ければ1
 const STEPS=[0.1,0.5,1,5,10,50,100];
@@ -814,7 +821,9 @@ function countChoices(it,cur,last){const st=stepOf(it);const lc=last!==undefined
   if(cur!=null&&!out.includes(cntKey(cur,st)))out.push(cntKey(cur,st));
   return out.sort((a,b)=>a-b)}
 let stockTab='due',stockOpen=null,vendorOpen=null;
-const HOWS=['店頭','ネット','電話','メール','LINE','FAX'];
+// 「家から」は買うのではなく家から持ってくる（詰め替えなど）。その発注先の品目は「家から持ってくるもの」に出す
+const HOWS=['店頭','ネット','電話','メール','LINE','FAX','家から'];
+const fromHome=it=>{const v=vendorOf(it.vendor);return !!v&&v.how==='家から'};
 const vendors=()=>ls.get('nippoair_vendors',[]);
 const saveVendors=a=>ls.set('nippoair_vendors',a);
 const vendorOf=name=>vendors().find(v=>v.name===name);
@@ -861,8 +870,9 @@ const ounitOf=it=>it.ounit||it.unit||'';
 //   曜日：決めた曜日か、前回から7日以上たった時／毎月○日：その日（その月に無い日なら月末）以降、まだ数えていない時
 function stockDue(it){const d=new Date(R.date+'T00:00');
   if(it.freq==='weekly'){const lc=lastCount(it.id,R.date);return wdsOf(it).includes(d.getDay())||!lc||(d-new Date(lc.date+'T00:00'))/864e5>=7}
-  if(it.freq==='monthly'){const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();const day=Math.min(+it.mday||25,last);
-    if(d.getDate()<day)return false;
+  if(it.freq==='monthly'){const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+    // 今月の数える日のうち、今日までで一番近い日。その日以降まだ数えていなければ出す
+    const day=mdaysOf(it).map(x=>Math.min(x,last)).filter(x=>x<=d.getDate()).pop();if(!day)return false;
     const from=R.date.slice(0,8)+String(day).padStart(2,'0');const lc=lastCount(it.id,R.date);return !lc||lc.date<from}
   return true}
 // 数を選ぶ欄（スクロールで選ぶ。iPad・iPhoneではくるくる回す選び方になる）。刻みは品目ごと。一覧に無い数は「直接入力」
@@ -876,12 +886,16 @@ function countSelect(it,key,v,last,label){
   return inp}
 function renderStock(){
   const items=stockItems().filter(it=>it.name);
-  const need=items.filter(needOrder);
+  const need=items.filter(it=>needOrder(it)&&!fromHome(it));
   const bring=items.filter(needBring);
-  $('stockBringCard').style.display=items.some(it=>it.home)?'':'none';
-  $('stockBring').innerHTML=bring.length?bring.map(it=>{const c=curCount(it),h=curHome(it);
+  const bringOrd=items.filter(it=>needOrder(it)&&fromHome(it)); // 発注先が「家から」の品目（鰻のタレのペットボトルを一斗缶から詰め替える など）
+  $('stockBringCard').style.display=items.some(it=>it.home||fromHome(it))?'':'none';
+  $('stockBring').innerHTML=bring.length||bringOrd.length?bring.map(it=>{const c=curCount(it),h=curHome(it);
     return `<div class="visit"><b>${esc(it.name)}</b>${it.bring?`　<b style="color:#c2410c">${it.bring}${esc(it.unit||'')} 持ってくる</b>`:''}`
       +`<br><small>お店 ${c.n}${esc(it.unit||'')}・家 ${h?h.n+esc(it.unit||'')+'（'+md(h.date)+'）':'未入力'}・補充点 ${it.refill}${esc(it.unit||'')}</small></div>`}).join('')
+    +bringOrd.map(it=>{const c=curCount(it),v=vendorOf(it.vendor);
+      return `<div class="visit"><b>${esc(it.name)}</b>　<b style="color:#c2410c">${orderQty(it)}${esc(ounitOf(it))}${esc(perText(it))} 持ってくる</b>`
+        +`<br><small>お店 ${c.n}${esc(it.unit||'')}（${md(c.date)}）・${esc(v.memo||v.name)}</small></div>`}).join('')
     :'<div class="hint">今、家から持ってくるものはありません</div>';
   // 発注先ごとにまとめる（買い物・注文のリストとしてそのまま使える）
   const byV={};need.forEach(it=>{const k=it.vendor||'';(byV[k]=byV[k]||[]).push(it)});
@@ -897,6 +911,7 @@ function renderStock(){
         +`<small style="color:var(--muted)">　${h?'お店 '+c.n+'＋家 '+h.n+'＝'+totalCount(it):'在庫 '+c.n}${esc(it.unit||'')}（${md(c.date)}）${it.place?'・'+esc(it.place):''}</small></div>`}).join('')+'</div>'}).join('')
     :'<div class="hint">今、発注が必要なものはありません</div>';
   $('stockDate').textContent=md(R.date)+' の棚卸';
+  $('stockSend').style.display=$('stockSendHint').style.display=STOCK_BOT&&items.length?'':'none';
   const tabs=$('stockTabs');tabs.innerHTML='';
   [['due','今日数えるもの'],['all','全部']].forEach(([k,l])=>{const b=document.createElement('button');b.className='chip'+(stockTab===k?' on':'');b.textContent=l;
     b.onclick=()=>{stockTab=k;renderStock()};tabs.appendChild(b)});
@@ -919,8 +934,8 @@ function renderStock(){
     grp.forEach(it=>{
       const lc=lastCount(it.id,R.date),v=(R.inv||{})[it.id];
       const row=document.createElement('div');row.className='cust';
-      const tags=(needBring(it)?`<span class="reg-tag" style="background:#ea580c">家から</span>`:'')
-        +(needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))}${esc(perText(it))} 発注</span>`:'');
+      const tags=(needBring(it)||(needOrder(it)&&fromHome(it))?`<span class="reg-tag" style="background:#ea580c">家から</span>`:'')
+        +(needOrder(it)&&!fromHome(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))}${esc(perText(it))} 発注</span>`:'');
       row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${tags}`
         +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${it.home&&it.refill!==''&&it.refill!=null?'・補充点 '+it.refill+esc(it.unit||''):''}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||'')+(it.home?'（合計）':''):''}${grpBy!=='place'&&it.place?'・📍'+esc(it.place):''}<br>${openOf(it)?'使いかけも数える':'未開封だけ数える'}</small></div></div>`;
       const u=()=>{const x=document.createElement('span');x.textContent=it.unit||'';x.style.cssText='min-width:28px;font-size:14px';return x};
@@ -1030,9 +1045,9 @@ function stockForm(it){
     b.onclick=()=>{upd('cat',x);drawCat()};catC.appendChild(b)})};
   const [frW,frC]=box('数える日');
   const [wdW,wdC]=box('曜日（いくつでも選べます）');
-  const mdW=document.createElement('div');mdW.innerHTML='<label class="t">毎月何日に数えるか</label>';
-  const mdI=document.createElement('input');mdI.type='number';mdI.inputMode='numeric';mdI.min='1';mdI.max='31';mdI.value=+it.mday||25;
-  mdI.oninput=()=>{const n=Math.max(1,Math.min(31,+mdI.value||25));upd('mday',n)};mdW.appendChild(mdI);
+  const mdW=document.createElement('div');mdW.innerHTML='<label class="t">毎月何日に数えるか（いくつでも。例：10, 25）</label>';
+  const mdI=document.createElement('input');mdI.type='text';mdI.inputMode='numeric';mdI.value=mdaysOf(it).join(', ');mdI.placeholder='25';
+  mdI.onchange=()=>{const a=mdI.value.split(/[^\d]+/).map(Number).filter(n=>n>=1&&n<=31);upd('mdays',a.length?[...new Set(a)].sort((x,y)=>x-y):[25]);mdI.value=mdaysOf(it).join(', ')};mdW.appendChild(mdI);
   const drawFr=()=>{frC.innerHTML='';FREQS.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+((it.freq||'daily')===v?' on':'');b.textContent=l;
       b.onclick=()=>{upd('freq',v);if(v==='monthly'&&!it.mday)upd('mday',25);drawFr()};frC.appendChild(b)});
     wdW.style.display=it.freq==='weekly'?'':'none';mdW.style.display=it.freq==='monthly'?'':'none';
@@ -1062,6 +1077,40 @@ function stockForm(it){
   ok.onclick=()=>{if(!it.name){saveStockItems(stockItems().filter(x=>x.id!==it.id))}stockOpen=null;renderStock()};
   btns.append(del,ok);e.appendChild(btns);return e;
 }
+// 送る中身（画像に描く文字）。数え方・発注数はこの画面と同じ計算
+function stockSnap(){
+  const items=stockItems().filter(it=>it.name);const u=it=>it.unit||'';
+  const bring=items.filter(needBring).map(it=>{const c=curCount(it),h=curHome(it);
+      return {name:it.name,qty:it.bring?it.bring+u(it):'',note:`お店 ${c.n}${u(it)}・家 ${h?h.n+u(it):'未入力'}`}})
+    .concat(items.filter(it=>needOrder(it)&&fromHome(it)).map(it=>{const v=vendorOf(it.vendor);
+      return {name:it.name,qty:orderQty(it)+ounitOf(it)+perText(it),note:(v&&v.memo)||it.vendor}}));
+  const byV={};items.filter(it=>needOrder(it)&&!fromHome(it)).forEach(it=>{(byV[it.vendor||'']=byV[it.vendor||'']||[]).push(it)});
+  const orders=Object.keys(byV).sort((a,b)=>(a==='')-(b==='')).map(k=>{const v=vendorOf(k);
+    const when=v?[v.how,arrivalText(v).replace(/^・/,''),(v.off||[]).length?'（'+v.off.slice().sort().map(i=>WDS[i]).join('・')+'休み）':''].filter(Boolean).join('・').replace('・（','（'):'';
+    return {vendor:k||'発注先が未設定',when,items:byV[k].map(it=>{const c=curCount(it),h=curHome(it);
+      return {name:it.name,qty:orderQty(it)+ounitOf(it)+perText(it),note:h?`お店 ${c.n}＋家 ${h.n}＝${totalCount(it)}${u(it)}`:`在庫 ${c.n}${u(it)}`}})}});
+  const rows=items.filter(it=>(R.inv||{})[it.id]!=null||(R.invh||{})[it.id]!=null).map(it=>{const sv=(R.inv||{})[it.id],hv=(R.invh||{})[it.id];
+    return {name:it.name,store:sv!=null?sv+u(it):'—',home:it.home&&hv!=null?hv+u(it):'',par:hasPar(it)?it.par+u(it):'',
+      mark:needBring(it)||(needOrder(it)&&fromHome(it))?'家から':needOrder(it)?'発注 '+orderQty(it)+ounitOf(it):''}});
+  return {date:R.date,writer:R.who||'',bring,orders,rows};
+}
+async function sendStock(){
+  const key=ls.get('nippoair_sqkey','');
+  if(!key){toast('設定で合言葉を入れると、LINEに送れます');return}
+  const snap=stockSnap();
+  if(!snap.rows.length&&!snap.bring.length&&!snap.orders.length){toast('送るものがありません（今日の数を入れてください）');return}
+  if(!snap.rows.length&&!confirm('今日数えた品目がまだありません。発注・家から持ってくるものだけ送りますか？'))return;
+  if(!confirm(`勤怠Botから、スタッフのLINEグループに在庫の画像を送ります。\n（今日数えた品目 ${snap.rows.length}・家から ${snap.bring.length}・発注 ${snap.orders.reduce((a,o)=>a+o.items.length,0)}）\nよろしいですか？`))return;
+  const b=$('stockSend');b.disabled=true;b.textContent='送っています…';
+  try{
+    const res=await fetch(STOCK_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify(snap)});
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok||!j.ok)throw new Error(j.error||res.status);
+    toast(j.duplicate?'同じ内容はもう送ってあります':'LINEグループに送りました');
+  }catch(e){toast('送れませんでした：'+(e.message||'通信エラー'))}
+  b.disabled=false;b.textContent='LINEで送る（画像）';
+}
+$('stockSend').onclick=sendStock;
 $('stockAdd').onclick=()=>{const it={id:Date.now(),name:'',cat:'備品',unit:'',freq:'daily',wds:[],mday:25,par:'',qty:'',ounit:'',vendor:'',place:'',memo:''};
   saveStockItems(stockItems().concat(it));stockOpen=it.id;renderStockItems();
   setTimeout(()=>{const i=document.querySelector('#stockItems .cust.open input[data-k=name]');if(i)i.focus()},50)};
