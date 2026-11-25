@@ -265,6 +265,11 @@
     <div id="stockCount"></div>
   </div>
   <div class="card">
+    <h2>発注先<span class="sub">発注のしかた・届くまでの日数（リードタイム）・連絡先（スマホとiPadで共有）</span></h2>
+    <button class="reg new" id="vendorAdd">＋ 発注先を追加</button>
+    <div id="vendorList"></div>
+  </div>
+  <div class="card">
     <h2>品目リスト<span class="sub">数えたい食材・調味料・備品を登録します（スマホとiPadで共有）</span></h2>
     <button class="reg new" id="stockAdd">＋ 品目を追加</button>
     <div id="stockItems"></div>
@@ -309,7 +314,7 @@ const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
    日報は1日ずつ、常連・名前・よく使う言葉・表示設定はまとめてサーバーに置く。
    各データの _u（最終更新時刻）が新しい方が勝つ。合言葉（設定）が入っている端末だけ同期する。 */
 var SYNC_API='https://task-app-nine-liard.vercel.app/api/nippo_sync',SYNC_STORE='air'; // 今の店（鰻）と別の場所に保存する
-var SHARED_KEYS=['nippoair_src_custom','nippoair_regs','nippoair_stock_items','nippoair_names','nippoair_kw_who','nippoair_countries','nippoair_kw_react','nippoair_kw_hand','nippoair_cummode','nippoair_repmode'];
+var SHARED_KEYS=['nippoair_src_custom','nippoair_regs','nippoair_stock_items','nippoair_vendors','nippoair_names','nippoair_kw_who','nippoair_countries','nippoair_kw_react','nippoair_kw_hand','nippoair_cummode','nippoair_repmode'];
 var syncApplying=false,syncTimer=null,syncBusy=false,syncAgain=false,syncMsg='',onRemote=null;
 function onLsSet(k){if(syncApplying||!SHARED_KEYS.includes(k))return;ls.set('nippoair_shared_u',Date.now());ls.set('nippoair_shared_dirty',true);syncSoon()}
 function markDirty(d){const q=ls.get('nippoair_dirty',[]);if(!q.includes(d)){q.push(d);ls.set('nippoair_dirty',q)}syncSoon()}
@@ -767,7 +772,9 @@ $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;r
 
 /* ---------- 在庫・棚卸 ---------- */
 // 品目リスト（nippo_stock_items。端末間で共有）：
-//   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,step:数える刻み,vendor,memo}
+//   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,step:数える刻み,
+//    vendor:発注先の名前,place:置き場所,memo}
+// 発注先リスト（nippo_vendors。端末間で共有）：{id,name,how:発注のしかた,lead:届くまでの日数,contact:URL・電話,memo}
 // 数えた数は、その日の日報の R.inv = {品目id: 数} に入れる（日報と一緒に同期され、勤怠botからも読める）
 // 発注数は今までのスプレッドシートと同じ計算：在庫が発注点以下なら「発注点 − 在庫 + いつもの発注数」
 const STOCK_CATS=['食材','調味料','備品','その他'];
@@ -775,6 +782,8 @@ const FREQS=[['daily','毎日'],['weekly','曜日を決める'],['monthly','毎�
 const WDS='日月火水木金土';
 // 今の店のスプレッドシート【在庫確認】（2026-11-25 時点）の品目。「今の在庫表の品目を入れる」で一度に登録できる
 const STOCK_PRESET=[];
+// 発注先（岩国魚市場はオーナー確認済み。ほかは10〜11月のレシートからの推定）。[名前, 発注のしかた, 届くまでの日数]
+const VENDOR_PRESET=[];
 const stockItems=()=>ls.get('nippoair_stock_items',[]);
 const saveStockItems=a=>ls.set('nippoair_stock_items',a);
 const hasPar=it=>it.par!==''&&it.par!=null;
@@ -794,7 +803,18 @@ function countChoices(it,cur){const st=stepOf(it);const lc=lastCount(it.id,R.dat
   const n=Math.min(400,Math.ceil(hi/st));const out=[];for(let i=0;i<=n;i++)out.push(fmtN(i*st,st));
   if(cur!=null&&!out.includes(cntKey(cur,st)))out.push(cntKey(cur,st));
   return out.sort((a,b)=>a-b)}
-let stockTab='due',stockOpen=null;
+let stockTab='due',stockOpen=null,vendorOpen=null;
+const HOWS=['店頭','ネット','電話','LINE','FAX'];
+const vendors=()=>ls.get('nippoair_vendors',[]);
+const saveVendors=a=>ls.set('nippoair_vendors',a);
+const vendorOf=name=>vendors().find(v=>v.name===name);
+const placesOf=()=>[...new Set(stockItems().map(it=>(it.place||'').trim()).filter(Boolean))];
+const addDays=(iso,n)=>{const d=new Date(iso+'T00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+// 発注先の一覧をレシートからの推定で作り、発注先が空いている品目に在庫表どおりの発注先を入れる
+function loadVendorPreset(){const t=Date.now();const have=vendors().map(v=>v.name);
+  saveVendors(vendors().concat(VENDOR_PRESET.filter(([n])=>!have.includes(n)).map(([name,how,lead],i)=>({id:t+i,name,how,lead,contact:'',memo:''}))));
+  const pre=Object.fromEntries(STOCK_PRESET.map(r=>[r[0],r[8]||'']));
+  saveStockItems(stockItems().map(it=>it.vendor||!pre[it.name]?it:Object.assign({},it,{vendor:pre[it.name]})))}
 // before の日より前（その日を含まない）に、最後に数えた数 {date,n}
 function lastCount(id,before){const a=allReports();
   const d=Object.keys(a).filter(x=>x<before&&a[x].inv&&a[x].inv[id]!=null).sort().pop();return d?{date:d,n:a[d].inv[id]}:null}
@@ -814,27 +834,43 @@ function stockDue(it){const d=new Date(R.date+'T00:00');
 function renderStock(){
   const items=stockItems().filter(it=>it.name);
   const need=items.filter(needOrder);
-  $('stockOrder').innerHTML=need.length?need.map(it=>{const c=curCount(it);
-    return `<div class="visit"><b>${esc(it.name)}</b>　<b style="color:#b91c1c">${orderQty(it)}${esc(ounitOf(it))} 発注</b>`
-      +`<br><small>在庫 ${c.n}${esc(it.unit||'')}（${md(c.date)}）・発注点 ${it.par}${esc(it.unit||'')}${it.vendor?'・発注先：'+esc(it.vendor):''}</small></div>`}).join('')
+  // 発注先ごとにまとめる（買い物・注文のリストとしてそのまま使える）
+  const byV={};need.forEach(it=>{const k=it.vendor||'';(byV[k]=byV[k]||[]).push(it)});
+  const today=todayStr();
+  $('stockOrder').innerHTML=need.length?Object.keys(byV).sort((a,b)=>(a==='')-(b==='')).map(k=>{const v=vendorOf(k);
+    const lead=v&&v.lead!==''&&v.lead!=null?+v.lead:null;
+    const head=k?`<b>■ ${esc(k)}</b>`+(v?`<small>　${esc(v.how||'')}${lead!=null?`・届くまで${lead?'約'+lead+'日（今日頼むと'+md(addDays(today,lead))+'ごろ）':'その日'}`:''}`
+      +(v.contact?'・'+(/^https?:/.test(v.contact)?`<a href="${esc(v.contact)}" target="_blank" rel="noopener">注文ページ</a>`:/^[\d\-+() ]{6,}$/.test(v.contact)?`<a href="tel:${esc(v.contact.replace(/[^\d+]/g,''))}">${esc(v.contact)}</a>`:esc(v.contact)):'')+'</small>':'')
+      :'<b>■ 発注先が未設定</b>';
+    return `<div class="visit">${head}`+byV[k].map(it=>{const c=curCount(it);
+      return `<div style="margin:4px 0 0 12px">${esc(it.name)}　<b style="color:#b91c1c">${orderQty(it)}${esc(ounitOf(it))}</b>`
+        +`<small style="color:var(--muted)">　在庫 ${c.n}${esc(it.unit||'')}（${md(c.date)}）${it.place?'・'+esc(it.place):''}</small></div>`}).join('')+'</div>'}).join('')
     :'<div class="hint">今、発注が必要なものはありません</div>';
   $('stockDate').textContent=md(R.date)+' の棚卸';
   const tabs=$('stockTabs');tabs.innerHTML='';
   [['due','今日数えるもの'],['all','全部']].forEach(([k,l])=>{const b=document.createElement('button');b.className='chip'+(stockTab===k?' on':'');b.textContent=l;
     b.onclick=()=>{stockTab=k;renderStock()};tabs.appendChild(b)});
+  // 並べ方：数える日ごと／置き場所ごと（この端末だけの設定）
+  const grpBy=ls.get('nippoair_stock_group','freq');
+  const sep=document.createElement('span');sep.style.cssText='flex:1';tabs.appendChild(sep);
+  [['freq','数える日ごと'],['place','置き場所ごと']].forEach(([k,l])=>{const b=document.createElement('button');b.className='chip'+(grpBy===k?' on':'');b.textContent=l;
+    b.onclick=()=>{ls.set('nippoair_stock_group',k);renderStock()};tabs.appendChild(b)});
   const box=$('stockCount');box.innerHTML='';
   const list=items.filter(it=>stockTab==='all'||stockDue(it));
   if(!items.length)box.innerHTML='<div class="hint" style="margin-top:10px">下の「品目リスト」から、数えたいものを登録してください</div>';
   else if(!list.length)box.innerHTML='<div class="hint" style="margin-top:10px">今日数えるものはありません（「全部」から数えることもできます）</div>';
-  [['daily','毎日'],['weekly','曜日を決めて数えるもの'],['monthly','毎月数えるもの']].forEach(([fq,title])=>{
-    const grp=list.filter(it=>(it.freq||'daily')===fq);if(!grp.length)return;
+  const groups=grpBy==='place'
+    ?placesOf().map(pl=>[it=>(it.place||'').trim()===pl,pl]).concat([[it=>!(it.place||'').trim(),'置き場所が未設定']])
+    :[['daily','毎日'],['weekly','曜日を決めて数えるもの'],['monthly','毎月数えるもの']].map(([fq,t])=>[it=>(it.freq||'daily')===fq,t]);
+  groups.forEach(([match,title])=>{
+    const grp=list.filter(match);if(!grp.length)return;
     const h=document.createElement('div');h.className='q-label';h.textContent=title;box.appendChild(h);
     const grid=document.createElement('div');grid.className='stock-grid';box.appendChild(grid); // iPadでは左右2列、スマホでは1列
     grp.forEach(it=>{
       const lc=lastCount(it.id,R.date),v=(R.inv||{})[it.id];
       const row=document.createElement('div');row.className='cust';
       row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))} 発注</span>`:''}`
-        +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}</small></div></div>`;
+        +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${grpBy!=='place'&&it.place?'・📍'+esc(it.place):''}</small></div></div>`;
       // 数はスクロールで選ぶ（iPad・iPhoneではくるくる回す選び方になる）。刻みは品目ごと。一覧に無い数は「直接入力」
       const inp=document.createElement('select');inp.className='cnt';
       inp.innerHTML='<option value="">—</option>'+countChoices(it,v).map(x=>`<option value="${x}">${x}</option>`).join('')+'<option value="__other">直接入力</option>';
@@ -846,8 +882,49 @@ function renderStock(){
       const u=document.createElement('span');u.textContent=it.unit||'';u.style.cssText='min-width:28px;font-size:14px';
       row.querySelector('.sum').append(inp,u);grid.appendChild(row)});
   });
+  renderVendors();
   renderStockItems();
 }
+function renderVendors(){
+  const box=$('vendorList');box.innerHTML='';const vs=vendors();
+  if(!vs.length){
+    box.innerHTML='<div class="hint" style="margin-top:10px">まだ発注先がありません</div>';
+    if(VENDOR_PRESET.length){const b=document.createElement('button');b.className='reg';
+      b.innerHTML=`<b>レシートから推定した発注先を入れる（${VENDOR_PRESET.length}か所）</b><small>${VENDOR_PRESET.map(v=>v[0]).join('・')}。発注先が空いている品目にも入れます。届くまでの日数はあとで入れてください</small>`;
+      b.onclick=()=>{loadVendorPreset();renderStock();toast('発注先を登録しました')};box.appendChild(b)}
+    return}
+  vs.forEach(v=>{
+    const n=stockItems().filter(it=>it.vendor===v.name).length;
+    const d=document.createElement('div');d.className='cust'+(vendorOpen===v.id?' open':'');
+    d.innerHTML=`<div class="sum"><div class="tx"><b>${esc(v.name||'（名前未入力）')}</b><small>${esc(v.how||'しかた未設定')}・届くまで${v.lead!==''&&v.lead!=null?(+v.lead?v.lead+'日':'その日'):'（未設定）'}・品目${n}つ${v.contact?'・'+esc(v.contact):''}</small></div></div>`;
+    if(vendorOpen!==v.id){const b=document.createElement('button');b.className='small-btn';b.textContent='直す';
+      b.onclick=()=>{vendorOpen=v.id;renderVendors()};d.querySelector('.sum').appendChild(b);box.appendChild(d);return}
+    const e=document.createElement('div');e.className='ed';
+    const upd=(k,val)=>{const a=vendors();const x=a.find(y=>y.id===v.id);if(!x)return;
+      if(k==='name'&&x.name&&x.name!==val){saveStockItems(stockItems().map(it=>it.vendor===x.name?Object.assign({},it,{vendor:val}):it))} // 名前を変えたら品目の発注先も合わせる
+      x[k]=val;v[k]=val;saveVendors(a)};
+    e.innerHTML=`<div><label class="t">名前</label><input type="text" data-k="name" placeholder="例：肉のハナマサ"></div>
+      <div class="row"><div><label class="t">届くまでの日数（リードタイム）</label><input type="number" inputmode="numeric" min="0" step="1" data-k="lead" placeholder="店で買うなら0"></div>
+      <div><label class="t">連絡先（注文ページのURL・電話番号）</label><input type="text" data-k="contact" placeholder="https://… / 03-…"></div></div>
+      <div><label class="t">メモ（定休日・最低注文金額・送料・担当 など）</label><input type="text" data-k="memo"></div>`;
+    e.querySelectorAll('[data-k]').forEach(i=>{const k=i.dataset.k;i.value=v[k]!=null?v[k]:'';
+      i.oninput=()=>upd(k,i.type==='number'?(i.value===''?'':+i.value):i.value.trim())});
+    const w=document.createElement('div');w.innerHTML='<label class="t">発注のしかた</label>';const c=document.createElement('div');c.className='chips';w.appendChild(c);
+    const draw=()=>{c.innerHTML='';HOWS.forEach(x=>{const b=document.createElement('button');b.className='chip'+(v.how===x?' on':'');b.textContent=x;
+      b.onclick=()=>{upd('how',v.how===x?'':x);draw()};c.appendChild(b)})};draw();
+    e.firstElementChild.after(w);
+    const items=stockItems().filter(it=>it.vendor===v.name);
+    if(items.length){const h=document.createElement('div');h.className='hint';h.textContent='この発注先の品目：'+items.map(it=>it.name).join('・');e.appendChild(h)}
+    const btns=document.createElement('div');btns.className='row';
+    const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
+    del.onclick=()=>{if(!confirm(`発注先「${v.name}」を削除しますか？（品目の発注先の名前は残ります）`))return;
+      const old=vendors();saveVendors(old.filter(x=>x.id!==v.id));vendorOpen=null;renderStock();toast('削除しました',()=>{saveVendors(old);renderStock()})};
+    const ok=document.createElement('button');ok.className='done-btn';ok.textContent='閉じる';
+    ok.onclick=()=>{if(!v.name)saveVendors(vendors().filter(x=>x.id!==v.id));vendorOpen=null;renderStock()};
+    btns.append(del,ok);e.appendChild(btns);d.appendChild(e);box.appendChild(d)});
+}
+$('vendorAdd').onclick=()=>{const v={id:Date.now(),name:'',how:'',lead:'',contact:'',memo:''};saveVendors(vendors().concat(v));vendorOpen=v.id;renderVendors();
+  setTimeout(()=>{const i=document.querySelector('#vendorList .cust.open input[data-k=name]');if(i)i.focus()},50)};
 function renderStockItems(){
   const box=$('stockItems');box.innerHTML='';
   const items=stockItems();
@@ -855,14 +932,14 @@ function renderStockItems(){
     box.innerHTML='<div class="hint" style="margin-top:10px">まだ品目がありません</div>';
     if(STOCK_PRESET.length){const b=document.createElement('button');b.className='reg';
       b.innerHTML=`<b>今の在庫表の品目を入れる（${STOCK_PRESET.length}品目）</b><small>スプレッドシート【在庫確認】の 毎日・毎週（火、金）・毎月25日 の品目と、発注点・発注数をまとめて登録します。あとから直せます</small>`;
-      b.onclick=()=>{const t=Date.now();saveStockItems(STOCK_PRESET.map(([name,cat,unit,freq,par,qty,ounit,step],i)=>({id:t+i,name,cat,unit,freq,step,
-        wds:freq==='weekly'?[2,5]:[],mday:25,par,qty,ounit:ounit===unit?'':ounit,vendor:'',memo:''})));renderStock();toast('在庫表の品目を登録しました')};
+      b.onclick=()=>{const t=Date.now();saveStockItems(STOCK_PRESET.map(([name,cat,unit,freq,par,qty,ounit,step,vendor],i)=>({id:t+i,name,cat,unit,freq,step,vendor:vendor||'',place:'',
+        wds:freq==='weekly'?[2,5]:[],mday:25,par,qty,ounit:ounit===unit?'':ounit,memo:''})));if(!vendors().length)loadVendorPreset();renderStock();toast('在庫表の品目を登録しました')};
       box.appendChild(b)}
     return}
   items.forEach(it=>{
     const d=document.createElement('div');d.className='cust'+(stockOpen===it.id?' open':'');
     d.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name||'（品名未入力）')}</b><small>${esc(it.cat||'分類なし')}・${freqText(it)}`
-      +`${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${it.qty?'・発注 '+it.qty+esc(ounitOf(it)):''}${it.vendor?'・'+esc(it.vendor):''}</small></div></div>`;
+      +`${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${it.qty?'・発注 '+it.qty+esc(ounitOf(it)):''}${it.vendor?'・'+esc(it.vendor):''}${it.place?'・📍'+esc(it.place):''}</small></div></div>`;
     if(stockOpen!==it.id){const b=document.createElement('button');b.className='small-btn';b.textContent='直す';
       b.onclick=()=>{stockOpen=it.id;renderStockItems()};d.querySelector('.sum').appendChild(b);box.appendChild(d);return}
     d.appendChild(stockForm(it));box.appendChild(d)});
@@ -876,10 +953,16 @@ function stockForm(it){
     <div class="row"><div><label class="t">いつもの発注数</label><input type="number" inputmode="decimal" step="any" min="0" data-k="qty" placeholder="例：1"></div>
     <div><label class="t">発注の単位（在庫と違う時だけ）</label><input type="text" data-k="ounit" placeholder="例：枚"></div></div>
     <div class="hint" style="margin-top:-6px">発注数は「発注点 − 在庫 + いつもの発注数」で計算します（今までの在庫表と同じ）</div>
-    <div><label class="t">発注先</label><input type="text" data-k="vendor" placeholder="例：○○商店・Amazon"></div>
-    <div><label class="t">メモ</label><input type="text" data-k="memo" placeholder="置き場所・発注のしかた など"></div>`;
+    <div><label class="t">発注先</label><input type="text" data-k="vendor" placeholder="例：肉のハナマサ"><div class="chips" data-pick="vendor" style="margin-top:6px"></div></div>
+    <div><label class="t">置き場所</label><input type="text" data-k="place" placeholder="例：厨房の棚の上・ストッカー横・倉庫"><div class="chips" data-pick="place" style="margin-top:6px"></div></div>
+    <div><label class="t">メモ</label><input type="text" data-k="memo" placeholder="品番・サイズ など"></div>`;
   e.querySelectorAll('[data-k]').forEach(i=>{const k=i.dataset.k;i.value=it[k]!=null?it[k]:'';
-    i.oninput=()=>upd(k,i.type==='number'?(i.value===''?'':+i.value):i.value.trim())});
+    i.oninput=()=>{upd(k,i.type==='number'?(i.value===''?'':+i.value):i.value.trim());if(k==='vendor'||k==='place')drawPick(k)}});
+  // 発注先・置き場所は、登録済みのものから押して選べる
+  const drawPick=k=>{const c=e.querySelector(`[data-pick=${k}]`);c.innerHTML='';
+    (k==='vendor'?vendors().map(v=>v.name).filter(Boolean):placesOf()).forEach(x=>{const b=document.createElement('button');b.className='chip'+(it[k]===x?' on':'');b.textContent=x;
+      b.onclick=()=>{const val=it[k]===x?'':x;upd(k,val);e.querySelector(`[data-k=${k}]`).value=val;drawPick(k)};c.appendChild(b)})};
+  drawPick('vendor');drawPick('place');
   const box=(label)=>{const w=document.createElement('div');w.innerHTML=`<label class="t">${label}</label>`;const c=document.createElement('div');c.className='chips';w.appendChild(c);return [w,c]};
   const [catW,catC]=box('分類');
   const drawCat=()=>{catC.innerHTML='';STOCK_CATS.forEach(x=>{const b=document.createElement('button');b.className='chip'+(it.cat===x?' on':'');b.textContent=x;
@@ -907,7 +990,7 @@ function stockForm(it){
   ok.onclick=()=>{if(!it.name){saveStockItems(stockItems().filter(x=>x.id!==it.id))}stockOpen=null;renderStock()};
   btns.append(del,ok);e.appendChild(btns);return e;
 }
-$('stockAdd').onclick=()=>{const it={id:Date.now(),name:'',cat:'備品',unit:'',freq:'daily',wds:[],mday:25,par:'',qty:'',ounit:'',vendor:'',memo:''};
+$('stockAdd').onclick=()=>{const it={id:Date.now(),name:'',cat:'備品',unit:'',freq:'daily',wds:[],mday:25,par:'',qty:'',ounit:'',vendor:'',place:'',memo:''};
   saveStockItems(stockItems().concat(it));stockOpen=it.id;renderStockItems();
   setTimeout(()=>{const i=document.querySelector('#stockItems .cust.open input[data-k=name]');if(i)i.focus()},50)};
 

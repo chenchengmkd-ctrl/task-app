@@ -34,6 +34,7 @@ def common(d, ls_prefix, sync_store, title, reg_name):
     d.s = d.s.replace("'nippo_", f"'{ls_prefix}_")  # 同じサイト上の今の店のアプリと、端末内の保存場所を分ける
     # 在庫の「今の在庫表の品目を入れる」は今の店(鰻)の品目なので、ほかの店では出さない
     d.s = re.sub(r'^const STOCK_PRESET=\[.*\];$', 'const STOCK_PRESET=[];', d.s, count=1, flags=re.M)
+    d.s = re.sub(r'^const VENDOR_PRESET=\[.*\];$', 'const VENDOR_PRESET=[];', d.s, count=1, flags=re.M)
     d.rep('<meta name="apple-mobile-web-app-title" content="日報">',
           f'<meta name="apple-mobile-web-app-title" content="日報（{title}）">')
     d.rep('<title>日報</title>', f'<title>日報（{title}）</title>')
