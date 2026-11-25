@@ -12,6 +12,7 @@ nippo.html を直したら、これを実行し直すと nippo-air.html / nippo-
 LINEは勤怠Bot（今の店のグループに投稿する）ではなく共有メニューで送る。
 """
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +32,8 @@ class Doc:
 def common(d, ls_prefix, sync_store, title, reg_name):
     """どの店にも共通の変更。"""
     d.s = d.s.replace("'nippo_", f"'{ls_prefix}_")  # 同じサイト上の今の店のアプリと、端末内の保存場所を分ける
+    # 在庫の「今の在庫表の品目を入れる」は今の店(鰻)の品目なので、ほかの店では出さない
+    d.s = re.sub(r'^const STOCK_PRESET=\[.*\];$', 'const STOCK_PRESET=[];', d.s, count=1, flags=re.M)
     d.rep('<meta name="apple-mobile-web-app-title" content="日報">',
           f'<meta name="apple-mobile-web-app-title" content="日報（{title}）">')
     d.rep('<title>日報</title>', f'<title>日報（{title}）</title>')

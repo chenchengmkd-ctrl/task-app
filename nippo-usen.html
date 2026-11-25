@@ -757,14 +757,22 @@ $('regSearch').oninput=renderRegs;
 $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;renderRegs()})};
 
 /* ---------- 在庫・棚卸 ---------- */
-// 品目リスト（nippo_stock_items。端末間で共有）：{id,name,cat,unit,freq:'daily'|'weekly'|'monthly',wd:曜日0-6,par:発注点,vendor:発注先,memo}
+// 品目リスト（nippo_stock_items。端末間で共有）：
+//   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,vendor,memo}
 // 数えた数は、その日の日報の R.inv = {品目id: 数} に入れる（日報と一緒に同期され、勤怠botからも読める）
+// 発注数は今までのスプレッドシートと同じ計算：在庫が発注点以下なら「発注点 − 在庫 + いつもの発注数」
 const STOCK_CATS=['食材','調味料','備品','その他'];
-const FREQS=[['daily','毎日'],['weekly','週1回'],['monthly','月末']];
+const FREQS=[['daily','毎日'],['weekly','曜日を決める'],['monthly','毎月○日']];
 const WDS='日月火水木金土';
+// 今の店のスプレッドシート【在庫確認】（2026-11-25 時点）の品目。「今の在庫表の品目を入れる」で一度に登録できる
+const STOCK_PRESET=[];
 const stockItems=()=>ls.get('nippousen_stock_items',[]);
 const saveStockItems=a=>ls.set('nippousen_stock_items',a);
 const hasPar=it=>it.par!==''&&it.par!=null;
+const wdsOf=it=>Array.isArray(it.wds)?it.wds:(it.wd!=null?[+it.wd]:[]);
+const freqText=it=>it.freq==='weekly'?(wdsOf(it).length?'毎週（'+wdsOf(it).slice().sort().map(i=>WDS[i]).join('・')+'）':'曜日未設定')
+  :it.freq==='monthly'?'毎月'+(+it.mday||25)+'日':'毎日';
+const r2=n=>Math.round(n*100)/100;
 let stockTab='due',stockOpen=null;
 // before の日より前（その日を含まない）に、最後に数えた数 {date,n}
 function lastCount(id,before){const a=allReports();
@@ -772,16 +780,22 @@ function lastCount(id,before){const a=allReports();
 // 今の数（今日数えていれば今日の数、無ければ最後に数えた数）
 const curCount=it=>{const v=(R.inv||{})[it.id];return v!=null?{date:R.date,n:v}:lastCount(it.id,R.date)};
 const needOrder=it=>{const c=curCount(it);return hasPar(it)&&!!c&&+c.n<=+it.par};
-// 今日数える品目か。週1回は決めた曜日か、前回から7日以上たった時。月末は月の最後の3日間
+const orderQty=it=>needOrder(it)?r2(+it.par-(+curCount(it).n)+(+it.qty||0)):0;
+const ounitOf=it=>it.ounit||it.unit||'';
+// 今日数える品目か
+//   曜日：決めた曜日か、前回から7日以上たった時／毎月○日：その日（その月に無い日なら月末）以降、まだ数えていない時
 function stockDue(it){const d=new Date(R.date+'T00:00');
-  if(it.freq==='weekly'){const lc=lastCount(it.id,R.date);return d.getDay()===(+it.wd||0)||!lc||(d-new Date(lc.date+'T00:00'))/864e5>=7}
-  if(it.freq==='monthly')return d.getDate()>=new Date(d.getFullYear(),d.getMonth()+1,0).getDate()-2;
+  if(it.freq==='weekly'){const lc=lastCount(it.id,R.date);return wdsOf(it).includes(d.getDay())||!lc||(d-new Date(lc.date+'T00:00'))/864e5>=7}
+  if(it.freq==='monthly'){const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();const day=Math.min(+it.mday||25,last);
+    if(d.getDate()<day)return false;
+    const from=R.date.slice(0,8)+String(day).padStart(2,'0');const lc=lastCount(it.id,R.date);return !lc||lc.date<from}
   return true}
 function renderStock(){
   const items=stockItems().filter(it=>it.name);
   const need=items.filter(needOrder);
   $('stockOrder').innerHTML=need.length?need.map(it=>{const c=curCount(it);
-    return `<div class="visit"><b>${esc(it.name)}</b>　残り ${c.n}${esc(it.unit||'')}（発注点 ${it.par}${esc(it.unit||'')}・${md(c.date)}に数えた数）${it.vendor?'<br>発注先：'+esc(it.vendor):''}</div>`}).join('')
+    return `<div class="visit"><b>${esc(it.name)}</b>　<b style="color:#b91c1c">${orderQty(it)}${esc(ounitOf(it))} 発注</b>`
+      +`<br><small>在庫 ${c.n}${esc(it.unit||'')}（${md(c.date)}）・発注点 ${it.par}${esc(it.unit||'')}${it.vendor?'・発注先：'+esc(it.vendor):''}</small></div>`}).join('')
     :'<div class="hint">今、発注が必要なものはありません</div>';
   $('stockDate').textContent=md(R.date)+' の棚卸';
   const tabs=$('stockTabs');tabs.innerHTML='';
@@ -791,13 +805,13 @@ function renderStock(){
   const list=items.filter(it=>stockTab==='all'||stockDue(it));
   if(!items.length)box.innerHTML='<div class="hint" style="margin-top:10px">下の「品目リスト」から、数えたいものを登録してください</div>';
   else if(!list.length)box.innerHTML='<div class="hint" style="margin-top:10px">今日数えるものはありません（「全部」から数えることもできます）</div>';
-  STOCK_CATS.concat(['']).forEach(cat=>{
-    const grp=list.filter(it=>cat?it.cat===cat:!STOCK_CATS.includes(it.cat));if(!grp.length)return;
-    const h=document.createElement('div');h.className='q-label';h.textContent=cat||'分類なし';box.appendChild(h);
+  [['daily','毎日'],['weekly','曜日を決めて数えるもの'],['monthly','毎月数えるもの']].forEach(([fq,title])=>{
+    const grp=list.filter(it=>(it.freq||'daily')===fq);if(!grp.length)return;
+    const h=document.createElement('div');h.className='q-label';h.textContent=title;box.appendChild(h);
     grp.forEach(it=>{
       const lc=lastCount(it.id,R.date),v=(R.inv||{})[it.id];
       const row=document.createElement('div');row.className='cust';
-      row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${needOrder(it)?'<span class="reg-tag" style="background:#dc2626">発注</span>':''}`
+      row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))} 発注</span>`:''}`
         +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}</small></div></div>`;
       const inp=document.createElement('input');inp.type='number';inp.inputMode='decimal';inp.step='any';inp.min='0';inp.placeholder='数';
       inp.style.cssText='width:90px;flex:none';inp.value=v!=null?v:'';
@@ -811,12 +825,18 @@ function renderStock(){
 function renderStockItems(){
   const box=$('stockItems');box.innerHTML='';
   const items=stockItems();
-  if(!items.length)box.innerHTML='<div class="hint" style="margin-top:10px">まだ品目がありません</div>';
+  if(!items.length){
+    box.innerHTML='<div class="hint" style="margin-top:10px">まだ品目がありません</div>';
+    if(STOCK_PRESET.length){const b=document.createElement('button');b.className='reg';
+      b.innerHTML=`<b>今の在庫表の品目を入れる（${STOCK_PRESET.length}品目）</b><small>スプレッドシート【在庫確認】の 毎日・毎週（火、金）・毎月25日 の品目と、発注点・発注数をまとめて登録します。あとから直せます</small>`;
+      b.onclick=()=>{const t=Date.now();saveStockItems(STOCK_PRESET.map(([name,cat,unit,freq,par,qty,ounit],i)=>({id:t+i,name,cat,unit,freq,
+        wds:freq==='weekly'?[2,5]:[],mday:25,par,qty,ounit:ounit===unit?'':ounit,vendor:'',memo:''})));renderStock();toast('在庫表の品目を登録しました')};
+      box.appendChild(b)}
+    return}
   items.forEach(it=>{
     const d=document.createElement('div');d.className='cust'+(stockOpen===it.id?' open':'');
-    const fq=(FREQS.find(f=>f[0]===it.freq)||FREQS[0])[1]+(it.freq==='weekly'?'（'+WDS[+it.wd||0]+'）':'');
-    d.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name||'（品名未入力）')}</b><small>${esc(it.cat||'分類なし')}・${esc(it.unit||'単位なし')}・${fq}`
-      +`${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${it.vendor?'・'+esc(it.vendor):''}</small></div></div>`;
+    d.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name||'（品名未入力）')}</b><small>${esc(it.cat||'分類なし')}・${freqText(it)}`
+      +`${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${it.qty?'・発注 '+it.qty+esc(ounitOf(it)):''}${it.vendor?'・'+esc(it.vendor):''}</small></div></div>`;
     if(stockOpen!==it.id){const b=document.createElement('button');b.className='small-btn';b.textContent='直す';
       b.onclick=()=>{stockOpen=it.id;renderStockItems()};d.querySelector('.sum').appendChild(b);box.appendChild(d);return}
     d.appendChild(stockForm(it));box.appendChild(d)});
@@ -824,23 +844,32 @@ function renderStockItems(){
 function stockForm(it){
   const e=document.createElement('div');e.className='ed';
   const upd=(k,v)=>{const a=stockItems();const x=a.find(y=>y.id===it.id);if(!x)return;x[k]=v;it[k]=v;saveStockItems(a)};
-  e.innerHTML=`<div><label class="t">品名</label><input type="text" data-k="name" placeholder="例：タレ"></div>
-    <div class="row"><div><label class="t">単位</label><input type="text" data-k="unit" placeholder="本・袋・kg・個"></div>
-    <div><label class="t">発注点（この数以下で発注）</label><input type="number" inputmode="decimal" step="any" min="0" data-k="par" placeholder="例：2"></div></div>
+  e.innerHTML=`<div><label class="t">品名</label><input type="text" data-k="name" placeholder="例：鰻のタレ"></div>
+    <div class="row"><div><label class="t">在庫の単位</label><input type="text" data-k="unit" placeholder="本・袋・個・箱"></div>
+    <div><label class="t">発注点（この数以下で発注）</label><input type="number" inputmode="decimal" step="any" min="0" data-k="par" placeholder="例：1"></div></div>
+    <div class="row"><div><label class="t">いつもの発注数</label><input type="number" inputmode="decimal" step="any" min="0" data-k="qty" placeholder="例：1"></div>
+    <div><label class="t">発注の単位（在庫と違う時だけ）</label><input type="text" data-k="ounit" placeholder="例：枚"></div></div>
+    <div class="hint" style="margin-top:-6px">発注数は「発注点 − 在庫 + いつもの発注数」で計算します（今までの在庫表と同じ）</div>
     <div><label class="t">発注先</label><input type="text" data-k="vendor" placeholder="例：○○商店・Amazon"></div>
     <div><label class="t">メモ</label><input type="text" data-k="memo" placeholder="置き場所・発注のしかた など"></div>`;
   e.querySelectorAll('[data-k]').forEach(i=>{const k=i.dataset.k;i.value=it[k]!=null?it[k]:'';
     i.oninput=()=>upd(k,i.type==='number'?(i.value===''?'':+i.value):i.value.trim())});
-  const chips=(label,opts,get,set)=>{const w=document.createElement('div');w.innerHTML=`<label class="t">${label}</label>`;
-    const c=document.createElement('div');c.className='chips';w.appendChild(c);
-    const draw=()=>{c.innerHTML='';opts.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+(get()===v?' on':'');b.textContent=l;
-      b.onclick=()=>{set(v);draw();wdW.style.display=it.freq==='weekly'?'':'none'};c.appendChild(b)})};
-    draw();return w};
-  const catW=chips('分類',STOCK_CATS.map(x=>[x,x]),()=>it.cat,v=>upd('cat',v));
-  const frW=chips('数える頻度',FREQS,()=>it.freq||'daily',v=>upd('freq',v));
-  const wdW=chips('数える曜日',[...WDS].map((x,i)=>[i,x]),()=>+it.wd||0,v=>upd('wd',v));
-  wdW.style.display=it.freq==='weekly'?'':'none';
-  e.firstElementChild.after(catW,frW,wdW);
+  const box=(label)=>{const w=document.createElement('div');w.innerHTML=`<label class="t">${label}</label>`;const c=document.createElement('div');c.className='chips';w.appendChild(c);return [w,c]};
+  const [catW,catC]=box('分類');
+  const drawCat=()=>{catC.innerHTML='';STOCK_CATS.forEach(x=>{const b=document.createElement('button');b.className='chip'+(it.cat===x?' on':'');b.textContent=x;
+    b.onclick=()=>{upd('cat',x);drawCat()};catC.appendChild(b)})};
+  const [frW,frC]=box('数える日');
+  const [wdW,wdC]=box('曜日（いくつでも選べます）');
+  const mdW=document.createElement('div');mdW.innerHTML='<label class="t">毎月何日に数えるか</label>';
+  const mdI=document.createElement('input');mdI.type='number';mdI.inputMode='numeric';mdI.min='1';mdI.max='31';mdI.value=+it.mday||25;
+  mdI.oninput=()=>{const n=Math.max(1,Math.min(31,+mdI.value||25));upd('mday',n)};mdW.appendChild(mdI);
+  const drawFr=()=>{frC.innerHTML='';FREQS.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+((it.freq||'daily')===v?' on':'');b.textContent=l;
+      b.onclick=()=>{upd('freq',v);if(v==='monthly'&&!it.mday)upd('mday',25);drawFr()};frC.appendChild(b)});
+    wdW.style.display=it.freq==='weekly'?'':'none';mdW.style.display=it.freq==='monthly'?'':'none';
+    wdC.innerHTML='';[...WDS].forEach((x,i)=>{const on=wdsOf(it).includes(i);const b=document.createElement('button');b.className='chip'+(on?' on':'');b.textContent=x;
+      b.onclick=()=>{const s=wdsOf(it).filter(y=>y!==i);if(!on)s.push(i);upd('wds',s.sort());drawFr()};wdC.appendChild(b)})};
+  drawCat();drawFr();
+  e.firstElementChild.after(catW,frW,wdW,mdW);
   const btns=document.createElement('div');btns.className='row';
   const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
   del.onclick=()=>{if(!confirm(`「${it.name||'この品目'}」を品目リストから削除しますか？（数えた記録は日報に残ります）`))return;
@@ -849,7 +878,7 @@ function stockForm(it){
   ok.onclick=()=>{if(!it.name){saveStockItems(stockItems().filter(x=>x.id!==it.id))}stockOpen=null;renderStock()};
   btns.append(del,ok);e.appendChild(btns);return e;
 }
-$('stockAdd').onclick=()=>{const it={id:Date.now(),name:'',cat:'食材',unit:'',freq:'weekly',wd:0,par:'',vendor:'',memo:''};
+$('stockAdd').onclick=()=>{const it={id:Date.now(),name:'',cat:'備品',unit:'',freq:'daily',wds:[],mday:25,par:'',qty:'',ounit:'',vendor:'',memo:''};
   saveStockItems(stockItems().concat(it));stockOpen=it.id;renderStockItems();
   setTimeout(()=>{const i=document.querySelector('#stockItems .cust.open input[data-k=name]');if(i)i.focus()},50)};
 
