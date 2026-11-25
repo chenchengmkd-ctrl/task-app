@@ -767,7 +767,7 @@ $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;r
 /* ---------- 在庫・棚卸 ---------- */
 // 品目リスト（nippo_stock_items。端末間で共有）：
 //   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,step:数える刻み,
-//    vendor:発注先の名前,place:置き場所,memo}
+//    vendor:発注先の名前,place:置き場所,open:使いかけも数えるか(未設定なら刻みが1未満の品目だけ数える),memo}
 // 発注先リスト（nippo_vendors。端末間で共有）：{id,name,how:発注のしかた,lead:届くまでの日数,contact:URL・電話,memo}
 // 数えた数は、その日の日報の R.inv = {品目id: 数} に入れる（日報と一緒に同期され、勤怠botからも読める）
 // 発注数は今までのスプレッドシートと同じ計算：在庫が発注点以下なら「発注点 − 在庫 + いつもの発注数」
@@ -788,6 +788,8 @@ const r2=n=>Math.round(n*100)/100;
 // 数える刻み（スクロールで選ぶ数の間隔）。未設定の品目は、発注点・発注数に小数があれば0.1、無ければ1
 const STEPS=[0.1,0.5,1,5,10,50,100];
 const stepOf=it=>+it.step||([it.par,it.qty].some(v=>v!==''&&v!=null&&+v%1!==0)?0.1:1);
+// 開封済み（使いかけ）も数える品目か。未設定なら、刻みが1未満（0.1・0.5）の品目は数える、それ以外は未開封だけ
+const openOf=it=>it.open!=null?!!it.open:stepOf(it)<1;
 const fmtN=(n,st)=>{const d=st<1?(String(st).split('.')[1]||'').length:0;return String(+(+n).toFixed(d))};
 // 選択肢の値。刻みに乗らない数（直接入力した3.7など）は、丸めずにそのまま
 const cntKey=(n,st)=>Math.abs(+fmtN(n,st)-(+n))<1e-9?fmtN(n,st):String(+n);
@@ -864,7 +866,7 @@ function renderStock(){
       const lc=lastCount(it.id,R.date),v=(R.inv||{})[it.id];
       const row=document.createElement('div');row.className='cust';
       row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))} 発注</span>`:''}`
-        +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${grpBy!=='place'&&it.place?'・📍'+esc(it.place):''}</small></div></div>`;
+        +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}${grpBy!=='place'&&it.place?'・📍'+esc(it.place):''}<br>${openOf(it)?'使いかけも数える':'未開封だけ数える'}</small></div></div>`;
       // 数はスクロールで選ぶ（iPad・iPhoneではくるくる回す選び方になる）。刻みは品目ごと。一覧に無い数は「直接入力」
       const inp=document.createElement('select');inp.className='cnt';
       inp.innerHTML='<option value="">—</option>'+countChoices(it,v).map(x=>`<option value="${x}">${x}</option>`).join('')+'<option value="__other">直接入力</option>';
@@ -974,8 +976,11 @@ function stockForm(it){
   const [stW,stC]=box('数える刻み（スクロールで選ぶ数の間隔）');
   const drawSt=()=>{stC.innerHTML='';STEPS.forEach(x=>{const b=document.createElement('button');b.className='chip'+(stepOf(it)===x?' on':'');b.textContent=x;
     b.onclick=()=>{upd('step',x);drawSt()};stC.appendChild(b)})};
-  drawCat();drawFr();drawSt();
-  e.firstElementChild.after(catW,frW,wdW,mdW,stW);
+  const [opW,opC]=box('開封済み（使いかけ）');
+  const drawOp=()=>{opC.innerHTML='';[[true,'使いかけも数える（0.3本など）'],[false,'未開封だけ数える']].forEach(([v,l])=>{const b=document.createElement('button');
+    b.className='chip'+(openOf(it)===v?' on':'');b.textContent=l;b.onclick=()=>{upd('open',v);drawOp()};opC.appendChild(b)})};
+  drawCat();drawFr();drawSt();drawOp();
+  e.firstElementChild.after(catW,frW,wdW,mdW,stW,opW);
   const btns=document.createElement('div');btns.className='row';
   const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
   del.onclick=()=>{if(!confirm(`「${it.name||'この品目'}」を品目リストから削除しますか？（数えた記録は日報に残ります）`))return;
