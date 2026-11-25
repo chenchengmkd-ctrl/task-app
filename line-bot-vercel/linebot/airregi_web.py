@@ -293,3 +293,11 @@ def _month_before(date_iso):
     total = sum(_yen(j.get('moneyAmount')) for j in _paid(rows))
     set_state(key, {'total': total})
     return total
+
+
+def menu_names():
+    """Airレジに登録してあるメニューの名前（日報アプリのボタンを決めるため）。売上の値は含まない。"""
+    r = api('/api/menuList/read/', {})
+    rows = ((((r.json() or {}).get('results') or {}).get('resultsData') or {}).get('menuList')) or []
+    return {'ok': True, 'menus': [{'name': m.get('menuName'), 'category': m.get('categoryId'), 'stopped': m.get('tempStopFlg') == '1',
+                                   'order': m.get('menuDispNo')} for m in rows]}
