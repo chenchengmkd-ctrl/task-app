@@ -115,6 +115,12 @@
   .reg.skip{background:var(--soft);border-color:var(--soft);text-align:center;color:var(--muted)}
   .reg-tag{display:inline-block;background:var(--g-green);color:#fff;border-radius:999px;padding:0 8px;font-size:12px;margin-left:4px}
   .visit{font-size:13px;padding:6px 0;border-top:1px solid var(--line)}
+  .stock-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+  .stock-grid .cust{margin-top:0;min-width:0}
+  .stock-grid .tx{min-width:0;flex:1}
+  .stock-grid .tx small{white-space:normal;overflow:visible}
+  .stock-grid input{width:76px!important}
+  @media (min-width:600px){.stock-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   #toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:14px;opacity:0;transition:.25s;pointer-events:none;z-index:30;display:flex;gap:14px;align-items:center;white-space:nowrap;font-size:14px}
   #toast.show{opacity:1;pointer-events:auto}
   #toast button{color:#fff;font-weight:700;text-decoration:underline}
@@ -804,6 +810,7 @@ function renderStock(){
   [['daily','毎日'],['weekly','曜日を決めて数えるもの'],['monthly','毎月数えるもの']].forEach(([fq,title])=>{
     const grp=list.filter(it=>(it.freq||'daily')===fq);if(!grp.length)return;
     const h=document.createElement('div');h.className='q-label';h.textContent=title;box.appendChild(h);
+    const grid=document.createElement('div');grid.className='stock-grid';box.appendChild(grid); // iPadでは左右2列、スマホでは1列
     grp.forEach(it=>{
       const lc=lastCount(it.id,R.date),v=(R.inv||{})[it.id];
       const row=document.createElement('div');row.className='cust';
@@ -814,7 +821,7 @@ function renderStock(){
       inp.onchange=()=>{R.inv=Object.assign({},R.inv);if(inp.value==='')delete R.inv[it.id];else R.inv[it.id]=+inp.value;
         if(!Object.keys(R.inv).length)delete R.inv;save();renderStock()};
       const u=document.createElement('span');u.textContent=it.unit||'';u.style.cssText='min-width:28px;font-size:14px';
-      row.querySelector('.sum').append(inp,u);box.appendChild(row)});
+      row.querySelector('.sum').append(inp,u);grid.appendChild(row)});
   });
   renderStockItems();
 }
