@@ -380,7 +380,7 @@ const sources=()=>SRC_BASE.concat(customSrcs().filter(x=>x&&!SRC_BASE.includes(x
 function addSourcePrompt(){const w=(prompt('来店経緯に追加する項目（例：YouTube、ホテルの紹介）')||'').trim();if(!w)return null;
   if(sources().includes(w)){toast('「'+w+'」はもうあります');return w}
   ls.set('nippoair_src_custom',customSrcs().concat(w));toast('「'+w+'」を追加しました');return w}
-const MENU=['特上','上','並','おにぎり','混ぜご飯'];
+const MENU=['150g','250g','400g','弁当','ドリンク'];
 const WEATHERS=['快晴','晴','晴時々曇','曇時々晴','曇','曇時々雨','小雨','雨','大雨','雪','晴のち曇','晴のち雨','曇のち晴','曇のち雨','雨のち晴','雨のち曇','台風'];
 // よく使う言葉（2026年5〜10月の日報116件から多かった表現を拾ったもの）。[ボタン名, 入る文]
 const KW_REACT=[
@@ -485,9 +485,11 @@ function autoCum(){if(cumTouched)return;const m=sqMonth();
 function mapItems(items){
   const ord={},other=[];
   (items||[]).forEach(i=>{const n=i.name||'';let k=null;
-    if(n.includes('おにぎり'))k='おにぎり';
-    else if(n.includes('混ぜ'))k='混ぜご飯';
-    else if(n.includes('重'))k=n.includes('特')?'特上':n.includes('並')?'並':'上';
+    if(n.includes('弁当'))k='弁当';
+    else if(/150\s*g/i.test(n))k='150g';
+    else if(/250\s*g/i.test(n))k='250g';
+    else if(/400\s*g/i.test(n))k='400g';
+    else if(/コーヒー|珈琲|ジンジャー|コーラ|ジュース|ビール|ワイン|ドリンク|ティー|茶/.test(n))k='ドリンク';
     if(k)ord[k]=(ord[k]||0)+i.qty;else other.push(n+(i.qty>1?'×'+i.qty:''))});
   return {ord,other:other.join('・')};
 }

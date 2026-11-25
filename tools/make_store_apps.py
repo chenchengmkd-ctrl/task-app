@@ -98,6 +98,16 @@ def make_air(src):
           '<h2>実績<span class="sub">最後の確認用。売上はAirレジから自動で入ります</span></h2>')
     d.rep("<h2>スマホ同期</h2>", "<h2>Airレジ連携・スマホ同期</h2>")
     d.rep('<div class="hint">スマホでも', '<div class="hint">入れると、会計と本日売上がAirレジ（取引履歴）から入ります（「Airレジ更新」を押したとき）。<br>スマホでも')
+    # ハンバーグの店のメニュー（Airレジに登録してあるメニューから決めたもの）。注文の名前でボタンに振り分ける
+    d.rep("const MENU=['特上','上','並','おにぎり','混ぜご飯'];", "const MENU=['150g','250g','400g','弁当','ドリンク'];")
+    d.rep("""    if(n.includes('おにぎり'))k='おにぎり';
+    else if(n.includes('混ぜ'))k='混ぜご飯';
+    else if(n.includes('重'))k=n.includes('特')?'特上':n.includes('並')?'並':'上';""",
+          """    if(n.includes('弁当'))k='弁当';
+    else if(/150\\s*g/i.test(n))k='150g';
+    else if(/250\\s*g/i.test(n))k='250g';
+    else if(/400\\s*g/i.test(n))k='400g';
+    else if(/コーヒー|珈琲|ジンジャー|コーラ|ジュース|ビール|ワイン|ドリンク|ティー|茶/.test(n))k='ドリンク';""")
     # 会計を選んだら、Airレジの人数を人数に入れる
     d.rep("  qOrd=ord;qOther=other.join('・');\n  if(qSqs.length){qTake=take;",
           "  qOrd=ord;qOther=other.join('・');\n"
