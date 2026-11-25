@@ -117,11 +117,12 @@
   .reg.skip{background:var(--soft);border-color:var(--soft);text-align:center;color:var(--muted)}
   .reg-tag{display:inline-block;background:var(--g-green);color:#fff;border-radius:999px;padding:0 8px;font-size:12px;margin-left:4px}
   .visit{font-size:13px;padding:6px 0;border-top:1px solid var(--line)}
+  select.cnt{flex:none;width:96px;border:1px solid var(--line);border-radius:10px;padding:10px 8px;background:#fff;font-size:17px;text-align:center;color:inherit}
   .stock-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
   .stock-grid .cust{margin-top:0;min-width:0}
   .stock-grid .tx{min-width:0;flex:1}
   .stock-grid .tx small{white-space:normal;overflow:visible}
-  .stock-grid input{width:76px!important}
+  .stock-grid select.cnt{width:84px}
   @media (min-width:600px){.stock-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   #toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:14px;opacity:0;transition:.25s;pointer-events:none;z-index:30;display:flex;gap:14px;align-items:center;white-space:nowrap;font-size:14px}
   #toast.show{opacity:1;pointer-events:auto}
@@ -766,7 +767,7 @@ $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;r
 
 /* ---------- 在庫・棚卸 ---------- */
 // 品目リスト（nippo_stock_items。端末間で共有）：
-//   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,vendor,memo}
+//   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,step:数える刻み,vendor,memo}
 // 数えた数は、その日の日報の R.inv = {品目id: 数} に入れる（日報と一緒に同期され、勤怠botからも読める）
 // 発注数は今までのスプレッドシートと同じ計算：在庫が発注点以下なら「発注点 − 在庫 + いつもの発注数」
 const STOCK_CATS=['食材','調味料','備品','その他'];
@@ -781,6 +782,18 @@ const wdsOf=it=>Array.isArray(it.wds)?it.wds:(it.wd!=null?[+it.wd]:[]);
 const freqText=it=>it.freq==='weekly'?(wdsOf(it).length?'毎週（'+wdsOf(it).slice().sort().map(i=>WDS[i]).join('・')+'）':'曜日未設定')
   :it.freq==='monthly'?'毎月'+(+it.mday||25)+'日':'毎日';
 const r2=n=>Math.round(n*100)/100;
+// 数える刻み（スクロールで選ぶ数の間隔）。未設定の品目は、発注点・発注数に小数があれば0.1、無ければ1
+const STEPS=[0.1,0.5,1,5,10,50,100];
+const stepOf=it=>+it.step||([it.par,it.qty].some(v=>v!==''&&v!=null&&+v%1!==0)?0.1:1);
+const fmtN=(n,st)=>{const d=st<1?(String(st).split('.')[1]||'').length:0;return String(+(+n).toFixed(d))};
+// 選択肢の値。刻みに乗らない数（直接入力した3.7など）は、丸めずにそのまま
+const cntKey=(n,st)=>Math.abs(+fmtN(n,st)-(+n))<1e-9?fmtN(n,st):String(+n);
+// スクロールで選ぶ数の一覧。0から、発注点・発注数・前回の数より十分大きいところまで（多くても400個）
+function countChoices(it,cur){const st=stepOf(it);const lc=lastCount(it.id,R.date);
+  const hi=Math.max(st*30,(+it.par||0)*3,(+it.qty||0)*3,(lc?+lc.n:0)*2,cur!=null?+cur:0);
+  const n=Math.min(400,Math.ceil(hi/st));const out=[];for(let i=0;i<=n;i++)out.push(fmtN(i*st,st));
+  if(cur!=null&&!out.includes(cntKey(cur,st)))out.push(cntKey(cur,st));
+  return out.sort((a,b)=>a-b)}
 let stockTab='due',stockOpen=null;
 // before の日より前（その日を含まない）に、最後に数えた数 {date,n}
 function lastCount(id,before){const a=allReports();
@@ -822,9 +835,13 @@ function renderStock(){
       const row=document.createElement('div');row.className='cust';
       row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))} 発注</span>`:''}`
         +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||''):''}</small></div></div>`;
-      const inp=document.createElement('input');inp.type='number';inp.inputMode='decimal';inp.step='any';inp.min='0';inp.placeholder='数';
-      inp.style.cssText='width:90px;flex:none';inp.value=v!=null?v:'';
-      inp.onchange=()=>{R.inv=Object.assign({},R.inv);if(inp.value==='')delete R.inv[it.id];else R.inv[it.id]=+inp.value;
+      // 数はスクロールで選ぶ（iPad・iPhoneではくるくる回す選び方になる）。刻みは品目ごと。一覧に無い数は「直接入力」
+      const inp=document.createElement('select');inp.className='cnt';
+      inp.innerHTML='<option value="">—</option>'+countChoices(it,v).map(x=>`<option value="${x}">${x}</option>`).join('')+'<option value="__other">直接入力</option>';
+      inp.value=v!=null?cntKey(v,stepOf(it)):'';
+      inp.onchange=()=>{let val=inp.value;
+        if(val==='__other'){const w=prompt(`${it.name}の数（${it.unit||''}）`,v!=null?v:'');if(w==null||w.trim()===''||isNaN(+w)){renderStock();return}val=String(+w)}
+        R.inv=Object.assign({},R.inv);if(val==='')delete R.inv[it.id];else R.inv[it.id]=+val;
         if(!Object.keys(R.inv).length)delete R.inv;save();renderStock()};
       const u=document.createElement('span');u.textContent=it.unit||'';u.style.cssText='min-width:28px;font-size:14px';
       row.querySelector('.sum').append(inp,u);grid.appendChild(row)});
@@ -838,7 +855,7 @@ function renderStockItems(){
     box.innerHTML='<div class="hint" style="margin-top:10px">まだ品目がありません</div>';
     if(STOCK_PRESET.length){const b=document.createElement('button');b.className='reg';
       b.innerHTML=`<b>今の在庫表の品目を入れる（${STOCK_PRESET.length}品目）</b><small>スプレッドシート【在庫確認】の 毎日・毎週（火、金）・毎月25日 の品目と、発注点・発注数をまとめて登録します。あとから直せます</small>`;
-      b.onclick=()=>{const t=Date.now();saveStockItems(STOCK_PRESET.map(([name,cat,unit,freq,par,qty,ounit],i)=>({id:t+i,name,cat,unit,freq,
+      b.onclick=()=>{const t=Date.now();saveStockItems(STOCK_PRESET.map(([name,cat,unit,freq,par,qty,ounit,step],i)=>({id:t+i,name,cat,unit,freq,step,
         wds:freq==='weekly'?[2,5]:[],mday:25,par,qty,ounit:ounit===unit?'':ounit,vendor:'',memo:''})));renderStock();toast('在庫表の品目を登録しました')};
       box.appendChild(b)}
     return}
@@ -877,8 +894,11 @@ function stockForm(it){
     wdW.style.display=it.freq==='weekly'?'':'none';mdW.style.display=it.freq==='monthly'?'':'none';
     wdC.innerHTML='';[...WDS].forEach((x,i)=>{const on=wdsOf(it).includes(i);const b=document.createElement('button');b.className='chip'+(on?' on':'');b.textContent=x;
       b.onclick=()=>{const s=wdsOf(it).filter(y=>y!==i);if(!on)s.push(i);upd('wds',s.sort());drawFr()};wdC.appendChild(b)})};
-  drawCat();drawFr();
-  e.firstElementChild.after(catW,frW,wdW,mdW);
+  const [stW,stC]=box('数える刻み（スクロールで選ぶ数の間隔）');
+  const drawSt=()=>{stC.innerHTML='';STEPS.forEach(x=>{const b=document.createElement('button');b.className='chip'+(stepOf(it)===x?' on':'');b.textContent=x;
+    b.onclick=()=>{upd('step',x);drawSt()};stC.appendChild(b)})};
+  drawCat();drawFr();drawSt();
+  e.firstElementChild.after(catW,frW,wdW,mdW,stW);
   const btns=document.createElement('div');btns.className='row';
   const del=document.createElement('button');del.className='del-btn';del.textContent='削除';
   del.onclick=()=>{if(!confirm(`「${it.name||'この品目'}」を品目リストから削除しますか？（数えた記録は日報に残ります）`))return;
