@@ -779,7 +779,8 @@ $('regAdd').onclick=()=>{const box=$('regList');newRegForm(box,id=>{regOpen=id;r
 // 品目リスト（nippo_stock_items。端末間で共有）：
 //   {id,name,cat,unit:在庫の単位,freq:'daily'|'weekly'|'monthly',wds:[曜日0-6],mday:毎月の日,par:発注点,qty:いつもの発注数,ounit:発注の単位,step:数える刻み,
 //    vendor:発注先の名前,place:置き場所,open:使いかけも数えるか(未設定なら刻みが1未満の品目だけ数える),
-//    home:家にも置いているか,refill:補充点(お店の数がこれ以下なら家から持ってくる),bring:持ってくる目安の数,memo}
+//    home:家にも置いているか,refill:補充点(お店の数がこれ以下なら家から持ってくる),bring:持ってくる目安の数,
+//    per:発注の単位1つに入っている在庫の単位の数(1パック=100枚なら100),memo}
 // 家の数は、その日の日報の R.invh = {品目id: 数} に入れる（お店の数は R.inv）
 // 発注先リスト（nippo_vendors。端末間で共有）：{id,name,how:発注のしかた,lead:届くまでの日数,off:[休みの曜日0-6],cutoff:'10:00'(この時刻までの注文はその日に発送),contact:URL・電話,memo}
 // 数えた数は、その日の日報の R.inv = {品目id: 数} に入れる（日報と一緒に同期され、勤怠botからも読める）
@@ -844,7 +845,13 @@ const curHome=it=>{if(!it.home)return null;const v=(R.invh||{})[it.id];return v!
 // 発注の判断に使う数：家にも置いている品目は お店＋家 の合計
 const totalCount=it=>{const c=curCount(it);if(!c)return null;const h=curHome(it);return h?r2(+c.n+(+h.n)):+c.n};
 const needOrder=it=>{const t=totalCount(it);return hasPar(it)&&t!=null&&t<=+it.par};
-const orderQty=it=>needOrder(it)?r2(+it.par-totalCount(it)+(+it.qty||0)):0;
+// 発注数。ふつうは今までの在庫表と同じ「発注点 − 在庫 + いつもの発注数」。
+// 発注の単位が在庫と違い、1つあたりの数(per。1パック=100枚など)がある品目は、足りない数を発注の単位に直して切り上げ、いつもの発注数より少なくしない
+const orderQty=it=>{if(!needOrder(it))return 0;const per=+it.per||0;
+  if(per>0)return Math.max(+it.qty||0,Math.ceil(r2((+it.par-totalCount(it))/per)));
+  return r2(+it.par-totalCount(it)+(+it.qty||0))};
+// 発注数の後ろに付ける「（100枚）」
+const perText=it=>+it.per>0&&orderQty(it)?`（${r2(orderQty(it)*it.per)}${it.unit||''}）`:'';
 // 家から持ってくる：お店の数が補充点以下で、家に残っている
 const needBring=it=>{if(!it.home||it.refill===''||it.refill==null)return false;const c=curCount(it),h=curHome(it);return !!c&&+c.n<=+it.refill&&(!h||+h.n>0)};
 function setCount(key,it,val){R[key]=Object.assign({},R[key]);if(val===''||val==null)delete R[key][it.id];else R[key][it.id]=+val;
@@ -886,7 +893,7 @@ function renderStock(){
       :'<b>■ 発注先が未設定</b>';
     return `<div class="visit">${head}`+byV[k].map(it=>{const c=curCount(it);
       const h=curHome(it);
-      return `<div style="margin:4px 0 0 12px">${esc(it.name)}　<b style="color:#b91c1c">${orderQty(it)}${esc(ounitOf(it))}</b>`
+      return `<div style="margin:4px 0 0 12px">${esc(it.name)}　<b style="color:#b91c1c">${orderQty(it)}${esc(ounitOf(it))}${esc(perText(it))}</b>`
         +`<small style="color:var(--muted)">　${h?'お店 '+c.n+'＋家 '+h.n+'＝'+totalCount(it):'在庫 '+c.n}${esc(it.unit||'')}（${md(c.date)}）${it.place?'・'+esc(it.place):''}</small></div>`}).join('')+'</div>'}).join('')
     :'<div class="hint">今、発注が必要なものはありません</div>';
   $('stockDate').textContent=md(R.date)+' の棚卸';
@@ -913,7 +920,7 @@ function renderStock(){
       const lc=lastCount(it.id,R.date),v=(R.inv||{})[it.id];
       const row=document.createElement('div');row.className='cust';
       const tags=(needBring(it)?`<span class="reg-tag" style="background:#ea580c">家から</span>`:'')
-        +(needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))} 発注</span>`:'');
+        +(needOrder(it)?`<span class="reg-tag" style="background:#dc2626">${orderQty(it)}${esc(ounitOf(it))}${esc(perText(it))} 発注</span>`:'');
       row.innerHTML=`<div class="sum"><div class="tx"><b>${esc(it.name)}</b>${tags}`
         +`<small>${lc?'前回 '+md(lc.date)+'：'+lc.n+esc(it.unit||''):'まだ数えていません'}${it.home&&it.refill!==''&&it.refill!=null?'・補充点 '+it.refill+esc(it.unit||''):''}${hasPar(it)?'・発注点 '+it.par+esc(it.unit||'')+(it.home?'（合計）':''):''}${grpBy!=='place'&&it.place?'・📍'+esc(it.place):''}<br>${openOf(it)?'使いかけも数える':'未開封だけ数える'}</small></div></div>`;
       const u=()=>{const x=document.createElement('span');x.textContent=it.unit||'';x.style.cssText='min-width:28px;font-size:14px';return x};
@@ -1004,8 +1011,9 @@ function stockForm(it){
     <div class="row"><div><label class="t">在庫の単位</label><input type="text" data-k="unit" placeholder="本・袋・個・箱"></div>
     <div><label class="t">発注点（この数以下で発注）</label><input type="number" inputmode="decimal" step="any" min="0" data-k="par" placeholder="例：1"></div></div>
     <div class="row"><div><label class="t">いつもの発注数</label><input type="number" inputmode="decimal" step="any" min="0" data-k="qty" placeholder="例：1"></div>
-    <div><label class="t">発注の単位（在庫と違う時だけ）</label><input type="text" data-k="ounit" placeholder="例：枚"></div></div>
-    <div class="hint" style="margin-top:-6px">発注数は「発注点 − 在庫 + いつもの発注数」で計算します（今までの在庫表と同じ）</div>
+    <div><label class="t">発注の単位（在庫と違う時だけ）</label><input type="text" data-k="ounit" placeholder="例：パック"></div></div>
+    <div><label class="t">発注の単位1つに入っている数（在庫の単位で）</label><input type="number" inputmode="decimal" step="any" min="0" data-k="per" placeholder="例：1パック＝100枚なら 100"></div>
+    <div class="hint" style="margin-top:-6px">発注数は「発注点 − 在庫 + いつもの発注数」で計算します（今までの在庫表と同じ）。<br>上の「入っている数」を入れた品目は、足りない数を発注の単位に直して切り上げます（いつもの発注数より少なくしません）</div>
     <div><label class="t">発注先</label><input type="text" data-k="vendor" placeholder="例：肉のハナマサ"><div class="chips" data-pick="vendor" style="margin-top:6px"></div></div>
     <div><label class="t">置き場所</label><input type="text" data-k="place" placeholder="例：厨房の棚の上・ストッカー横・倉庫"><div class="chips" data-pick="place" style="margin-top:6px"></div></div>
     <div><label class="t">メモ</label><input type="text" data-k="memo" placeholder="品番・サイズ など"></div>`;
