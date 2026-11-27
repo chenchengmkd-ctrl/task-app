@@ -4,6 +4,7 @@ Vercelは requirements.txt しか無いPythonプロジェクトで /api/*.py が
 （ルート直下の app.py・トップレベル変数 app）に統一している。
 URLパス自体は従来通り /api/webhook・/api/cron_* のまま（vercel.jsonのcrons設定もこのまま）。
 """
+import hmac
 import json
 from urllib.parse import parse_qs
 
@@ -31,7 +32,7 @@ from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_repor
 from linebot.square import check_midday_sales
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
-APP_VERSION = 119
+APP_VERSION = 120
 
 
 def _respond(start_response, status, body, cors=False):
@@ -166,6 +167,7 @@ def _handle_health(environ, start_response):
             'AIRREGI_API_TOKEN': describe(config.AIRREGI_API_TOKEN),
             'AIRREGI_LOGIN_ID': bool(config.AIRREGI_LOGIN_ID),
             'AIRREGI_LOGIN_PASSWORD': describe(config.AIRREGI_LOGIN_PASSWORD),
+            'NIPPO_TOKEN_AIR': bool(config.NIPPO_TOKEN_AIR),
             'USEN_COMPANY_CODE': bool(config.USEN_COMPANY_CODE),
             'USEN_USER_ID': bool(config.USEN_USER_ID),
             'USEN_PASSWORD': describe(config.USEN_PASSWORD),
@@ -501,11 +503,23 @@ def _handle_nippo_usen_sales(environ, start_response):
     return _respond(start_response, '200 OK' if result.get('ok') else '502 Bad Gateway', result, cors=True)
 
 
+def _store_token(store):
+    """その店の日報アプリの合言葉。ハンバーグ日和（air）は NIPPO_TOKEN_AIR（未設定なら NIPPO_TOKEN）、ほかは NIPPO_TOKEN。"""
+    if store == 'air' and config.NIPPO_TOKEN_AIR:
+        return config.NIPPO_TOKEN_AIR
+    return config.NIPPO_TOKEN
+
+
+def _token_ok(environ, store):
+    want = _store_token(store)
+    return bool(want) and hmac.compare_digest(environ.get('HTTP_X_APP_TOKEN', '').strip(), want)
+
+
 def _handle_nippo_air_sales(environ, start_response):
     """日報アプリ（Airレジ店）用。その日のAirレジの会計と売上を返す。形は /api/nippo_sales と同じ。"""
-    if not config.NIPPO_TOKEN:
-        return _respond(start_response, '503 Service Unavailable', {'ok': False, 'error': 'NIPPO_TOKEN が未設定です'}, cors=True)
-    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
+    if not _store_token('air'):
+        return _respond(start_response, '503 Service Unavailable', {'ok': False, 'error': 'NIPPO_TOKEN_AIR が未設定です'}, cors=True)
+    if not _token_ok(environ, 'air'):
         return _respond(start_response, '401 Unauthorized', {'ok': False, 'error': '合言葉が違います'}, cors=True)
     body = _read_json_body(environ)
     if not body or not body.get('date'):
@@ -548,19 +562,20 @@ def _handle_airregi_probe(environ, start_response):
 
 
 def _handle_nippo_sync(environ, start_response):
-    """日報アプリ（nippo.html）の端末間同期。iPadとスマホで同じ日報を編集・送信できるようにする。"""
-    if not config.NIPPO_TOKEN:
-        return _respond(start_response, '503 Service Unavailable',
-                        {'error': 'NIPPO_TOKEN が未設定です。Vercelの環境変数に追加してRedeployしてください。'},
-                        cors=True)
-    if environ.get('HTTP_X_APP_TOKEN', '') != config.NIPPO_TOKEN:
-        return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います'}, cors=True)
+    """日報アプリ（nippo.html）の端末間同期。iPadとスマホで同じ日報を編集・送信できるようにする。
+    合言葉は店ごと（ハンバーグ日和は NIPPO_TOKEN_AIR）。ほかの店の合言葉では、その店の日報は読めない。"""
     body = _read_json_body(environ)
     if body is None:
         return _respond(start_response, '400 Bad Request', {'error': 'JSONが読めません'}, cors=True)
+    store = body.get('store') or ''
+    if not _store_token(store):
+        return _respond(start_response, '503 Service Unavailable',
+                        {'error': 'NIPPO_TOKEN が未設定です。Vercelの環境変数に追加してRedeployしてください。'},
+                        cors=True)
+    if not _token_ok(environ, store):
+        return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います'}, cors=True)
     from linebot import nippo_sync
     try:
-        store = body.get('store') or ''
         if store not in nippo_sync.STORES:
             return _respond(start_response, '400 Bad Request', {'ok': False, 'error': f'店舗 {store} はありません'}, cors=True)
         if body.get('op') == 'push':
