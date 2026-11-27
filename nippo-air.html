@@ -62,6 +62,9 @@
   .o-row button{height:50px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:14px;font-weight:600;line-height:1.2}
   .o-row button.on{background:var(--g);color:#fff;border-color:transparent}
   .free{margin-top:8px}
+  .mic-wrap{position:relative}.mic-wrap>textarea,.mic-wrap>input{padding-right:52px}
+  .mic-btn{position:absolute;right:6px;bottom:6px;width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:#fff;font-size:19px;line-height:1}
+  .mic-btn.on{background:#fee2e2;border-color:#ef4444;animation:micp 1s infinite}@keyframes micp{50%{transform:scale(1.08)}}
   textarea.free{min-height:64px}
   .scroll-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
   .scroll-row::-webkit-scrollbar{display:none}
@@ -173,7 +176,7 @@
     <div class="q-label">どんなお客さん（任意）</div>
     <div class="scroll-row" id="whoRow"></div>
     <div id="ctyBox" style="display:none"><div class="q-label">どこの国の方（インバウンド）</div><div class="scroll-row" id="ctyRow"></div></div>
-    <input type="text" id="whoText" class="free" placeholder="今回のお客さんを書く（例：名古屋からの出張の方々）">
+    <input type="text" id="whoText" class="free" placeholder="今回のお客さんを書く（例：近くの会社にお勤めの方々）">
     <div class="q-label">反応（任意）</div>
     <div class="scroll-row" id="reactRow"></div>
     <textarea id="reactText" class="free" placeholder="今回の反応を具体的に書く（マイク🎤も使えます）"></textarea>
@@ -416,7 +419,7 @@ const KW_REACT=[
   ['少し残された','少し残されていました。'],['ご飯を残された','ご飯を残されていました。'],
   ['ボリュームのご意見','ご意見：価格に対してボリュームが少ない。'],['焼き加減のご意見','ご意見：焼き加減について。'],['英語でご案内','英語メニューでご案内しました。'],
 ];
-const KW_WHO=['近くで働いている方','ご近所の方','サラリーマン','OL','女性1名','男性1名','女性同士','カップル','ご家族','お子様連れ','年配の方','若い女性','インバウンド','インフルエンサー','看板を見て','久しぶりのご来店'];
+const KW_WHO=['近くで働いている方','ご近所の方','サラリーマン','OL','カップル','ご家族','お子様連れ','インバウンド','インフルエンサー','看板を見て','久しぶりのご来店'];
 const SEXES=['男性','女性'];
 const AGES=['10代','20代','30代','40代','50代','60代','70代以上'];
 // インバウンド（海外の方）の国。「どんなお客さん」で「インバウンド」か「海外の方」を選ぶと出てくる。「＋追加」で足した国（nippo_countries）は後ろに並ぶ
@@ -1094,6 +1097,27 @@ async function fetchSquare(manual){
   renderSqBox();renderSales();
 }
 
+/* ---------- 音声入力（🎤ボタン） ----------
+   文字の欄の右下に🎤を付ける。押して話すと、欄の最後に文字が入る（iPhone・iPadのSafariの音声認識）。
+   使えない端末では、キーボードのマイクを使うよう案内する */
+const SpeechRec=window.SpeechRecognition||window.webkitSpeechRecognition;
+let micBusy=null;
+function addMic(el){
+  if(!el||el.dataset.mic)return;el.dataset.mic='1';
+  const wrap=document.createElement('div');wrap.className='mic-wrap';el.parentNode.insertBefore(wrap,el);wrap.appendChild(el);
+  const b=document.createElement('button');b.type='button';b.className='mic-btn';b.textContent='🎤';b.setAttribute('aria-label','音声で入力');wrap.appendChild(b);
+  b.onclick=()=>{
+    if(!SpeechRec){toast('この端末では、キーボードのマイク🎤から話して入力してください');el.focus();return}
+    if(micBusy){micBusy.stop();return}
+    const r=new SpeechRec();r.lang='ja-JP';r.interimResults=false;r.continuous=false;micBusy=r;b.classList.add('on');
+    r.onresult=e=>{const t=[...e.results].map(x=>x[0].transcript).join('').trim();if(!t)return;
+      const v=el.value.replace(/\s+$/,'');el.value=v?(/[。！？」]$/.test(v)?v+t:v+(el.tagName==='TEXTAREA'?'。':'・')+t):t;el.dispatchEvent(new Event('input'))};
+    r.onerror=e=>{if(e.error==='not-allowed')toast('マイクの使用を許可してください（設定→Safari→マイク）')};
+    r.onend=()=>{micBusy=null;b.classList.remove('on')};
+    try{r.start()}catch(e){micBusy=null;b.classList.remove('on')}
+  };
+}
+
 /* ---------- 画面描画 ---------- */
 const NAMES_DEFAULT=['江夏','河場','山下（慎）','ユリア','荻野','石川','千葉','氏原','山下（司）','西森'];
 // 以前に保存した一覧に「向井」が残っていたら「上原」に入れ替える
@@ -1185,11 +1209,11 @@ function editor(c){
   const e=document.createElement('div');e.className='ed';
   const k=document.createElement('div');k.innerHTML='<label class="t">お客様の反応（マイク🎤で話して入力できます）</label>';
   const ki=document.createElement('textarea');ki.style.minHeight='80px';ki.value=c.comment||'';
-  ki.oninput=()=>{c.comment=ki.value;save()};k.appendChild(ki);
+  ki.oninput=()=>{c.comment=ki.value;save()};k.appendChild(ki);addMic(ki);
   k.appendChild(kwChips(KW_REACT,t=>addText(ki,t),'nippoair_kw_react'));e.appendChild(k);
   const l=document.createElement('div');l.innerHTML='<label class="t">どんなお客さん（見出しに入ります・任意）</label>';
-  const li=document.createElement('input');li.type='text';li.placeholder='例：名古屋からの出張の方々';li.value=c.label||'';
-  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);
+  const li=document.createElement('input');li.type='text';li.placeholder='例：近くの会社にお勤めの方々';li.value=c.label||'';
+  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);addMic(li);
   // 見出しの言葉は「・」区切りで足す／もう一度押すと外す
   l.appendChild(kwChips(KW_WHO,t=>{const p=li.value.split('・').map(s=>s.trim()).filter(Boolean);
     const i=p.indexOf(t);if(i>=0)p.splice(i,1);else p.push(t);li.value=p.join('・');li.dispatchEvent(new Event('input'))},'nippoair_kw_who'));
@@ -1457,6 +1481,7 @@ onRemote=(dates,sharedChanged)=>{
   if(page==='start')renderStart();
   if(page==='set')renderSettings();
 };
+['whoText','reactText','flow','handover','inbound'].forEach(id=>addMic($(id)));
 load(allReports()[todayStr()]||blank());
 go(R.started?'form':'start');
 syncNow();

@@ -179,6 +179,21 @@ def make_air(src):
     i0 = d.s.index('function reportText(){')
     i1 = d.s.index('\n}\n', i0) + 3
     d.s = d.s[:i0] + open(os.path.join(ROOT, 'tools', 'nippo_air_report.js'), encoding='utf-8').read().rstrip() + '\n' + d.s[i1:]
+    # 「どんなお客さん」から、性別・年代のボタンで入れられる言葉は外す
+    d.rep("'近くで働いている方','ご近所の方','サラリーマン','OL','女性1名','男性1名','女性同士','カップル','ご家族','お子様連れ','年配の方','若い女性','インバウンド','インフルエンサー','看板を見て','久しぶりのご来店'",
+          "'近くで働いている方','ご近所の方','サラリーマン','OL','カップル','ご家族','お子様連れ','インバウンド','インフルエンサー','看板を見て','久しぶりのご来店'")
+    d.rep('placeholder="今回のお客さんを書く（例：名古屋からの出張の方々）"', 'placeholder="今回のお客さんを書く（例：近くの会社にお勤めの方々）"')
+    d.s = d.s.replace("placeholder='例：名古屋からの出張の方々'", "placeholder='例：近くの会社にお勤めの方々'")
+    # 文字の欄ぜんぶに🎤（音声入力）を付ける
+    d.rep("  .free{margin-top:8px}", "  .free{margin-top:8px}\n"
+          "  .mic-wrap{position:relative}.mic-wrap>textarea,.mic-wrap>input{padding-right:52px}\n"
+          "  .mic-btn{position:absolute;right:6px;bottom:6px;width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:#fff;font-size:19px;line-height:1}\n"
+          "  .mic-btn.on{background:#fee2e2;border-color:#ef4444;animation:micp 1s infinite}@keyframes micp{50%{transform:scale(1.08)}}")
+    d.rep("/* ---------- 画面描画 ---------- */", open(os.path.join(ROOT, 'tools', 'nippo_mic.js'), encoding='utf-8').read() + "\n/* ---------- 画面描画 ---------- */")
+    d.rep("  ki.oninput=()=>{c.comment=ki.value;save()};k.appendChild(ki);", "  ki.oninput=()=>{c.comment=ki.value;save()};k.appendChild(ki);addMic(ki);")
+    d.rep("  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);", "  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);addMic(li);")
+    d.rep("load(allReports()[todayStr()]||blank());\ngo(R.started?'form':'start');",
+          "['whoText','reactText','flow','handover','inbound'].forEach(id=>addMic($(id)));\nload(allReports()[todayStr()]||blank());\ngo(R.started?'form':'start');")
     # 会計を選んだら、Airレジの人数を人数に入れる
     d.rep("  qOrd=ord;qOther=other.join('・');\n  if(qSqs.length){qTake=take;",
           "  qOrd=ord;qOther=other.join('・');\n"
