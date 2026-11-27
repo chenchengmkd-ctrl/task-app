@@ -224,18 +224,22 @@ _SKIP_ROWS = re.compile(r'^(小計|合計|\(|（|お預り|お預かり|おつ�
 def _receipt_cash(html):
     """レシートのうち、現金で払った金額。「現金」の行があればその金額。支払い方法の行が無ければ全額現金。"""
     rows = [[_text(c) for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.S)] for tr in re.findall(r'<tr[^>]*>(.*?)</tr>', html or '', re.S)]
-    total, after, methods = 0, False, []
+    total, after, methods, change = 0, False, [], 0
     for c in rows:
         if not c or not c[0]:
             continue
         if c[0].startswith('合計'):
             total, after = _yen(re.sub(r'[^\d]', '', c[-1])), True
             continue
-        if after and not re.match(r'^(お預り|お預かり|おつり|お釣り|\(|（|内消費税)', c[0]):
+        if after and re.match(r'^(おつり|お釣り)', c[0]):
+            change = _yen(re.sub(r'[^\d]', '', c[-1]))
+            continue
+        if after and not re.match(r'^(お預り|お預かり|\(|（|内消費税)', c[0]):
             methods.append((c[0], _yen(re.sub(r'[^\d]', '', c[-1]))))
     cash = [v for k, v in methods if '現金' in k]
     if cash:
-        return sum(cash)
+        # 「現金」の行は受け取った額（例：5,000円札）なので、おつりを引いたものが現金の売上
+        return max(0, min(total, sum(cash) - change)) if total else max(0, sum(cash) - change)
     return 0 if methods else total
 
 
@@ -269,7 +273,7 @@ def day_sales(date_iso):
     if not is_enabled():
         return {'ok': False, 'error': 'Airレジのログイン情報が未設定です'}
     rows = _paid(_journal(date_iso))
-    key = f'airregi:receipts2:{date_iso}'  # 2: 現金の金額も入れるようにしたもの
+    key = f'airregi:receipts3:{date_iso}'  # 3: 現金は「受け取った額−おつり」で数え直したもの
     cache = get_state(key) or {}
     missing = [j for j in rows if j['visStoreId'] not in cache][:30]  # 1回で開くのは最大30件（残りは次に押したときに取る）
     for j in missing:
