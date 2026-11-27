@@ -194,6 +194,30 @@ def make_air(src):
     d.rep("  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);", "  li.oninput=()=>{c.label=li.value;save()};l.appendChild(li);addMic(li);")
     d.rep("load(allReports()[todayStr()]||blank());\ngo(R.started?'form':'start');",
           "['whoText','reactText','flow','handover','inbound'].forEach(id=>addMic($(id)));\nload(allReports()[todayStr()]||blank());\ngo(R.started?'form':'start');")
+    # 記入者は勤怠（hamburg-biyori-bot の打刻）から：その日に出勤した人を自動で選ぶ。「勤怠から入れる」で入れ直せる
+    d.rep('<div class="q-label" style="margin-top:18px">記入者（複数選べます）<button class="link" id="nameDel">名前を整理</button></div>',
+          '<div class="q-label" style="margin-top:18px">記入者（複数選べます）<button class="link" id="kintaiBtn">勤怠から入れる</button><button class="link" id="nameDel">名前を整理</button></div>\n'
+          '    <div class="hint" id="kintaiHint" style="margin:-4px 0 8px"></div>')
+    d.rep("function renderStart(){renderNames();renderWeather();updBegin()}",
+          """// 勤怠の打刻から、その日に出勤した人を記入者に入れる（名前のボタンは名字。「山下（慎）」のように括弧の字でも見分ける）
+const KINTAI_STAFF_API='https://hamburg-biyori-bot.vercel.app/api/nippo_staff';
+function matchName(full,chip){const f=String(full).replace(/[\\s　]/g,''),base=chip.replace(/[（(].*?[）)]/g,''),hint=(chip.match(/[（(](.*?)[）)]/)||[])[1]||'';
+  return !!base&&f.startsWith(base)&&(!hint||f.slice(base.length).includes(hint))}
+let kintaiAt='';
+async function kintaiWriters(manual){
+  const key=ls.get('nippoair_sqkey','');
+  if(!key){if(manual)toast('設定で合言葉を入れると、勤怠から記入者を入れられます');return}
+  try{
+    const res=await fetch(KINTAI_STAFF_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify({date:R.date})});
+    const j=await res.json().catch(()=>({}));if(!res.ok||!j.ok)throw new Error(j.error||res.status);
+    const names=getNames(),picked=[];(j.working||[]).forEach(full=>{const n=names.find(c=>matchName(full,c));if(n&&!picked.includes(n))picked.push(n)});
+    kintaiAt=R.date;$('kintaiHint').textContent=(j.working||[]).length?`勤怠：${j.working.join('・')} が出勤`:'勤怠：まだ誰も出勤していません';
+    if(picked.length&&(manual||!whosOf().length)){setWhos(picked);save();renderNames();updBegin();renderSummary();if(manual)toast('勤怠から記入者を入れました')}
+    else if(manual&&!picked.length)toast('出勤している人が、名前のボタンに見つかりませんでした');
+  }catch(e){if(manual)toast('勤怠を読めませんでした：'+(e.message||e))}
+}
+function renderStart(){renderNames();renderWeather();updBegin();if(kintaiAt!==R.date)kintaiWriters(false)}""")
+    d.rep("$('nameDel').onclick=()=>{nameDel=!nameDel;renderNames()};", "$('nameDel').onclick=()=>{nameDel=!nameDel;renderNames()};\n$('kintaiBtn').onclick=()=>kintaiWriters(true);")
     # 会計を選んだら、Airレジの人数を人数に入れる
     d.rep("  qOrd=ord;qOther=other.join('・');\n  if(qSqs.length){qTake=take;",
           "  qOrd=ord;qOther=other.join('・');\n"

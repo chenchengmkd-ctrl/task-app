@@ -238,7 +238,8 @@
     <div class="hint" style="margin:-6px 0 14px">最初に1回だけ入れます。入れたあとは、この画面は出ません。</div>
     <label class="t">日付</label><input type="date" id="date">
     <input type="hidden" id="who">
-    <div class="q-label" style="margin-top:18px">記入者（複数選べます）<button class="link" id="nameDel">名前を整理</button></div>
+    <div class="q-label" style="margin-top:18px">記入者（複数選べます）<button class="link" id="kintaiBtn">勤怠から入れる</button><button class="link" id="nameDel">名前を整理</button></div>
+    <div class="hint" id="kintaiHint" style="margin:-4px 0 8px"></div>
     <div class="chips" id="nameChips"></div>
     <div class="q-label" style="margin-top:18px">天気</div>
     <div class="chips" id="weather"></div>
@@ -1145,12 +1146,30 @@ function updBegin(){
   b.classList.toggle('off',!ok);
   b.textContent=ok?`${R.started?'決定':'はじめる'}（${R.who}・${R.weather}）`:(!R.who?'記入者を選んでください':'天気を選んでください');
 }
-function renderStart(){renderNames();renderWeather();updBegin()}
+// 勤怠の打刻から、その日に出勤した人を記入者に入れる（名前のボタンは名字。「山下（慎）」のように括弧の字でも見分ける）
+const KINTAI_STAFF_API='https://hamburg-biyori-bot.vercel.app/api/nippo_staff';
+function matchName(full,chip){const f=String(full).replace(/[\s　]/g,''),base=chip.replace(/[（(].*?[）)]/g,''),hint=(chip.match(/[（(](.*?)[）)]/)||[])[1]||'';
+  return !!base&&f.startsWith(base)&&(!hint||f.slice(base.length).includes(hint))}
+let kintaiAt='';
+async function kintaiWriters(manual){
+  const key=ls.get('nippoair_sqkey','');
+  if(!key){if(manual)toast('設定で合言葉を入れると、勤怠から記入者を入れられます');return}
+  try{
+    const res=await fetch(KINTAI_STAFF_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify({date:R.date})});
+    const j=await res.json().catch(()=>({}));if(!res.ok||!j.ok)throw new Error(j.error||res.status);
+    const names=getNames(),picked=[];(j.working||[]).forEach(full=>{const n=names.find(c=>matchName(full,c));if(n&&!picked.includes(n))picked.push(n)});
+    kintaiAt=R.date;$('kintaiHint').textContent=(j.working||[]).length?`勤怠：${j.working.join('・')} が出勤`:'勤怠：まだ誰も出勤していません';
+    if(picked.length&&(manual||!whosOf().length)){setWhos(picked);save();renderNames();updBegin();renderSummary();if(manual)toast('勤怠から記入者を入れました')}
+    else if(manual&&!picked.length)toast('出勤している人が、名前のボタンに見つかりませんでした');
+  }catch(e){if(manual)toast('勤怠を読めませんでした：'+(e.message||e))}
+}
+function renderStart(){renderNames();renderWeather();updBegin();if(kintaiAt!==R.date)kintaiWriters(false)}
 function renderSummary(){
   const d=new Date(R.date+'T00:00');
   $('btnStart').innerHTML=`${d.getMonth()+1}/${d.getDate()}（${'日月火水木金土'[d.getDay()]}）　${esc(R.weather||'―')}　${esc(R.who||'―')}<span>変更 ›</span>`;
 }
 $('nameDel').onclick=()=>{nameDel=!nameDel;renderNames()};
+$('kintaiBtn').onclick=()=>kintaiWriters(true);
 $('btnBegin').onclick=()=>{
   if(!(R.who&&R.weather)){toast(!R.who?'記入者を選んでください':'天気を選んでください');return}
   R.started=true;save();renderSummary();go('form')};
