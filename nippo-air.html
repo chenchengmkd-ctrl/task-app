@@ -194,13 +194,13 @@
 <!-- ===== 最後の入力（申し送り・インバウンド・実績）===== -->
 <div class="page" id="p-end">
   <button class="sumline" id="btnBackForm">‹ 会計の記録に戻る</button>
-  <div class="card"><h2>申し送り事項</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>
+  <div class="card"><h2>営業の流れ<span class="sub">時間帯の混み具合・人通りなど</span></h2><textarea id="flow" placeholder="例：オープン直後から13時半頃まで途切れず来店。12時頃ほぼ満席。"></textarea></div>
+  <div class="card"><h2>気づき・課題</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>
 
   <div class="card">
     <h2>インバウンド</h2>
     <textarea id="inbound" style="min-height:60px"></textarea>
     <div class="row" style="margin-top:10px">
-      <div><label class="t">話せた方</label><div class="step" data-num="talked"></div></div>
       <div><label class="t">口コミ依頼できた人数</label><div class="step" data-num="review"></div></div>
     </div>
   </div>
@@ -211,6 +211,14 @@
       <div><label class="t">本日売上（円）</label><input type="number" inputmode="numeric" id="sales"><div class="hint" id="salesHint"></div></div>
       <div><label class="t">累計売上（円）</label><input type="number" inputmode="numeric" id="cum"><div class="hint" id="cumHint"></div>
         <div id="cumBaseBox" style="margin-top:8px"><label class="t">前日までの累計（最初の1回だけ）</label><input type="number" inputmode="numeric" id="cumBase" placeholder="例：284600"></div></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div><label class="t">うち現金（円）</label><input type="number" inputmode="numeric" id="cash"><div class="hint">Airレジのレシートから自動</div></div>
+      <div><label class="t">お子様（人）</label><div class="step" data-num="kids"></div></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div><label class="t">Uber売上（円・別途）</label><input type="number" inputmode="numeric" id="uber"></div>
+      <div><label class="t">ロケットナウ売上（円・別途）</label><input type="number" inputmode="numeric" id="rocket"></div>
     </div>
     <div class="stat"><span>客数（自動）</span><span class="big" id="guestTotal">0人</span></div>
     <div class="src-grid" id="srcSum"></div>
@@ -443,7 +451,7 @@ function kwChips(defs,onTap,customKey){
   a.onclick=()=>{const w=prompt('いつも使う言葉を、ボタンとして追加します');if(w&&w.trim()){const q=ls.get(customKey,[]);q.push(w.trim());ls.set(customKey,q);box.replaceWith(kwChips(defs,onTap,customKey))}};
   box.appendChild(a);return box;
 }
-const TEXT=['date','who','sales','cum','handover','inbound'];
+const TEXT=['date','who','sales','cum','handover','inbound','flow','cash','uber','rocket'];
 const yen=n=>'¥'+Number(n||0).toLocaleString();
 const todayStr=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1078,7 +1086,7 @@ async function fetchSquare(manual){
     const res=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':key},body:JSON.stringify({date:R.date})});
     const j=await res.json();
     if(!res.ok||!j.ok)throw new Error(j.error||res.status);
-    SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};airSave(R.date,SQ);
+    SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};airSave(R.date,SQ);if(j.cash!=null){R.cash=String(j.cash);$('cash').value=R.cash}
     R.sales=String(j.total);$('sales').value=R.sales;autoCum();save(true);
     sqErr='';if(manual)toast('Airレジから更新しました');
   }catch(e){sqErr=e.message||'通信エラー';if(manual)toast('Airレジを読めませんでした：'+sqErr)}
@@ -1256,28 +1264,42 @@ function renderSales(){
 
 /* ---------- 日報の文章 ---------- */
 function reportText(){
+  // ハンバーグ日和の日報（この店のLINEの日報の書き方をもとにした形）
   const SEP='＝＝＝＝＝＝＝＝＝＝＝＝＝';
   const d=new Date(R.date+'T00:00');const wd='日月火水木金土'[d.getDay()];
-  const L=['【日報】',`日付：${d.getMonth()+1}月${d.getDate()}日（${wd}）`,`天気：${R.weather||''}`,`記入者：${R.who||''}`,SEP,
-    '▼実績',`① 本日売上：${yen(R.sales)}`,`② 累計売上：${yen(R.cum)}`,`③ 客数：${guestTotal()}人`,SEP,'▼来店経緯'];
+  const sq=SQ&&SQ.date===R.date?SQ.orders:null;
+  // 客数：Airレジの会計があればそこから（店内とお弁当・テイクアウトを分ける）。無ければ記録した組から
+  let inG=0,inN=0,boG=0,boN=0;
+  if(sq){sq.forEach(o=>{const n=+o.guests||1;if(o.bento){boG++;boN+=n}else{inG++;inN+=n}})}
+  else R.customers.forEach(c=>{const n=+c.n||1;if(c.takeout){boG++;boN+=n}else{inG++;inN+=n}});
+  // メニュー別：Airレジの注文から数える。無ければ記録した組の「食べたもの」から
+  const mc={};MENU.forEach(k=>mc[k]=0);
+  if(sq)sq.forEach(o=>{const m=mapItems(o.items);Object.keys(m.ord).forEach(k=>mc[k]=(mc[k]||0)+m.ord[k])});
+  else R.customers.forEach(c=>Object.keys(c.ord||{}).forEach(k=>mc[k]=(mc[k]||0)+(+c.ord[k]||0)));
+  const kids=+R.kids||0;
+  const L=[`【日報】ハンバーグ日和 ${d.getMonth()+1}月${d.getDate()}日（${wd}）`,`天気：${R.weather||''}　記入者：${R.who||''}`,SEP,
+    '▼売上（税込）',`総売上：${yen(R.sales)}`,`　うち現金：${yen(R.cash)}`,`累計売上：${yen(R.cum)}`,
+    `デリバリー（別途）：Uber ${yen(R.uber)} ／ ロケットナウ ${yen(R.rocket)}`,SEP,
+    '▼客数',`店内：${inG}組 ${inN}名${kids?`（お子様${kids}名）`:''}`,`お弁当・テイクアウト：${boG}組 ${boN}名`,SEP,
+    '▼メニュー別',MENU.map(k=>`${k}：${mc[k]||0}`).join(' ／ '),SEP,'▼来店経路'];
   const sc=srcCounts();
-  // 「：」の位置をそろえるため、名前を全角スペースで同じ幅（8文字）にそろえる（Xだけは全角のＸにする）
   const RS=Object.keys(sc).filter(s=>sources().includes(s)||sc[s]);
   const W=Math.max(...RS.map(x=>[...x].length));
-  const zen=t=>t.replace(/[!-~]/g,ch=>String.fromCharCode(ch.charCodeAt(0)+0xFEE0)).replace(/ /g,'　'); // 半角の英数字は全角にして幅をそろえる（X→Ｘ）
-  RS.forEach(s=>{const name=zen(s);L.push(name+'　'.repeat(W-[...name].length)+`：${sc[s]}人`)});
-  L.push(SEP,'▼営業報告（お客様の反応）');
+  const zen=t=>t.replace(/[!-~]/g,ch=>String.fromCharCode(ch.charCodeAt(0)+0xFEE0)).replace(/ /g,'　');
+  RS.forEach(s=>{const name=zen(s);L.push(name+'　'.repeat(W-[...name].length)+`：${sc[s]}人`)}); // 0人の項目も出す
+  L.push(SEP,'▼営業の流れ');if((R.flow||'').trim())L.push(R.flow.trim());
+  L.push('','▼お客様の様子・反応');
   const only=ls.get('nippoair_repmode','all')==='detail';
   R.customers.slice().reverse()
     .filter(c=>!only||(c.comment||'').trim()||c.label||(c.sex||[]).length||(c.age||[]).length||c.regId)
     .forEach(c=>{const o=ordLine(c);L.push('',custTitle(c),((c.comment||'').trim()+(o?`（${o}）`:'')).trim())});
-  L.push('','▼申し送り事項');if((R.handover||'').trim())L.push(R.handover.trim());
+  L.push('','▼気づき・課題');if((R.handover||'').trim())L.push(R.handover.trim());
   L.push('','▼インバウンド');
   const ib={};R.customers.forEach(c=>{if(c.country||isInbound([c.label]))ib[c.country||'国不明']=(ib[c.country||'国不明']||0)+(+c.n||1)});
   const ibk=Object.keys(ib).sort((a,b)=>(a==='国不明')-(b==='国不明')||ib[b]-ib[a]);
   if(ibk.length)L.push('ご来店：'+ibk.map(k=>k+' '+ib[k]+'名').join('・'));
   if((R.inbound||'').trim())L.push(R.inbound.trim());
-  L.push('',`話せた方：${+R.talked||0}人`,`口コミ依頼できた人数：${+R.review||0}人`);
+  L.push('',`口コミ依頼できた人数：${+R.review||0}人`);
   return L.join('\n');
 }
 

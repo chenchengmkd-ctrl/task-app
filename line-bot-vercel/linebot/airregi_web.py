@@ -221,6 +221,24 @@ PAID_TYPES = ('C', 'S', 'CV', 'SV')
 _SKIP_ROWS = re.compile(r'^(小計|合計|\(|（|お預り|お預かり|おつり|お釣り|クレジット|現金|電子マネー|QR|ポイント|値引|割引)')
 
 
+def _receipt_cash(html):
+    """レシートのうち、現金で払った金額。「現金」の行があればその金額。支払い方法の行が無ければ全額現金。"""
+    rows = [[_text(c) for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.S)] for tr in re.findall(r'<tr[^>]*>(.*?)</tr>', html or '', re.S)]
+    total, after, methods = 0, False, []
+    for c in rows:
+        if not c or not c[0]:
+            continue
+        if c[0].startswith('合計'):
+            total, after = _yen(re.sub(r'[^\d]', '', c[-1])), True
+            continue
+        if after and not re.match(r'^(お預り|お預かり|おつり|お釣り|\(|（|内消費税)', c[0]):
+            methods.append((c[0], _yen(re.sub(r'[^\d]', '', c[-1]))))
+    cash = [v for k, v in methods if '現金' in k]
+    if cash:
+        return sum(cash)
+    return 0 if methods else total
+
+
 def _receipt_items(html):
     """レシートの表から [{name, qty}] を作る。品目の下の「ソース/…」などの1マスの行はオプションなので数えない。"""
     items = []
@@ -251,7 +269,7 @@ def day_sales(date_iso):
     if not is_enabled():
         return {'ok': False, 'error': 'Airレジのログイン情報が未設定です'}
     rows = _paid(_journal(date_iso))
-    key = f'airregi:receipts:{date_iso}'
+    key = f'airregi:receipts2:{date_iso}'  # 2: 現金の金額も入れるようにしたもの
     cache = get_state(key) or {}
     missing = [j for j in rows if j['visStoreId'] not in cache][:30]  # 1回で開くのは最大30件（残りは次に押したときに取る）
     for j in missing:
@@ -260,7 +278,8 @@ def day_sales(date_iso):
             d = ((r.json() or {}).get('results') or {}).get('resultsData') or {}
         except (requests.RequestException, ValueError):
             break
-        cache[j['visStoreId']] = {'items': _receipt_items(d.get('receiptHtmlElement')), 'guests': _yen(d.get('visitorNum'))}
+        h = d.get('receiptHtmlElement')
+        cache[j['visStoreId']] = {'items': _receipt_items(h), 'guests': _yen(d.get('visitorNum')), 'cash': _receipt_cash(h)}
     if missing:
         set_state(key, cache)
     orders = []
@@ -269,10 +288,14 @@ def day_sales(date_iso):
         t = re.search(r'(\d{1,2}):(\d{2})', str(j.get('visStoreDate') or ''))
         orders.append({'id': 'air-' + j['visStoreId'], 'time': f'{int(t.group(1)):02d}:{t.group(2)}' if t else '',
                        'total': _yen(j.get('moneyAmount')), 'items': c.get('items', []), 'guests': c.get('guests', 0),
+                       'cash': c.get('cash'),
+                       # お弁当・テイクアウトの会計（店内の組数・客数と分けて数える）
+                       'bento': any(re.search(r'弁当|テイクアウト|持ち帰り', i.get('name', '')) for i in c.get('items', [])),
                        'table': '', 'takeout': False})
     orders.sort(key=lambda o: o['time'])
     total = sum(o['total'] for o in orders)
-    return {'ok': True, 'date': date_iso, 'total': total, 'count': len(orders), 'orders': orders,
+    cash = sum(o['cash'] or 0 for o in orders) if all(o['cash'] is not None for o in orders) else None  # 中身をまだ読めていない会計があれば出さない
+    return {'ok': True, 'date': date_iso, 'total': total, 'cash': cash, 'count': len(orders), 'orders': orders,
             'month_total': _month_before(date_iso) + total}
 
 

@@ -152,6 +152,33 @@ def make_air(src):
     else if(/250\\s*g/i.test(n))k='250g';
     else if(/400\\s*g/i.test(n))k='400g';
     else if(/コーヒー|珈琲|ジンジャー|コーラ|ジュース|ビール|ワイン|ドリンク|ティー|茶/.test(n))k='ドリンク';""")
+    # ---- 日報の形：この店のLINEの日報（売上・現金・Uber・組数/客数・お弁当・来店経路・流れ・課題）をもとに ----
+    # 締めの画面：「営業の流れ」と「気づき・課題」を分け、現金・デリバリー（Uber・ロケットナウ）・お子様を入れる。話せた方は使わない
+    d.rep('<div class="card"><h2>申し送り事項</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>',
+          '<div class="card"><h2>営業の流れ<span class="sub">時間帯の混み具合・人通りなど</span></h2><textarea id="flow" placeholder="例：オープン直後から13時半頃まで途切れず来店。12時頃ほぼ満席。"></textarea></div>\n'
+          '  <div class="card"><h2>気づき・課題</h2><textarea id="handover" placeholder="キーボードのマイク🎤で話して入力もできます"></textarea><div id="handKw"></div></div>')
+    d.rep("""      <div><label class="t">話せた方</label><div class="step" data-num="talked"></div></div>
+      <div><label class="t">口コミ依頼できた人数</label><div class="step" data-num="review"></div></div>""",
+          """      <div><label class="t">口コミ依頼できた人数</label><div class="step" data-num="review"></div></div>""")
+    d.rep('<div class="stat"><span>客数（自動）</span><span class="big" id="guestTotal">0人</span></div>',
+          '<div class="row" style="margin-top:10px">\n'
+          '      <div><label class="t">うち現金（円）</label><input type="number" inputmode="numeric" id="cash"><div class="hint">Airレジのレシートから自動</div></div>\n'
+          '      <div><label class="t">お子様（人）</label><div class="step" data-num="kids"></div></div>\n'
+          '    </div>\n'
+          '    <div class="row" style="margin-top:10px">\n'
+          '      <div><label class="t">Uber売上（円・別途）</label><input type="number" inputmode="numeric" id="uber"></div>\n'
+          '      <div><label class="t">ロケットナウ売上（円・別途）</label><input type="number" inputmode="numeric" id="rocket"></div>\n'
+          '    </div>\n'
+          '    <div class="stat"><span>客数（自動）</span><span class="big" id="guestTotal">0人</span></div>')
+    d.rep("const TEXT=['date','who','sales','cum','handover','inbound'];", "const TEXT=['date','who','sales','cum','handover','inbound','flow','cash','uber','rocket'];")
+    # 現金はAirレジのレシートから（「Airレジ更新」を押したとき）
+    d.rep("SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};airSave(R.date,SQ);",
+          "SQ={total:j.total,count:j.count,month:j.month_total,orders:j.orders||[],at:new Date().toTimeString().slice(0,5),date:R.date};airSave(R.date,SQ);"
+          "if(j.cash!=null){R.cash=String(j.cash);$('cash').value=R.cash}")
+    # 日報の文面
+    i0 = d.s.index('function reportText(){')
+    i1 = d.s.index('\n}\n', i0) + 3
+    d.s = d.s[:i0] + open(os.path.join(ROOT, 'tools', 'nippo_air_report.js'), encoding='utf-8').read().rstrip() + '\n' + d.s[i1:]
     # 会計を選んだら、Airレジの人数を人数に入れる
     d.rep("  qOrd=ord;qOther=other.join('・');\n  if(qSqs.length){qTake=take;",
           "  qOrd=ord;qOther=other.join('・');\n"
