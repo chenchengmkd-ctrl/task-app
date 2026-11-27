@@ -265,7 +265,7 @@
     <div id="stockOrder"></div>
   </div>
   <div class="card">
-    <h2><span id="stockDate"></span><span class="sub">数を入れると、この日の日報と一緒に保存・同期されます（鰻と米は今までどおり在庫日報へ）</span></h2>
+    <h2><span id="stockDate"></span><span class="sub">数を入れると、この日の日報と一緒に保存・同期されます</span></h2>
     <div class="chips" id="stockTabs"></div>
     <div id="stockCount"></div>
   </div>
@@ -428,11 +428,11 @@ function countryChips(el,get,set){
 }
 const KW_HAND=[
   ['人通り多い','人通りが多かったです。'],['人通り少ない','人通りが少なかったです。'],['雨','雨で人通りが少なかったです。'],
-  ['11時台に集中','11時台に来店が集中しました。'],['12時台が弱い','12時台は来店が少なかったです。'],
-  ['ご飯完売','ご飯が完売しました。'],['鰻完売','鰻が完売しました。'],['お断りあり','◯名お断りしました。'],
-  ['吉野家でご飯購入','ご飯が足りず吉野家で購入しました。'],['おにぎり完売','おにぎりが完売しました。'],
-  ['出張の方が多い','出張の方が多かったです。'],['看板で来店多い','看板を見てご来店の方が多かったです。'],
-  ['備品切れ','◯◯がもうないです。'],
+  ['12:30〜13:00に集中','12:30〜13:00頃に来店が集中しました。'],['途切れず来店','開店から途切れることなくご来店いただきました。'],
+  ['満席','満席の時間帯がありました。'],['お断りあり','◯組お断りしました。'],['綺麗に売り切れ','お断りなく綺麗に売り切れました。'],
+  ['400gが売り切れ','400gが売り切れました。'],['ご飯が足りない','ご飯が足りなくなりました。'],['ご飯の追い炊き','ご飯の追い炊きが必要でした。'],
+  ['Uberの注文','Uberの注文がありました。'],['お弁当の問い合わせ','お弁当の問い合わせがありました。'],['インフルエンサー来店','インフルエンサーの方がご来店されました。'],
+  ['インバウンド来店','インバウンドのお客様がご来店されました。'],['オペレーションの課題','オペレーションで課題がありました：'],['備品切れ','◯◯がもうないです。'],
 ];
 // 文章欄の末尾に言葉を足す（前の文と改行でつなぐ）
 function addText(el,t){const v=el.value.replace(/\s+$/,'');el.value=v?(v.endsWith('。')||v.endsWith('」')?v+t:v+'。'+t):t;el.dispatchEvent(new Event('input'))}
@@ -1005,7 +1005,7 @@ function renderStockItems(){
 function stockForm(it){
   const e=document.createElement('div');e.className='ed';
   const upd=(k,v)=>{const a=stockItems();const x=a.find(y=>y.id===it.id);if(!x)return;x[k]=v;it[k]=v;saveStockItems(a)};
-  e.innerHTML=`<div><label class="t">品名</label><input type="text" data-k="name" placeholder="例：鰻のタレ"></div>
+  e.innerHTML=`<div><label class="t">品名</label><input type="text" data-k="name" placeholder="例：デミグラスソース"></div>
     <div class="row"><div><label class="t">在庫の単位</label><input type="text" data-k="unit" placeholder="本・袋・個・箱"></div>
     <div><label class="t">発注点（この数以下で発注）</label><input type="number" inputmode="decimal" step="any" min="0" data-k="par" placeholder="例：1"></div></div>
     <div class="row"><div><label class="t">いつもの発注数</label><input type="number" inputmode="decimal" step="any" min="0" data-k="qty" placeholder="例：1"></div>
@@ -1087,8 +1087,9 @@ async function fetchSquare(manual){
 }
 
 /* ---------- 画面描画 ---------- */
-const NAMES_DEFAULT=['江夏','工藤','上原','都丸'];
+const NAMES_DEFAULT=['江夏','河場','山下（慎）','ユリア','荻野','石川','千葉','氏原','山下（司）','西森'];
 // 以前に保存した一覧に「向井」が残っていたら「上原」に入れ替える
+(()=>{const q=ls.get('nippoair_names',null);if(q&&!ls.get('nippoair_names_fixed',false)&&q.some(n=>['工藤','上原','都丸','向井'].includes(n))){ls.set('nippoair_names',NAMES_DEFAULT)}ls.set('nippoair_names_fixed',true)})();
 (()=>{const q=ls.get('nippoair_names',null);if(q&&q.includes('向井')){ls.set('nippoair_names',q.map(n=>n==='向井'?'上原':n).filter((n,i,a)=>a.indexOf(n)===i))}})();
 const getNames=()=>ls.get('nippoair_names',NAMES_DEFAULT);
 const whosOf=()=>R.whos||[];
