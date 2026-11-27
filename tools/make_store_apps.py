@@ -5,7 +5,7 @@
 nippo.html を直したら、これを実行し直すと nippo-air.html / nippo-usen.html にも反映される。
 置き換える場所が見つからないとエラーで止まる（nippo.html 側の書き方が変わったときは、ここを合わせる）。
 
-- nippo-air.html  … Airレジの店。「Airレジ更新」を押すと、サーバーがAirレジの管理画面（取引履歴）から会計を取ってくる
+- nippo-air.html  … Airレジの店（ハンバーグ日和）。LINEは hamburg-biyori-bot から送る。「Airレジ更新」を押すと、サーバーがAirレジの管理画面（取引履歴）から会計を取ってくる
 - nippo-usen.html … USENレジの店。サーバーがUSENレジの管理画面（伝票明細）から会計を取ってくる。
                     つながらないときは、伝票明細のPDF・汎用検索のCSVも読み込める
 どちらも、ブラウザの保存場所・サーバーの同期の保存場所を今の店と分け、
@@ -29,7 +29,7 @@ class Doc:
         self.s = self.s.replace(old, new)
 
 
-def common(d, ls_prefix, sync_store, title, reg_name):
+def common(d, ls_prefix, sync_store, title, reg_name, bot_url=None):
     """どの店にも共通の変更。"""
     d.s = d.s.replace("'nippo_", f"'{ls_prefix}_")  # 同じサイト上の今の店のアプリと、端末内の保存場所を分ける
     # 在庫の「今の在庫表の品目を入れる」は今の店(鰻)の品目なので、ほかの店では出さない
@@ -61,14 +61,19 @@ $('cumBase').addEventListener('input',""")
           f"var SYNC_API='https://task-app-nine-liard.vercel.app/api/nippo_sync',SYNC_STORE='{sync_store}'; // 今の店（鰻）と別の場所に保存する")
     d.rep("body:JSON.stringify(body)});\n  const j=await res.json().catch(()=>({}));",
           "body:JSON.stringify(Object.assign({store:SYNC_STORE},body))});\n  const j=await res.json().catch(()=>({}));")
-    # LINE：勤怠Botは今の店のグループに投稿するので使わない
-    d.rep("  if(!key){shareSend(t);return}",
-          "  shareSend(t);return; // この店では勤怠Botを使わない（今の店のグループに投稿されるため）。共有メニュー・コピーで送る\n  if(!key){shareSend(t);return}")
+    # LINE：その店の勤怠Botがあれば、そのBotからその店のスタッフのグループに投稿する。
+    # 無ければ共有メニュー（今の店の勤怠Botは、今の店のグループに投稿してしまうので使わない）
+    if bot_url:
+        d.rep("const SEND_API='https://line-kintai-vercel.vercel.app/api/nippo_post';",
+              f"const SEND_API='{bot_url}/api/nippo_post'; // この店の勤怠Bot（この店のスタッフのグループに投稿する）")
+    else:
+        d.rep("  if(!key){shareSend(t);return}",
+              "  shareSend(t);return; // この店では勤怠Botを使わない（今の店のグループに投稿されるため）。共有メニュー・コピーで送る\n  if(!key){shareSend(t);return}")
 
 
 def make_air(src):
     d = Doc(src)
-    common(d, 'nippoair', 'air', 'Airレジ店', 'Airレジ')
+    common(d, 'nippoair', 'air', 'ハンバーグ日和', 'Airレジ', bot_url='https://hamburg-biyori-bot.vercel.app')
     # 会計と売上は、「Airレジ更新」を押すと、サーバー（/api/nippo_air_sales）がAirレジの管理画面（取引履歴）から取ってくる。
     # （公式の「データ連携API」の審査が通ったら、そちらに切り替える）。規約への配慮で、押したときだけ読みに行く
     d.rep("const API='https://task-app-nine-liard.vercel.app/api/nippo_sales';",

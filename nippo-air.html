@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#ff7a50">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="日報（Airレジ店）">
-<title>日報（Airレジ店）</title>
+<meta name="apple-mobile-web-app-title" content="日報（ハンバーグ日和）">
+<title>日報（ハンバーグ日和）</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%9D%3C/text%3E%3C/svg%3E">
 <style>
   :root{--bg:#f6f5f3;--card:#fff;--ink:#1a1a1a;--muted:#8a8680;--line:#e8e5e0;--soft:#f1efec;--rep:#2f6f4f;--warn:#b45309;
@@ -140,7 +140,7 @@
 </head>
 <body>
 <header>
-  <h1>日報<small>Airレジ店</small><small id="hDate"></small></h1>
+  <h1>日報<small>ハンバーグ日和</small><small id="hDate"></small></h1>
   <button data-go="hist">履歴</button>
   <button data-go="reg">常連</button>
   <button data-go="stock">在庫</button>
@@ -1381,7 +1381,7 @@ function afterSent(){
 }
 // 「LINEで送る」：勤怠Botに直接渡して、勤怠Botからスタッフのグループに投稿する（iPadにLINEが無くても送れる）。
 // 合言葉（勤怠Botの NIPPO_TOKEN と同じ）が未設定の端末や、Botで送れなかったときは、これまでどおり共有メニューで送る
-const SEND_API='https://line-kintai-vercel.vercel.app/api/nippo_post';
+const SEND_API='https://hamburg-biyori-bot.vercel.app/api/nippo_post'; // この店の勤怠Bot（この店のスタッフのグループに投稿する）
 async function shareSend(t){
   if(navigator.share){
     let ok=false;try{await navigator.share({text:t});ok=true}catch(e){}
@@ -1392,7 +1392,6 @@ let sending=false;
 $('btnShare').onclick=async()=>{
   if(sending||!check())return;const t=reportText();
   const key=ls.get('nippoair_sqkey','');
-  shareSend(t);return; // この店では勤怠Botを使わない（今の店のグループに投稿されるため）。共有メニュー・コピーで送る
   if(!key){shareSend(t);return}
   if(!confirm('勤怠Botから、スタッフのLINEグループにこの日報を送ります。よろしいですか？'))return;
   sending=true;const btn=$('btnShare');btn.textContent='送信中…';btn.disabled=true;
