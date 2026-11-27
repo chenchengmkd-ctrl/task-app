@@ -324,3 +324,22 @@ def menu_names():
     rows = ((((r.json() or {}).get('results') or {}).get('resultsData') or {}).get('menuList')) or []
     return {'ok': True, 'menus': [{'name': m.get('menuName'), 'category': m.get('categoryId'), 'stopped': m.get('tempStopFlg') == '1',
                                    'order': m.get('menuDispNo')} for m in rows]}
+
+
+def probe_cash(date_iso):
+    """現金の数え方の確認用：会計ごとに、レシートの「合計」より後の行の名前（支払い方法など）を返す。金額は返さない。"""
+    out = []
+    for j in _paid(_journal(date_iso))[:30]:
+        r = api('/api/receiptData/getText/', {'visStoreId': j['visStoreId'], 'journalRecordType': j['journalRecordType']})
+        h = (((r.json() or {}).get('results') or {}).get('resultsData') or {}).get('receiptHtmlElement') or ''
+        rows = [[_text(c) for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.S)] for tr in re.findall(r'<tr[^>]*>(.*?)</tr>', h, re.S)]
+        labels, after = [], False
+        for c in rows:
+            if c and c[0].startswith('合計'):
+                after = True
+                continue
+            if after and c and c[0]:
+                labels.append(_mask(c[0])[:24])
+        out.append({'type': j['journalRecordType'], 'counted_as_cash': _receipt_cash(h) > 0, 'labels_after_total': labels,
+                    'has_genkin_anywhere': '現金' in _text(h)})
+    return {'ok': True, 'receipts': out}
