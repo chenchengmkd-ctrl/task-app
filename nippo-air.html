@@ -390,7 +390,7 @@ async function syncNow(){
   if(syncAgain){syncAgain=false;syncSoon()}
 }
 // 来店経緯のボタン。「＋追加」で足した項目（nippo_src_custom）は「聞けなかった」の前に並ぶ
-const SRC_BASE=['リピーター','インスタ','スレッズ','X','看板','グーグル','チラシ','紹介','インフルエンサー','出前','声かけ','通りがかり'];
+const SRC_BASE=['看板','リピーター','ご近所','インスタ','グーグル','チラシ','スレッズ','BA','紹介'];
 const SRC_UNKNOWN='聞けなかった';
 const customSrcs=()=>ls.get('nippoair_src_custom',[]);
 const sources=()=>SRC_BASE.concat(customSrcs().filter(x=>x&&!SRC_BASE.includes(x)&&x!==SRC_UNKNOWN),[SRC_UNKNOWN]);
