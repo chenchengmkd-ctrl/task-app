@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#0f9f8f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="定期報告">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="teiki.webmanifest">
+<link rel="apple-touch-icon" href="line-assets/teiki-icon-180.png">
 <title>定期報告</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%B4%3C/text%3E%3C/svg%3E">
 <style>
@@ -74,6 +77,7 @@
   #toast button{color:#fff;font-weight:700;text-decoration:underline}
   .tabs{display:flex;gap:6px;margin-bottom:12px;background:rgba(255,255,255,.7);border:1px solid var(--line);border-radius:14px;padding:4px}
   .tabs button{flex:1;padding:9px 4px;border-radius:10px;font-weight:700;font-size:14px;color:var(--muted);position:relative}
+  @media (max-width:400px){.tabs button{font-size:13px;padding:9px 2px}}
   .tabs button.on{background:var(--g);color:#fff;box-shadow:0 3px 10px rgba(14,124,134,.3)}
   .tabs .dot{position:absolute;top:5px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--neg)}
   .tabs .dot.soon{background:#f59e0b}
@@ -265,13 +269,47 @@
   .brow .tr{height:10px;background:var(--soft);border-radius:4px;overflow:hidden}
   .brow .tr i{display:block;height:100%;border-radius:0 4px 4px 0;background:var(--accent)}
   .brow .vv{font-weight:700;font-variant-numeric:tabular-nums;min-width:76px;text-align:right}
+  /* ===== 期日タブ ===== */
+  #p-kg{--warnbg:#fff4e5;--negbg:#fdecec;--ok:#047857;--k-invoice:#2a78d6;--k-pay:#e8853d;--k-renew:#6250d6;--k-tax:#d4558a}
+  .kg-kinds{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .kg-kinds button{padding:8px 2px;border-radius:10px;background:var(--soft);font-size:12px;font-weight:700;color:var(--muted);line-height:1.25}
+  .kg-kinds button.on{color:#fff;background:var(--kc,var(--accent))}
+  .kg-f{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .kg-f label{display:block;font-size:11px;font-weight:700;color:var(--muted)}.kg-f .w{grid-column:1/-1}
+  .kg-f input{width:100%;margin-top:2px;min-width:0}
+  .kg-acts{display:flex;gap:8px;margin-top:10px}
+  .kg-btn{flex:1;padding:11px;border-radius:12px;background:var(--g);color:#fff;font-weight:800}
+  .kg-btn.sub{flex:0 0 auto;background:var(--soft);color:var(--ink);font-weight:700;padding:11px 14px}
+  .kg-btn:disabled{opacity:.5}
+  .kg-it{display:flex;gap:10px;align-items:center;padding:10px;margin:0 -6px;border-radius:12px;border-top:1px solid var(--line)}
+  .kg-it:first-child{border-top:none}
+  .kg-it.soon{background:var(--warnbg);border-top-color:transparent}.kg-it.soon + .kg-it{border-top-color:transparent}
+  .kg-it.over{background:var(--negbg);border-top-color:transparent}.kg-it.over + .kg-it{border-top-color:transparent}
+  .kg-it .when{flex:0 0 76px;text-align:center;line-height:1.2}
+  .kg-it .when b{display:block;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.02em}
+  .kg-it .when small{font-size:11px;color:var(--muted);font-weight:700}
+  .kg-it.soon .when small{color:var(--warn)}.kg-it.over .when small{color:var(--neg)}
+  .kg-it .body{flex:1;min-width:0;text-align:left}
+  .kg-it .nm{font-weight:700;word-break:break-word}
+  .kg-it .mt{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .kg-tag{font-size:10px;font-weight:800;border-radius:5px;padding:1px 6px;color:#fff;background:var(--kc)}
+  .kg-amt{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:14px}
+  .kg-done{flex:0 0 auto;padding:7px 10px;border-radius:10px;background:#fff;border:1px solid var(--line);font-size:13px;font-weight:700;color:var(--ok)}
+  .kg-mini{flex:0 0 auto;padding:6px 9px;border-radius:9px;background:var(--soft);font-size:12px;font-weight:700}.kg-mini.del{color:var(--neg)}
+  .kg-empty{padding:18px 0;text-align:center;color:var(--muted);font-size:13px}
+  .kg-legend{display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:8px}
+  .kg-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+  .kg-toggle{width:100%;text-align:center;padding:4px;font-size:13px;font-weight:700;color:var(--accent)}
+  #kgDoneList .kg-it{opacity:.6}#kgDoneList .nm{text-decoration:line-through}
+  .kg-note{border-radius:14px;padding:12px 14px;font-size:13px;background:#e8f6f4;color:#0b5f66;margin-bottom:12px}
+  .kg-note.warn{background:var(--warnbg);color:#8a4b08}.kg-note b{display:block;margin-bottom:2px}
+  .kg-note .kg-btn{margin-top:8px;display:block;width:100%}
   @media (max-width:600px){main{padding:10px}.card{padding:14px}}
 </style>
 </head>
 <body>
 <header>
   <h1>定期報告<small id="hDate"></small></h1>
-  <a class="hlink" href="kigen.html" aria-label="お金の期日">🗓</a>
   <a class="hlink" href="dash.html" aria-label="ダッシュボード">📊</a>
   <button data-go="hist">履歴</button>
   <button data-go="set">設定</button>
@@ -284,6 +322,7 @@
   <button data-tab="task">タスク</button>
   <button data-tab="cf">資金繰り</button>
   <button data-tab="plan">予定</button>
+  <button data-tab="kg">期日</button>
 </nav>
 <!-- ===== 入力 ===== -->
 <div class="page" id="p-form">
@@ -492,6 +531,41 @@
 </div>
 
 <!-- ===== 設定 ===== -->
+<!-- ===== 期日（請求書・支払い・契約更新・税金） ===== -->
+<div class="page" id="p-kg">
+  <div id="kgNotice"></div>
+  <div class="card" id="kgForm">
+    <h2 id="kgFormTitle">期日を登録</h2>
+    <div class="kg-kinds" id="kgKinds"></div>
+    <div class="kg-f">
+      <div class="w"><label for="kgName">名前</label><input id="kgName" type="text" placeholder="例：山田商店への請求書" maxlength="80" autocomplete="off"></div>
+      <div><label for="kgAmt">金額（円）</label><input id="kgAmt" type="text" inputmode="numeric" placeholder="例：62000" autocomplete="off"></div>
+      <div><label for="kgDate" id="kgDateL">日付</label><input id="kgDate" type="date"></div>
+    </div>
+    <div class="kg-acts">
+      <button class="kg-btn sub" id="kgCancel" hidden>やめる</button>
+      <button class="kg-btn sub" id="kgDel" hidden style="color:var(--neg)">削除</button>
+      <button class="kg-btn" id="kgSave">登録する</button>
+    </div>
+    <div class="hint warn" id="kgErr" hidden></div>
+  </div>
+  <div class="card">
+    <h2>期日が近い順 <span class="sub" id="kgAt"></span></h2>
+    <div id="kgList"></div>
+    <div class="kg-legend"><span><i style="background:#fdecec;border:1px solid #f3c4c4"></i>期限切れ</span><span><i style="background:#fff4e5;border:1px solid #f6d7a8"></i>7日以内</span></div>
+  </div>
+  <div class="card" id="kgDoneCard" hidden>
+    <button class="kg-toggle" id="kgDoneToggle"></button>
+    <div id="kgDoneList" hidden></div>
+  </div>
+  <div class="card">
+    <h2>通知</h2>
+    <div class="hint" style="margin-top:0">期日の前日と当日の朝9時に、この端末へ通知します（アプリを閉じていても届きます）。</div>
+    <div class="kg-acts"><button class="kg-btn sub" id="kgNotifOff" hidden>この端末の通知をやめる</button><button class="kg-btn sub" id="kgTest">テスト通知</button></div>
+    <div class="hint" id="kgNotifState"></div>
+  </div>
+</div>
+
 <div class="page" id="p-set">
   <div class="card">
     <h2>スマホとiPadの同期<span class="sub">同じ合言葉を入れた端末どうしで、データが自動で同じになります</span></h2>
@@ -828,10 +902,10 @@ function check(){
 
 /* ---------- 画面切替 ---------- */
 let page='form',lastMain='form';
-const TABS=['form','task','cf','plan'];
+const TABS=['form','task','cf','plan','kg'];
 function go(p){
   page=p;if(TABS.includes(p))lastMain=p;
-  ['form','prev','cf','task','tsend','hist','set','plan','reji'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  ['form','prev','cf','task','tsend','hist','set','plan','reji','kg'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('tbar').style.display=p==='task'?'flex':'none';
   $('tabs').style.display=TABS.includes(p)?'flex':'none';
@@ -846,6 +920,7 @@ function go(p){
   if(p==='plan')renderPlan();
   if(p==='form'){renderAll();rjLink()}
   if(p==='reji')renderReji();
+  if(p==='kg')kgRefresh();
   scrollTo(0,0);
 }
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(page===b.dataset.go?lastMain:b.dataset.go));
@@ -1737,11 +1812,90 @@ $('btnNew').onclick=()=>{load(allReports()[todayStr()]||blank(todayStr()));go(TA
 function load(o){R=JSON.parse(JSON.stringify(o));save();if(page==='form')renderAll()}
 
 load(allReports()[todayStr()]||blank(todayStr()));
+/* ---------- 期日（請求書・支払い・契約更新・税金）。サーバーに置き、前日と当日の朝9時に通知する ---------- */
+const KG_API='https://task-app-nine-liard.vercel.app/api/due';
+const KG_KINDS=[{id:'invoice',name:'請求書の発行',date:'発行日'},{id:'pay',name:'支払い',date:'支払い期日'},{id:'renew',name:'契約の更新',date:'更新日'},{id:'tax',name:'税金の納付',date:'納付期限'}];
+const KG_KIND=Object.fromEntries(KG_KINDS.map(k=>[k.id,k]));
+let KG=ls.get('kigen_cache',[]),kgSubs=null,kgKind='pay',kgEdit=null,kgShowDone=false,kgReg=null,kgMySub=null;
+const kgDays=s=>Math.round((new Date(s+'T00:00')-new Date(dstr(new Date())+'T00:00'))/864e5);
+const kgMd=s=>md(s)+'('+WD[new Date(s+'T00:00').getDay()]+')';
+async function kgCall(op,extra){
+  const r=await fetch(KG_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op,key:syKey(),...extra})});
+  let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error(j.error||('通信エラー '+r.status));
+  if(j.items){KG=j.items;lsRaw('kigen_cache',KG);lsRaw('kigen_at',Date.now())}
+  if(typeof j.subs==='number')kgSubs=j.subs;
+  return j}
+function kgKinds(){$('kgKinds').innerHTML=KG_KINDS.map(k=>`<button data-kk="${k.id}" class="${k.id===kgKind?'on':''}" style="--kc:var(--k-${k.id})">${k.name.replace('の','の<br>')}</button>`).join('');$('kgDateL').textContent=KG_KIND[kgKind].date}
+$('kgKinds').onclick=e=>{const b=e.target.closest('[data-kk]');if(b){kgKind=b.dataset.kk;kgKinds()}};
+function kgReset(){kgEdit=null;$('kgName').value=$('kgAmt').value=$('kgDate').value='';$('kgFormTitle').textContent='期日を登録';$('kgSave').textContent='登録する';$('kgCancel').hidden=$('kgDel').hidden=$('kgErr').hidden=true;kgKinds()}
+function kgErr(m){$('kgErr').textContent=m;$('kgErr').hidden=false}
+function kgEditItem(id){const it=KG.find(x=>x.id===id);if(!it)return;kgEdit=id;kgKind=it.kind;kgKinds();$('kgName').value=it.name;$('kgAmt').value=it.amount??'';$('kgDate').value=it.date;
+  $('kgFormTitle').textContent='期日を直す';$('kgSave').textContent='保存する';$('kgCancel').hidden=$('kgDel').hidden=false;$('kgErr').hidden=true;$('kgForm').scrollIntoView({behavior:'smooth',block:'start'})}
+$('kgCancel').onclick=kgReset;
+$('kgDel').onclick=async()=>{if(!kgEdit||!confirm('この期日を削除しますか？'))return;try{await kgCall('delete',{id:kgEdit});kgReset();kgRender();toast('削除しました')}catch(e){kgErr(e.message)}};
+$('kgSave').onclick=async()=>{
+  const name=$('kgName').value.trim(),amt=$('kgAmt').value.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/[,，円\s]/g,''),date=$('kgDate').value;
+  if(!name)return kgErr('名前を入れてください');if(amt&&!/^-?\d+$/.test(amt))return kgErr('金額は数字で入れてください');if(!date)return kgErr('日付を選んでください');
+  if(syKey().length<8)return kgErr('先に「設定」で同期の合言葉を決めてください（期日はその合言葉で保存します）');
+  $('kgSave').disabled=true;try{await kgCall('save',{id:kgEdit,item:{kind:kgKind,name,amount:amt,date}});toast(kgEdit?'保存しました':'登録しました');kgReset();kgRender()}
+  catch(e){kgErr(e.message)}finally{$('kgSave').disabled=false}};
+function kgWhen(n){return n<0?`${-n}日過ぎ`:n===0?'今日':n===1?'明日':`あと${n}日`}
+function kgRow(it,done){const n=kgDays(it.date),c=done?'':n<0?'over':n<=7?'soon':'';
+  return `<div class="kg-it ${c}"><div class="when"><b>${kgMd(it.date)}</b><small>${done?'済み':kgWhen(n)}</small></div>
+    <button class="body" data-kedit="${esc(it.id)}"><div class="nm">${esc(it.name)}</div><div class="mt"><span class="kg-tag" style="--kc:var(--k-${it.kind})">${esc(KG_KIND[it.kind]?.name||'')}</span>${it.amount!=null?`<span class="kg-amt">${fmt(it.amount)}円</span>`:''}</div></button>
+    ${done?`<button class="kg-mini" data-kundo="${esc(it.id)}">戻す</button><button class="kg-mini del" data-kdel="${esc(it.id)}">削除</button>`:`<button class="kg-done" data-kdone="${esc(it.id)}">済み</button>`}</div>`}
+function kgRender(){
+  const open=KG.filter(x=>!x.done).sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'ja')),done=KG.filter(x=>x.done).sort((a,b)=>b.date.localeCompare(a.date));
+  $('kgList').innerHTML=open.length?open.map(x=>kgRow(x,false)).join(''):`<div class="kg-empty">${syKey().length<8?'「設定」で同期の合言葉を決めると使えます':'登録された期日はありません'}</div>`;
+  $('kgDoneCard').hidden=!done.length;$('kgDoneToggle').textContent=(kgShowDone?'▲ 済みを隠す':'▼ 済みを表示')+`（${done.length}）`;
+  $('kgDoneList').hidden=!kgShowDone;$('kgDoneList').innerHTML=done.map(x=>kgRow(x,true)).join('');
+  const at=ls.get('kigen_at',0);$('kgAt').textContent=at?new Date(at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+' 更新':'';
+  kgNotice();kgDot()}
+function kgDot(){const b=document.querySelector('[data-tab=kg]');if(!b)return;let dot=b.querySelector('.dot');const ns=KG.filter(x=>!x.done).map(x=>kgDays(x.date));
+  const cls=ns.some(n=>n<=1)?'dot':ns.some(n=>n<=7)?'dot soon':'';if(!cls){dot&&dot.remove();return}
+  if(!dot){dot=document.createElement('i');b.appendChild(dot)}dot.className=cls}
+$('kgDoneToggle').onclick=()=>{kgShowDone=!kgShowDone;kgRender()};
+$('p-kg').addEventListener('click',async e=>{const b=e.target.closest('[data-kdone],[data-kundo],[data-kdel],[data-kedit]');if(!b)return;
+  if(b.dataset.kedit)return kgEditItem(b.dataset.kedit);
+  const id=b.dataset.kdone||b.dataset.kundo||b.dataset.kdel,op=b.dataset.kdone?'done':b.dataset.kundo?'undo':'delete';
+  if(op==='delete'&&!confirm('完全に削除しますか？'))return;
+  b.disabled=true;try{await kgCall(op,{id});kgRender();toast(op==='done'?'済みにしました':op==='undo'?'一覧に戻しました':'削除しました')}catch(err){b.disabled=false;toast(err.message)}});
+// 通知（Web Push）。iPhoneはホーム画面に追加したときだけ使える
+const kgIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const kgStandalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const kgPushOK='serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+function kgState(){if(!kgPushOK)return kgIOS&&!kgStandalone?'needhome':'unsupported';if(Notification.permission==='denied')return 'denied';return kgMySub?'on':'off'}
+function kgNotice(){const s=kgState();let h='';
+  if(s==='needhome')h=`<div class="kg-note warn"><b>通知を受け取るには、このアプリをホーム画面に追加してください</b>Safariの共有ボタン（□↑）→「ホーム画面に追加」→ ホーム画面の「定期報告」から開いて、通知をオンにします。</div>`;
+  else if(s==='off')h=`<div class="kg-note"><b>期日の前日と当日の朝9時に通知します</b>アプリを閉じていても届きます。<button class="kg-btn" id="kgNotifOn">この端末で通知をオンにする</button></div>`;
+  else if(s==='denied')h=`<div class="kg-note warn"><b>通知が許可されていません</b>端末の設定 → 通知 →「定期報告」で許可してください。</div>`;
+  else if(s==='unsupported')h=`<div class="kg-note warn"><b>このブラウザは通知に対応していません</b>iPhoneは iOS 16.4 以降で、ホーム画面に追加すると使えます。</div>`;
+  $('kgNotice').innerHTML=h;const b=$('kgNotifOn');if(b)b.onclick=kgEnable;
+  $('kgNotifState').textContent='この端末：'+{on:'オン',off:'オフ',denied:'許可されていません',needhome:'ホーム画面から開いてください',unsupported:'未対応'}[s]+(kgSubs==null?'':`／通知が届く端末：${kgSubs}台`);
+  $('kgNotifOff').hidden=s!=='on'}
+const kgB64=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');const r=atob(s+'='.repeat((4-s.length%4)%4));return Uint8Array.from(r,c=>c.charCodeAt(0))};
+async function kgEnable(){
+  if(syKey().length<8)return toast('先に「設定」で同期の合言葉を決めてください');
+  try{const p=await Notification.requestPermission();if(p!=='granted'){kgNotice();return toast('通知が許可されませんでした')}
+    kgReg=kgReg||await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready;
+    const {key}=await kgCall('vapid'),want=kgB64(key);let sub=await kgReg.pushManager.getSubscription();
+    if(sub&&sub.options&&sub.options.applicationServerKey){const cur=new Uint8Array(sub.options.applicationServerKey);if(cur.length!==want.length||cur.some((v,i)=>v!==want[i])){await sub.unsubscribe();sub=null}}
+    sub=sub||await kgReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:want});
+    const ua=navigator.userAgent,label=/iPhone/.test(ua)?'iPhone':kgIOS?'iPad':/Android/.test(ua)?'Android':'パソコン';
+    await kgCall('subscribe',{sub:sub.toJSON(),label});kgMySub=sub;kgNotice();toast('通知をオンにしました')}
+  catch(e){toast('通知をオンにできませんでした：'+e.message)}}
+$('kgNotifOff').onclick=async()=>{if(!kgMySub)return;try{await kgCall('unsubscribe',{endpoint:kgMySub.endpoint});await kgMySub.unsubscribe();kgMySub=null;kgNotice();toast('この端末への通知をやめました')}catch(e){toast(e.message)}};
+$('kgTest').onclick=async()=>{if(syKey().length<8)return toast('先に「設定」で同期の合言葉を決めてください');try{const j=await kgCall('test');toast(j.sent?`テスト通知を送りました（${j.sent}件）`:'通知が届く端末がありません。先に通知をオンにしてください')}catch(e){toast(e.message)}};
+async function kgRefresh(){kgRender();if(syKey().length<8)return;try{await kgCall('list')}catch(e){toast('期日：'+e.message)}kgRender()}
+(async()=>{if('serviceWorker' in navigator){try{kgReg=await navigator.serviceWorker.register('sw.js');kgMySub=await kgReg.pushManager?.getSubscription()}catch(e){}}kgKinds();kgRefresh()})();
+if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.go==='kg')go('kg')});
 go(TABS.includes(location.hash.slice(1))?location.hash.slice(1):'form');renderTabDot();
 // 合言葉を変えたら、新しい保存場所とはじめての同期をやり直す
 $('syKey').addEventListener('change',()=>{const v=$('syKey').value.trim();if(v===syKey())return;lsRaw('teiki_sync_key',v);lsRaw('teiki_sync_init',false);lsRaw('teiki_sync_pull',0);lsRaw('teiki_sync_u',{});lsRaw('teiki_sync_dirty',[]);syMsg='';syShow();syncNow()});
 $('syKeyShow').onclick=()=>{const i=$('syKey');i.type=i.type==='password'?'text':'password';$('syKeyShow').textContent=i.type==='password'?'表示':'隠す'};
 $('syNow').onclick=()=>{if(syKey().length<8){toast('合言葉（8文字以上）を入れてください');return}syMsg='同期中…';syShow();syncNow()};
+
 syncNow();setInterval(()=>{if(!document.hidden)syncNow()},60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow()});
 </script>

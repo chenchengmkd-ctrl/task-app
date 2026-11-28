@@ -466,6 +466,13 @@ def build(today_iso, fresh=False):
     except Exception as e:
         print('dash line error', e)
         out['line'] = {'error': str(e)[:120], 'items': []}
+    try:
+        from . import due
+        lim = config.iso_of_date(config.parse_date(today_iso) + timedelta(days=7))
+        out['due'] = sorted(({k: it.get(k) for k in ('kind', 'name', 'amount', 'date')} for it in due.list_items()
+                             if not it.get('done') and it.get('date', '9') <= lim), key=lambda x: x['date'])
+    except Exception as e:
+        print('dash due error', e)
     mail = get_state('dash:mail')
     out['mail'] = mail if isinstance(mail, dict) else None
     return out

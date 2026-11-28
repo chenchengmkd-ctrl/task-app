@@ -90,7 +90,7 @@
 <body>
 <header>
   <div class="d"><small id="hDay"></small><b id="hDate"></b></div>
-  <a href="kigen.html" aria-label="お金の期日" style="color:#fff;font-weight:700;font-size:13px;padding:7px 10px;border-radius:9px;background:rgba(255,255,255,.18);text-decoration:none">🗓 期日</a>
+  <a href="teiki.html#kg" aria-label="お金の期日" style="color:#fff;font-weight:700;font-size:13px;padding:7px 10px;border-radius:9px;background:rgba(255,255,255,.18);text-decoration:none">🗓 期日</a>
   <button id="btnReload" aria-label="更新">↻ 更新</button>
   <button id="btnSet" aria-label="設定">⚙</button>
 </header>
@@ -319,6 +319,9 @@ function renderMore(){const box=$('more');let h='';
     (tk.length?tk.slice(0,4).map(x=>`<div class="row"><span class="k">${esc(x.t)}${x.sub?`<span class="s">（${esc(x.sub)}）</span>`:''}</span>${x.late?`<span class="late">${md(x.late)}から</span>`:''}</div>`).join('')+(tk.length>4?`<div class="hint">ほか ${tk.length-4}件</div>`:''):'<div class="hint">なし</div>')+'</div>';
   const ds=dueSoon();if(ds.length)h+='<div><h3>期限が近いタスク</h3>'+ds.map(x=>`<div class="row"><span class="k">${esc(x.t)}</span><span class="${x.due<TODAY?'late':'s'}">期限 ${md(x.due)}${x.due<TODAY?'（過ぎています）':''}</span></div>`).join('')+'</div>';
   const pay=payments();h+='<div><h3>7日以内の支払い'+(pay.length?`　計 ${fmt(pay.reduce((a,x)=>a+(x.v||0),0))}円`:'')+'</h3>'+(pay.length?pay.map(x=>`<div class="row"><span class="s" style="min-width:52px">${md(x.d)}（${WD[new Date(x.d+'T00:00').getDay()]}）</span><span class="k">${esc(x.k)}</span><span class="v">${x.v==null?'未定':(x.est?'約':'')+fmt(x.v)}</span></div>`).join(''):'<div class="hint">なし</div>')+'</div>';
+  const DK={invoice:'請求書の発行',pay:'支払い',renew:'契約の更新',tax:'税金の納付'},due=SRV&&SRV.due;
+  if(due)h+='<div><h3>お金の期日（7日以内）</h3>'+(due.length?due.map(x=>{const n=Math.round((new Date(x.date+'T00:00')-new Date(TODAY+'T00:00'))/864e5);
+    return `<div class="row"><span class="s" style="min-width:52px">${md(x.date)}（${WD[new Date(x.date+'T00:00').getDay()]}）</span><span class="k">${esc(x.name)} <span class="s">${DK[x.kind]||''}</span></span><span class="${n<=1?'late':'s'}">${n<0?-n+'日過ぎ':n===0?'今日':n===1?'明日':'あと'+n+'日'}</span>${x.amount!=null?`<span class="v">${fmt(x.amount)}</span>`:''}</div>`}).join(''):'<div class="hint">なし</div>')+'</div>';
   const rj=reji();if(rj.has&&rj.now!==rj.base)h+=`<div><h3>レジ金</h3><div class="row"><span class="k">いま ${fmt(rj.now)}円</span><span class="${rj.now<rj.base?'late':'s'}">${rj.now<rj.base?`あと${fmt(rj.base-rj.now)}戻す`:`${fmt(rj.now-rj.base)}多い`}</span></div></div>`;
   const yr=REP[YDAY];h+=`<div><h3>昨日の資金報告</h3><div class="row"><span class="k">${yr?(yr.sent?'送信済み':'まだ送っていません'):'記録がありません'}</span></div></div>`;
   box.innerHTML=h}

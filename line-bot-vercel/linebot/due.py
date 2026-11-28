@@ -1,4 +1,4 @@
-"""会社のお金の期日（請求書の発行日・支払い期日・契約の更新日・税金の納付期限）を見張る（kigen.html 用）。
+"""会社のお金の期日（請求書の発行日・支払い期日・契約の更新日・税金の納付期限）を見張る（定期報告 teiki.html の「期日」タブ用）。
 
 - 期日は bot_state の due:items に置く。スマホとiPadで同時に触っても消し合わないよう、1件ずつ書き換える
 - 通知は Web Push（ホーム画面に追加したページへ届く。アプリを閉じていても届く）。
@@ -32,7 +32,7 @@ NOTIFY_WINDOW_MIN = 60          # ポーリングが遅れても9時台なら送
 KINDS = {'invoice': '請求書の発行', 'pay': '支払い', 'renew': '契約の更新', 'tax': '税金の納付'}
 MAX_ITEMS = 500
 MAX_SUBS = 10
-APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/kigen.html'
+APP_URL = 'https://chenchengmkd-ctrl.github.io/task-app/teiki.html#kg'
 VAPID_SUB = 'https://chenchengmkd-ctrl.github.io/task-app/'
 
 
