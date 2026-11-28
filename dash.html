@@ -184,14 +184,17 @@ function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,c=monthCost();
   let h=`<div class="hint"><b style="color:var(--ink)">屋台うなぎ</b>　昨日（${md(s.yesterday_date)}）の売上</div>`;
   if(!own)h+='<div class="hint warn">Squareがbotにつながっていないため出せません</div>';
   else if(own.error)h+=`<div class="hint warn">Squareから読めませんでした（${esc(own.error)}）</div>`;
-  else{const mtd=own.month||0,forecast=passed?mtd/passed*dim:0,profit=mtd-c.cost,laborRate=mtd?c.labor/mtd:0;
+  else{// 経費は勤怠アプリ（人件費）と勤怠botのレシート（原材料・消耗品）、固定費は今月分。読めないときだけ定期報告の出金で代わりに出す
+    const k=SRV.costs&&!SRV.costs.error?SRV.costs:null,labor=k?k.labor:c.labor,cost=k?k.variable+k.fixed:c.cost;
+    const mtd=own.month||0,forecast=passed?mtd/passed*dim:0,profit=mtd-cost,laborRate=mtd?labor/mtd:0;
     h+=`<div class="big">${fmt(own.yesterday)}<span style="font-size:14px;color:var(--muted);font-weight:600"> 円</span><span style="font-size:13px;color:var(--muted);font-weight:600">　${own.count}件</span></div>
     <div class="kpis">
       <div class="kpi"><small>今月の合計（昨日まで）</small><b>${man(mtd)}</b><em>円</em></div>
       <div class="kpi"><small>月末の見込み</small>${passed?`<b>${man(forecast)}</b><em>今のペースなら</em>`:'<b style="font-size:13px;color:var(--muted)">2日目から出ます</b>'}</div>
       <div class="kpi"><small>利益（概算）</small><b class="${profit<0?'neg':''}">${man(profit)}</b><em>円</em></div>
-      <div class="kpi"><small>人件費</small><b>${man(c.labor)}</b><em>${mtd?'売上の'+Math.round(laborRate*100)+'%':''}</em></div></div>
-    <div class="hint" style="margin-top:6px">利益は、今月の売上から定期報告の出金（${c.days}日分・口座の移し替えは除く）${man(c.cost)}円を引いた目安です。</div>`}
+      <div class="kpi"><small>人件費</small><b>${man(labor)}</b><em>${mtd?'売上の'+Math.round(laborRate*100)+'%':''}</em></div></div>`+
+    (k?`<div class="hint" style="margin-top:6px">利益＝今月の売上 − ${k.by.map(x=>`${x.name} ${man(x.amount)}`).join(' − ')}${k.fixed?` − 固定費 ${man(k.fixed)}（今月分）`:''}。人件費は勤怠アプリ、原材料・消耗品は勤怠botのレシートから（昨日まで）。</div>`
+       :`<div class="hint warn" style="margin-top:6px">勤怠アプリのデータを読めなかったので、定期報告の出金（${c.days}日分）${man(c.cost)}円で出しています。</div>`)}
   if(others.length){h+='<div style="margin-top:12px"><div class="st" style="border-top:none"><span style="font-size:11px;font-weight:700">別会社</span><b style="font-size:11px;color:var(--muted);font-weight:600">昨日</b><b style="font-size:11px;color:var(--muted);font-weight:600">今月</b></div>'+
     others.map(x=>`<div class="st"><span><b style="color:var(--ink);font-weight:700">${esc(STORE[x.id]||x.name)}</b> <small>${esc(x.name)}${x.count!=null&&!x.error?`・${x.count}件`:''}</small></span>${x.error?'<b class="neg" style="min-width:150px">読めませんでした</b>':`<b>${fmt(x.yesterday)}</b><b>${man(x.month)}</b>`}</div>`).join('')+'</div>'}
   box.innerHTML=h;$('salesSub').textContent=s.at?`${s.at} 時点`:''}

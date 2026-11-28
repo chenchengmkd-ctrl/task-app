@@ -9,7 +9,9 @@ import time
 from datetime import date, timedelta
 
 from . import config
-from .supabase_client import get_state, set_state
+from urllib.parse import quote
+
+from .supabase_client import get_state, get_supabase, set_state
 
 OWNER_KEY = 'dash:owner'
 SALES_TTL_SEC = 20 * 60
@@ -107,6 +109,40 @@ def _sales(today_iso, fresh=False):
     return out
 
 
+# 屋台うなぎの経費。勤怠アプリ・勤怠bot（birdmen_kv）の日ごとの収支（birdmen:report:日付）の出金を、
+# 種類ごとに今月の1日から昨日まで足す。人件費＝勤怠のシフト合計、原材料・消耗品＝勤怠botで読んだレシート。
+# 固定費（birdmen:fixed-costs）は支払日に関係なく今月分をまるごと入れる（月の途中で利益が大きく動かないように）。
+COST_NAMES = {'labor': '人件費', 'ingredient': '原材料', 'supplies': '消耗品'}
+
+
+def _costs(today_iso):
+    d = date.fromisoformat(today_iso)
+    month = today_iso[:7]
+    rows = get_supabase('birdmen_kv', f'key=like.{quote("birdmen:report:" + month + "-")}*&select=key,value')
+    by, days = {}, 0
+    for r in rows:
+        day = r['key'].rsplit(':', 1)[-1]
+        if day >= today_iso or not isinstance(r.get('value'), dict):
+            continue
+        days += 1
+        for acct in ('corp', 'pers', 'cash'):
+            for w in ((r['value'].get(acct) or {}).get('withdraws') or []):
+                try:
+                    amt = float(w.get('amount') or 0)
+                except (TypeError, ValueError):
+                    continue
+                cat = w.get('category') or 'other'
+                by[cat] = by.get(cat, 0) + amt
+    fixed_rows = get_supabase('birdmen_kv', 'key=eq.birdmen:fixed-costs&select=value')
+    fixed_list = (fixed_rows[0].get('value') if fixed_rows else None) or []
+    fixed = [{'label': f.get('label') or '', 'amount': int(float(f.get('amount') or 0)), 'day': f.get('day')}
+             for f in fixed_list if isinstance(f, dict)]
+    cats = [{'id': k, 'name': COST_NAMES.get(k, 'その他'), 'amount': int(v)} for k, v in sorted(by.items(), key=lambda x: -x[1])]
+    return {'days': days, 'by': cats, 'labor': int(by.get('labor', 0)),
+            'variable': int(sum(by.values())), 'fixed': sum(f['amount'] for f in fixed), 'fixed_items': fixed,
+            'first_day': d.day == 1}
+
+
 def build(today_iso, fresh=False):
     out = {'ok': True, 'date': today_iso}
     try:
@@ -114,6 +150,11 @@ def build(today_iso, fresh=False):
     except Exception as e:
         out['calendar'] = {'enabled': True, 'events': [], 'error': str(e)[:120]}
     out['sales'] = _sales(today_iso, fresh)
+    try:
+        out['costs'] = _costs(today_iso)
+    except Exception as e:
+        print('dash costs error', e)
+        out['costs'] = {'error': str(e)[:120]}
     mail = get_state('dash:mail')
     out['mail'] = mail if isinstance(mail, dict) else None
     return out
