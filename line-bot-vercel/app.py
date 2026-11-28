@@ -633,6 +633,17 @@ def _handle_dash(environ, start_response):
     today = body.get('date') or config.today_iso()
     if not config.parse_date(today):
         return _respond(start_response, '400 Bad Request', {'error': 'date の形が違います'}, cors=True)
+    if body.get('detail'):
+        # 別会社の店の詳しい数字（押したときだけ。レジを何度も開くので時間がかかる）
+        from datetime import date as _date, timedelta as _td
+        day = body.get('day') or (_date.fromisoformat(today) - _td(days=1)).isoformat()
+        if not config.parse_date(day):
+            return _respond(start_response, '400 Bad Request', {'error': 'day の形が違います'}, cors=True)
+        try:
+            detail = dash.store_detail(str(body['detail']), day)
+        except Exception as e:
+            return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
+        return _respond(start_response, '200 OK', {'ok': True, 'detail': detail}, cors=True)
     try:
         result = dash.build(today, fresh=bool(body.get('fresh')))
     except Exception as e:

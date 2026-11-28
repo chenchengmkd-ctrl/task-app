@@ -58,12 +58,18 @@
   .mini h3{font-size:12px;color:var(--muted);font-weight:800;margin-bottom:2px}
   footer{max-width:760px;margin:6px auto 0;padding:0 16px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
   footer a{color:var(--accent);font-weight:700;text-decoration:none}
-  dialog{border:none;border-radius:18px;padding:18px;width:min(92vw,420px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  dialog{margin:auto;border:none;border-radius:18px;padding:18px;width:min(92vw,420px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
   dialog::backdrop{background:rgba(0,0,0,.35)}
   dialog label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 4px}
   dialog input{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:16px}
   .btns{display:flex;gap:8px;margin-top:16px}.btns button{flex:1;padding:11px;border-radius:12px;font-weight:700;background:var(--soft);color:var(--accent)}.btns .p{background:var(--g);color:#fff}
   .skel{color:var(--muted);font-size:13px}
+  .stb{width:100%;text-align:left;align-items:center}.stb i{font-style:normal;color:var(--muted);margin-left:6px}.stb:active{background:var(--soft)}
+  .wide-dlg{width:min(94vw,560px);max-height:88vh;overflow:auto}
+  .dh{font-size:12px;color:var(--muted);font-weight:800;margin:14px 0 4px}
+  .hb{display:grid;grid-template-columns:64px 1fr 64px auto;align-items:center;gap:6px;font-size:12px;padding:3px 0;font-variant-numeric:tabular-nums}
+  .hb i{height:10px;border-radius:4px;background:var(--g);display:block;min-width:2px}.hb b{text-align:right}.hb em{font-style:normal;color:var(--muted);font-size:11px;white-space:nowrap}
+  button.small{margin-left:6px;padding:3px 8px;border-radius:7px;background:var(--soft);color:var(--accent);font-weight:700;font-size:12px}
 </style>
 </head>
 <body>
@@ -92,6 +98,11 @@
 </main>
 <footer><span id="upd"></span><a href="teiki.html">定期報告を開く →</a></footer>
 
+<dialog id="dlgStore" class="wide-dlg">
+  <h2 style="margin:0 0 4px"><span id="stTitle"></span><span class="sub">昨日の詳しい数字</span></h2>
+  <div id="stBody"></div>
+  <div class="btns"><button id="stClose">閉じる</button></div>
+</dialog>
 <dialog id="dlg">
   <h2 style="margin:0">ダッシュボードの設定</h2>
   <label>合言葉（定期報告の同期と同じ・8文字以上）</label>
@@ -214,9 +225,25 @@ function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,c=monthCost();
         h+=`<div class="hint" style="margin-top:6px">利益＝今月の売上 − 経費の合計。人件費は勤怠アプリ、原材料・消耗品は勤怠botのレシートから（昨日まで）。固定費は今月分をまるごと入れています。</div>`}
       else h+=`<div class="hint warn" style="margin-top:6px">勤怠アプリのデータを読めなかったので、定期報告の出金（${c.days}日分）${man(c.cost)}円で出しています。</div>`}}
   if(others.length&&(salesOpen||!own||own.error)){h+='<div style="margin-top:12px"><div class="st" style="border-top:none"><span style="font-size:11px;font-weight:700">別会社</span><b style="font-size:11px;color:var(--muted);font-weight:600">昨日</b><b style="font-size:11px;color:var(--muted);font-weight:600">今月</b></div>'+
-    others.map(x=>`<div class="st"><span><b style="color:var(--ink);font-weight:700">${esc(STORE[x.id]||x.name)}</b> <small>${esc(x.name)}${x.count!=null&&!x.error?`・${x.count}件`:''}</small></span>${x.error?'<b class="neg" style="min-width:150px">読めませんでした</b>':`<b>${fmt(x.yesterday)}</b><b>${man(x.month)}</b>`}</div>`).join('')+'</div>'}
+    others.map(x=>`<button class="st stb" data-store="${esc(x.id)}"><span><b style="color:var(--ink);font-weight:700">${esc(STORE[x.id]||x.name)}</b> <small>${esc(x.name)}${x.count!=null&&!x.error?`・${x.count}件`:''}</small></span>${x.error?'<b class="neg" style="min-width:150px">読めませんでした</b>':`<b>${fmt(x.yesterday)}</b><b>${man(x.month)}</b>`}<i>›</i></button>`).join('')+'<div class="hint">店名を押すと、昨日の客数・単価・時間別・出数などが見られます</div></div>'}
   box.innerHTML=h;$('salesSub').textContent=s.at?`${s.at} 時点`:'';
-  const tg=$('salesTog');if(tg)tg.onclick=()=>{salesOpen=!salesOpen;renderSales()}}
+  const tg=$('salesTog');if(tg)tg.onclick=()=>{salesOpen=!salesOpen;renderSales()};
+  box.querySelectorAll('[data-store]').forEach(b=>b.onclick=()=>openStore(b.dataset.store))}
+/* ---------- 別会社の店の詳しい数字（押したときだけbotに読みに行く） ---------- */
+async function openStore(id){const d=$('dlgStore'),body=$('stBody');$('stTitle').textContent=STORE[id]||id;body.innerHTML='<div class="skel">レジから読み込み中…（少し時間がかかります）</div>';d.showModal();
+  try{const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:ls.get('teiki_sync_key',''),date:TODAY,detail:id})});
+    const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok||!j.detail||!j.detail.ok)throw new Error((j.detail&&j.detail.error)||j.error||('エラー '+r.status));renderStore(j.detail,id)}
+  catch(e){body.innerHTML=`<div class="hint warn">読めませんでした（${esc(e.message)}）</div>`}}
+function renderStore(x,id){const body=$('stBody'),kp=(l,v,u)=>`<div class="kpi"><small>${l}</small><b>${v}</b><em>${u||''}</em></div>`;
+  let h=`<div class="hint">${md(x.date)}（${WD[new Date(x.date+'T00:00').getDay()]}）・${esc(x.register)}・${esc(x.at||'')} 時点</div>
+  <div class="kpis">${kp('売上',fmt(x.sales),'円')}${kp('組数（店内）',x.groups,'組')}${kp('客数（店内）',x.guests,'人')}${kp('客単価',x.per_guest!=null?fmt(x.per_guest):'—',x.per_guest!=null?'円':'')}${kp('組単価',x.per_group!=null?fmt(x.per_group):'—',x.per_group!=null?'円':'')}${kp('テイクアウト・弁当',x.takeout.count,`件・${fmt(x.takeout.sales)}円`)}</div>`;
+  if(x.stay)h+=`<h3 class="dh">滞在時間（店内・${x.stay.count}組）</h3><div class="hint" style="margin-bottom:4px">平均 <b style="color:var(--ink)">${x.stay.avg}分</b>・真ん中 ${x.stay.median}分</div>`+
+    x.stay.buckets.map(b=>`<div class="hb"><span>${b.label}</span><i style="width:${x.stay.count?b.count/x.stay.count*100:0}%"></i><b>${b.count}組</b></div>`).join('');
+  if(x.hourly.length){const mx=Math.max(1,...x.hourly.map(r=>r.sales));h+=`<h3 class="dh">時間別（${id==='usen'?'入店':'会計'}の時刻）</h3>`+
+    x.hourly.map(r=>`<div class="hb"><span>${r.h}時</span><i style="width:${r.sales/mx*100}%"></i><b>${man(r.sales)}</b><em>${r.groups}組${r.guests?`・${r.guests}人`:''}</em></div>`).join('')}
+  h+='<h3 class="dh">出数（よく出た品）</h3>'+(x.items.length?x.items.map((it,i)=>`<div class="row"><span class="s" style="min-width:20px">${i+1}</span><span class="k">${esc(it.name)}</span><span class="v">${it.qty}</span></div>`).join(''):'<div class="hint">注文の中身をまだ読めていません</div>');
+  if(!x.complete)h+=`<div class="hint warn" style="margin-top:8px">注文の中身は ${x.read}/${x.orders}件まで読めています。<button class="small" id="stMore">続きを読む</button></div>`;
+  body.innerHTML=h;const m=$('stMore');if(m)m.onclick=()=>openStore(id)}
 function renderMail(){const box=$('mail'),m=SRV&&SRV.mail;
   if(!SRV){box.innerHTML=srvErr?`<div class="hint warn">読めませんでした（${esc(srvErr)}）</div>`:'<div class="skel">読み込み中…</div>';return}
   if(!m||!Array.isArray(m.items)){box.innerHTML='<div class="hint">まだ準備中です。毎朝のメールのまとめがつながると、昨日の夕方以降に届いた連絡のうち、返事が要りそうなものが5件まで出ます。</div>';$('mailSub').textContent='';return}
@@ -246,6 +273,7 @@ async function load(fresh){const key=ls.get('teiki_sync_key','');
 $('btnReload').onclick=()=>{$('upd').textContent='更新中…';load(true)};
 $('btnSet').onclick=()=>{$('fKey').value=ls.get('teiki_sync_key','');$('dlg').showModal()};
 $('dCancel').onclick=()=>$('dlg').close();
+$('stClose').onclick=()=>$('dlgStore').close();
 $('dSave').onclick=()=>{const k=$('fKey').value.trim();if(k&&k!==ls.get('teiki_sync_key','')){ls.set('teiki_sync_key',k);ls.set('teiki_sync_init',false);ls.set('teiki_sync_pull',0)}
   $('dlg').close();load()};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)location.reload()});

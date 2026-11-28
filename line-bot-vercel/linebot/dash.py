@@ -143,6 +143,100 @@ def _costs(today_iso):
             'first_day': d.day == 1}
 
 
+# ---------- 別会社の店の詳しい数字（ハンバーグ日和＝Airレジ、鰻いち＝USENレジ） ----------
+# 客数・組数・客単価・出数・時間別の売上と人数、鰻いちは滞在時間も。注文の中身はレジの詳細を1件ずつ開くので
+# 1回に最大30件ずつ読み、全部読めたら日付ごとに保存して使い回す。
+
+def _hm(t):
+    try:
+        h, m = str(t).split(':')[:2]
+        return int(h) * 60 + int(m)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _stats(orders, with_stay):
+    dine = [o for o in orders if not (o.get('takeout') or o.get('bento'))]
+    to = [o for o in orders if o.get('takeout') or o.get('bento')]
+    sales = sum(o.get('total') or 0 for o in orders)
+    dine_sales = sum(o.get('total') or 0 for o in dine)
+    guests = sum(o.get('guests') or 0 for o in dine)
+    hours = {}
+    for o in orders:
+        mm = _hm(o.get('in') or o.get('time')) if with_stay else _hm(o.get('time'))
+        if mm is None:
+            continue
+        h = hours.setdefault(mm // 60, {'h': mm // 60, 'sales': 0, 'groups': 0, 'guests': 0})
+        h['sales'] += o.get('total') or 0
+        h['groups'] += 1
+        if not (o.get('takeout') or o.get('bento')):
+            h['guests'] += o.get('guests') or 0
+    items = {}
+    for o in orders:
+        for it in o.get('items') or []:
+            n = (it.get('name') or '').strip()
+            if n:
+                items[n] = items.get(n, 0) + int(it.get('qty') or 1)
+    out = {'sales': sales, 'orders': len(orders), 'groups': len(dine), 'guests': guests,
+           'per_guest': round(dine_sales / guests) if guests else None,
+           'per_group': round(dine_sales / len(dine)) if dine else None,
+           'takeout': {'count': len(to), 'sales': sum(o.get('total') or 0 for o in to)},
+           'hourly': [hours[k] for k in sorted(hours)],
+           'items': sorted(({'name': k, 'qty': v} for k, v in items.items()), key=lambda x: -x['qty'])[:20],
+           'items_read': sum(1 for o in orders if o.get('items'))}
+    if with_stay:
+        mins = []
+        for o in dine:
+            a, b = _hm(o.get('in')), _hm(o.get('out'))
+            if a is not None and b is not None:
+                if b < a:
+                    b += 24 * 60
+                mins.append(b - a)
+        if mins:
+            mins.sort()
+            buckets = [('〜30分', 0, 30), ('30〜60分', 30, 60), ('60〜90分', 60, 90), ('90〜120分', 90, 120), ('120分〜', 120, 10 ** 6)]
+            out['stay'] = {'avg': round(sum(mins) / len(mins)), 'median': mins[len(mins) // 2], 'count': len(mins),
+                           'buckets': [{'label': lb, 'count': sum(1 for x in mins if lo <= x < hi)} for lb, lo, hi in buckets]}
+    return out
+
+
+def store_detail(sid, day):
+    key = f'dash:storedetail:{sid}:{day}'
+    cached = get_state(key)
+    if isinstance(cached, dict) and cached.get('complete'):
+        return cached
+    if sid == 'air':
+        from . import airregi_web
+        if not airregi_web.is_enabled():
+            return {'ok': False, 'error': 'Airレジがbotにつながっていません'}
+        r = airregi_web.day_sales(day)
+        if not r.get('ok'):
+            return {'ok': False, 'error': r.get('error') or 'Airレジを読めませんでした'}
+        orders = r.get('orders') or []
+        read = sum(1 for o in orders if o.get('cash') is not None or o.get('items'))
+        out = {'ok': True, 'store': 'ハンバーグ日和', 'register': 'Airレジ', 'date': day, **_stats(orders, False)}
+    elif sid == 'usen':
+        from . import usen
+        if not usen.is_enabled():
+            return {'ok': False, 'error': 'USENレジがbotにつながっていません'}
+        html = usen._search(day, day)
+        orders = [o for o in usen.parse_slips(html) if not o.get('date') or o['date'] == day]
+        try:
+            usen._fill_items(day, html, orders)
+        except Exception as e:  # 注文の中身が取れなくても、ほかの数字は出す
+            print('dash usen items failed:', e)
+        read = sum(1 for o in orders if o.get('items'))
+        out = {'ok': True, 'store': '鰻いち', 'register': 'USENレジ', 'date': day, **_stats(orders, True)}
+    else:
+        return {'ok': False, 'error': 'その店はありません'}
+    out['read'] = read
+    out['complete'] = read >= out['orders']
+    out['at'] = config.now_jst().strftime('%H:%M')
+    if out['complete']:
+        set_state(key, out)
+    return out
+
+
 def build(today_iso, fresh=False):
     out = {'ok': True, 'date': today_iso}
     try:

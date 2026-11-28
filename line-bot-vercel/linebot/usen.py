@@ -233,6 +233,9 @@ def parse_slips(html):
         out.append({
             'id': 'usen-' + slip,
             'time': tm.zfill(5),
+            # 入店・退店の時刻（滞在時間の集計に使う）
+            'in': in_t.group(1).zfill(5) if in_t else '',
+            'out': out_t.group(1).zfill(5) if out_t else '',
             'total': _yen(joined),
             'table': table,
             'guests': int(ppl.group(1)) if ppl else 0,
