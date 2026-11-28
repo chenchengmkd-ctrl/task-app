@@ -216,9 +216,12 @@ def parse_slips(html):
         if len(cells) < 7:
             continue
         joined = ' '.join(cells)
-        if '会計済' not in joined:  # 取消・未会計などは数えない
+        # 数えるのは「会計済」と「黒伝票」。赤黒訂正（会計のやり直し）では、元の伝票が「支払取消」、
+        # 打ち消しが「赤伝票」、正しい会計が「黒伝票」になる。USENの売上実績と同じく、黒伝票を売上に入れる
+        status = cells[3]
+        if not re.search(r'会計済|黒伝票', status) or re.search(r'支払取消|赤伝票', status):
             continue
-        slip = re.sub(r'\s+', '', cells[0])
+        slip = re.sub(r'\s+', '', re.sub(r'[(（].*', '', cells[0]))  # 黒伝票は「番号 (元伝票の番号)」なので、括弧の前だけ
         args = _DETAIL_ARGS.search(row)
         # 分割会計：元の伝票（番号に「-」なし）に全部の注文と合計が入り、分けた分は「-1」「-2」…の伝票になる。
         # 二重に数えないよう、元の伝票だけを残す
@@ -315,7 +318,7 @@ def _month_before(date_iso):
     d = date.fromisoformat(date_iso)
     if d.day == 1:
         return 0
-    key = f'usen:month_before2:{date_iso}'  # 2: 分割会計の二重計上を直したあとの値
+    key = f'usen:month_before3:{date_iso}'  # 3: 黒伝票（会計のやり直し）も数えるようにしたあとの値
     cached = get_state(key)
     if isinstance(cached, dict) and 'total' in cached:
         return int(cached['total'])
