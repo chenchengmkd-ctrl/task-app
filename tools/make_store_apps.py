@@ -6,7 +6,7 @@ nippo.html を直したら、これを実行し直すと nippo-air.html / nippo-
 置き換える場所が見つからないとエラーで止まる（nippo.html 側の書き方が変わったときは、ここを合わせる）。
 
 - nippo-air.html  … Airレジの店（ハンバーグ日和）。LINEは hamburg-biyori-bot から送る。「Airレジ更新」を押すと、サーバーがAirレジの管理画面（取引履歴）から会計を取ってくる
-- nippo-usen.html … USENレジの店。サーバーがUSENレジの管理画面（伝票明細）から会計を取ってくる。
+- nippo-usen.html … USENレジの店（六本木）。サーバーがUSENレジの管理画面（伝票明細）から会計を取ってくる。
                     つながらないときは、伝票明細のPDF・汎用検索のCSVも読み込める
 どちらも、ブラウザの保存場所・サーバーの同期の保存場所を今の店と分け、
 LINEは勤怠Bot（今の店のグループに投稿する）ではなく共有メニューで送る。
@@ -331,7 +331,7 @@ async function importCsv(file){
 
 def make_usen(src):
     d = Doc(src)
-    common(d, 'nippousen', 'usen', 'USENレジ店', 'USENレジ')
+    common(d, 'nippousen', 'usen', '六本木', 'USENレジ')
     # 会計と売上は、「USEN更新」を押すと、サーバー（/api/nippo_usen_sales）がUSENレジの「伝票明細」から取ってくる。
     # つながらないときの予備として、伝票明細のPDF・汎用検索のCSVも読み込める
     d.rep("const API='https://task-app-nine-liard.vercel.app/api/nippo_sales';",
@@ -372,9 +372,20 @@ def make_usen(src):
     d.rep("$('btnSq').onclick=()=>fetchSquare(true);",
           "$('btnSq').onclick=()=>fetchSquare(true);\n$('btnCsv').onclick=()=>$('csvFile').click();\n"
           "$('csvFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importCsv(f)};")
-    # USENレジ店のメニュー名（例「ひつまぶし)特上」）も、特上・上・並に振り分ける
-    d.rep("    else if(n.includes('重'))k=n.includes('特')?'特上':n.includes('並')?'並':'上';",
-          "    else if(/重|ひつまぶし|まぶし|丼|蒲焼/.test(n))k=n.includes('特')?'特上':n.includes('並')?'並':'上';")
+    # 六本木のメニュー（USENレジの伝票 2026/11/26〜27 にあった名前）：「うな重)特上」「ひつまぶし)並」「6600円コース」。
+    # うな重・ひつまぶしは特上・上・並ごとにボタン。「特特上」「国産鰻重」「蒲焼き・白焼き」・一品・ドリンクは「他」として表示だけ
+    d.rep("const MENU=['特上','上','並','おにぎり','混ぜご飯'];",
+          "const MENU=['うな重特上','うな重上','うな重並','ひつまぶし特上','ひつまぶし上','ひつまぶし並','コース'];")
+    d.rep("""    if(n.includes('おにぎり'))k='おにぎり';
+    else if(n.includes('混ぜ'))k='混ぜご飯';
+    else if(n.includes('重'))k=n.includes('特')?'特上':n.includes('並')?'並':'上';""",
+          """    const g=/\\)\\s*(特上|上|並)\\s*$/.exec(n); // 「うな重)特上」の ) のあとが等級
+    if(/コース/.test(n))k='コース';
+    else if(g&&/^うな重/.test(n))k='うな重'+g[1];
+    else if(g&&/^ひつまぶし/.test(n))k='ひつまぶし'+g[1];""")
+    d.rep("// Squareの品名 → 特上/上/並（鰻重だけ数える。それ以外は「他」として表示だけ）",
+          "// USENレジの品名 → うな重・ひつまぶしの特上/上/並、コース（それ以外は「他」として表示だけ）")
+    d.rep("'仕事で神田に来られる方'", "'仕事で六本木に来られる方'")
     d.rep("/* ---------- 画面描画 ---------- */", USEN_CSV_JS + "\n/* ---------- 画面描画 ---------- */")
     return d.s
 
