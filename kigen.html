@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0e7c86">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="期日">
+<link rel="manifest" href="kigen.webmanifest">
+<link rel="apple-touch-icon" href="line-assets/kigen-icon-180.png">
+<link rel="icon" href="line-assets/kigen-icon-180.png">
+<title>お金の期日</title>
+<style>
+  :root{--bg:#f4f7f6;--card:#fff;--ink:#1a1a1a;--muted:#7f8a87;--line:#e1e8e6;--soft:#eef3f2;--warn:#b45309;--warnbg:#fff4e5;--neg:#b91c1c;--negbg:#fdecec;--ok:#047857;
+    --g:linear-gradient(135deg,#22c1a7 0%,#0e7c86 100%);--accent:#0e7c86;
+    --k-invoice:#2a78d6;--k-pay:#e8853d;--k-renew:#6250d6;--k-tax:#d4558a}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Segoe UI","Meiryo",sans-serif;color:var(--ink);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))}
+  button,input,select{font:inherit;color:inherit}button{cursor:pointer;border:none;background:none}
+  header{background:var(--g);color:#fff;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 16px;display:flex;align-items:flex-end;gap:10px}
+  header .d{flex:1}header .d small{display:block;font-size:13px;opacity:.85;font-weight:600}header .d b{font-size:24px;letter-spacing:.02em}
+  header button,header a{color:#fff;font-weight:700;font-size:13px;padding:7px 10px;border-radius:9px;background:rgba(255,255,255,.18);text-decoration:none}
+  main{max-width:640px;margin:0 auto;padding:12px 14px;display:grid;gap:12px}
+  .card{background:var(--card);border:1px solid rgba(14,124,134,.12);border-radius:18px;padding:14px 16px;box-shadow:0 6px 20px rgba(14,124,134,.06)}
+  h2{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  h2 .n{font-size:12px;font-weight:700;color:#fff;background:var(--accent);border-radius:6px;padding:0 6px}
+  h2 .sub{margin-left:auto;font-weight:500;font-size:11px;color:var(--muted)}
+  .hint{font-size:12px;color:var(--muted)}.hint.err{color:var(--neg);font-weight:600}
+  .kinds{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .kinds button{padding:8px 2px;border-radius:10px;background:var(--soft);font-size:12px;font-weight:700;color:var(--muted);line-height:1.25}
+  .kinds button.on{color:#fff;background:var(--kc,var(--accent))}
+  .f{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .f label{display:block;font-size:11px;font-weight:700;color:var(--muted)}.f .w{grid-column:1/-1}
+  .f input{width:100%;margin-top:2px;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px;min-width:0}
+  .f input:focus{outline:2px solid var(--accent);border-color:transparent}
+  .acts{display:flex;gap:8px;margin-top:10px}
+  .btn{flex:1;padding:11px;border-radius:12px;background:var(--g);color:#fff;font-weight:800}
+  .btn.sub{flex:0 0 auto;background:var(--soft);color:var(--ink);font-weight:700;padding:11px 14px}
+  .btn:disabled{opacity:.5}
+  .it{display:flex;gap:10px;align-items:center;padding:10px;margin:0 -6px;border-radius:12px;border-top:1px solid var(--line)}
+  .it:first-child{border-top:none}
+  .it.soon{background:var(--warnbg);border-top-color:transparent}.it.soon + .it{border-top-color:transparent}
+  .it.over{background:var(--negbg);border-top-color:transparent}.it.over + .it{border-top-color:transparent}
+  .it .when{flex:0 0 76px;text-align:center;line-height:1.2}
+  .it .when b{display:block;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.02em}
+  .it .when small{font-size:11px;color:var(--muted);font-weight:700}
+  .it.soon .when small{color:var(--warn)}.it.over .when small{color:var(--neg)}
+  .it .body{flex:1;min-width:0;text-align:left}
+  .it .body .nm{font-weight:700;word-break:break-word}
+  .it .body .mt{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .tag{font-size:10px;font-weight:800;border-radius:5px;padding:1px 6px;color:#fff;background:var(--kc)}
+  .amt{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:14px}
+  .done-b{flex:0 0 auto;padding:7px 10px;border-radius:10px;background:#fff;border:1px solid var(--line);font-size:13px;font-weight:700;color:var(--ok)}
+  .done-b:active{background:var(--soft)}
+  .empty{padding:18px 0;text-align:center;color:var(--muted);font-size:13px}
+  .legend{display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+  .toggle{width:100%;text-align:center;padding:8px;font-size:13px;font-weight:700;color:var(--accent)}
+  .dn .it{opacity:.6}.dn .it .nm{text-decoration:line-through}
+  .mini{flex:0 0 auto;padding:6px 9px;border-radius:9px;background:var(--soft);font-size:12px;font-weight:700}
+  .mini.del{color:var(--neg)}
+  .note{border-radius:14px;padding:12px 14px;font-size:13px;background:#e8f6f4;color:#0b5f66}
+  .note.warn{background:var(--warnbg);color:#8a4b08}
+  .note b{display:block;margin-bottom:2px}
+  .note .btn{margin-top:8px;display:block;width:100%}
+  dialog{margin:auto;border:none;border-radius:18px;padding:0;width:min(92vw,420px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  dialog::backdrop{background:rgba(0,0,0,.35)}
+  .dlg{padding:16px}.dlg h3{font-size:16px;margin-bottom:10px}
+  .row{display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:14px}.row:first-of-type{border-top:none}
+  .row span{flex:1}
+  #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#1f2a28;color:#fff;font-size:13px;padding:9px 14px;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+  #toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="d"><small id="hdDate"></small><b>お金の期日</b></div>
+  <a href="dash.html" aria-label="ダッシュボード">📊</a>
+  <button id="btnSet">⚙ 設定</button>
+</header>
+<main>
+  <div id="notice"></div>
+
+  <section class="card" id="formCard">
+    <h2 id="formTitle">期日を登録</h2>
+    <div class="kinds" id="kinds"></div>
+    <div class="f">
+      <div class="w"><label for="fName">名前</label><input id="fName" placeholder="例：山田商店への請求書" maxlength="80" autocomplete="off"></div>
+      <div><label for="fAmt">金額（円）</label><input id="fAmt" inputmode="numeric" placeholder="例：62000" autocomplete="off"></div>
+      <div><label for="fDate" id="fDateL">日付</label><input id="fDate" type="date"></div>
+    </div>
+    <div class="acts">
+      <button class="btn sub" id="btnCancel" hidden>やめる</button>
+      <button class="btn sub" id="btnDel" hidden style="color:var(--neg)">削除</button>
+      <button class="btn" id="btnSave">登録する</button>
+    </div>
+    <p class="hint err" id="formErr" hidden></p>
+  </section>
+
+  <section class="card">
+    <h2>期日が近い順 <span class="n" id="cnt">0</span><span class="sub" id="syncAt"></span></h2>
+    <div id="list"></div>
+    <div class="legend"><span><i style="background:var(--negbg);border:1px solid #f3c4c4"></i>期限切れ</span><span><i style="background:var(--warnbg);border:1px solid #f6d7a8"></i>7日以内</span></div>
+  </section>
+
+  <section class="card dn" id="doneCard" hidden>
+    <button class="toggle" id="doneToggle"></button>
+    <div id="doneList" hidden></div>
+  </section>
+</main>
+
+<dialog id="dlgSet"><div class="dlg">
+  <h3>設定</h3>
+  <div class="f" style="margin-top:0"><div class="w"><label for="sKey">合言葉（定期報告・ダッシュボードと同じもの）</label><input id="sKey" type="password" autocomplete="off" placeholder="8文字以上"></div></div>
+  <p class="hint" style="margin-top:6px">合言葉が同じなら、スマホでもiPadでも同じ期日が見えます。</p>
+  <div style="margin-top:12px">
+    <div class="row"><span>この端末への通知</span><b id="sNotif">—</b></div>
+    <div class="row"><span>通知が届く端末</span><b id="sSubs">—</b></div>
+  </div>
+  <div class="acts"><button class="btn sub" id="btnNotifOff">通知をやめる</button><button class="btn sub" id="btnTest">テスト通知</button></div>
+  <div class="acts"><button class="btn sub" id="btnClose">閉じる</button><button class="btn" id="btnKey">保存</button></div>
+</div></dialog>
+<div id="toast"></div>
+
+<script>
+const API='https://task-app-nine-liard.vercel.app/api/due';
+const KINDS=[{id:'invoice',name:'請求書の発行',date:'発行日'},{id:'pay',name:'支払い',date:'支払い期日'},{id:'renew',name:'契約の更新',date:'更新日'},{id:'tax',name:'税金の納付',date:'納付期限'}];
+const KIND=Object.fromEntries(KINDS.map(k=>[k.id,k]));
+const SOON_DAYS=7;
+const $=id=>document.getElementById(id);
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const dstr=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const WD='日月火水木金土';
+const md=s=>{const d=new Date(s+'T00:00');return (d.getMonth()+1)+'/'+d.getDate()+'('+WD[d.getDay()]+')'};
+const yen=v=>v==null||v===''?'':Number(v).toLocaleString('ja-JP')+'円';
+function daysLeft(s){const t=new Date(dstr(new Date())+'T00:00'),d=new Date(s+'T00:00');return Math.round((d-t)/864e5)}
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),2400)}
+
+let ITEMS=ls.get('kigen_cache',[]),SUBS=null,KEY=ls.get('kigen_key','')||ls.get('teiki_sync_key','');
+let kind='pay',editId=null,showDone=false;
+
+async function call(op,extra){
+  const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op,key:KEY,...extra})});
+  let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error(j.error||('通信エラー '+r.status));
+  if(j.items){ITEMS=j.items;ls.set('kigen_cache',ITEMS);ls.set('kigen_at',Date.now())}
+  if(typeof j.subs==='number')SUBS=j.subs;
+  return j}
+
+// ===== 登録フォーム =====
+function renderKinds(){$('kinds').innerHTML=KINDS.map(k=>`<button data-k="${k.id}" class="${k.id===kind?'on':''}" style="--kc:var(--k-${k.id})">${k.name.replace('の','の<br>')}</button>`).join('');
+  $('fDateL').textContent=KIND[kind].date}
+$('kinds').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;kind=b.dataset.k;renderKinds()};
+function resetForm(){editId=null;$('fName').value='';$('fAmt').value='';$('fDate').value='';$('formTitle').textContent='期日を登録';$('btnSave').textContent='登録する';
+  $('btnCancel').hidden=$('btnDel').hidden=true;$('formErr').hidden=true;renderKinds()}
+function editItem(id){const it=ITEMS.find(x=>x.id===id);if(!it)return;editId=id;kind=it.kind;renderKinds();
+  $('fName').value=it.name;$('fAmt').value=it.amount??'';$('fDate').value=it.date;$('formTitle').textContent='期日を直す';$('btnSave').textContent='保存する';
+  $('btnCancel').hidden=$('btnDel').hidden=false;$('formErr').hidden=true;$('formCard').scrollIntoView({behavior:'smooth',block:'start'})}
+$('btnCancel').onclick=resetForm;
+$('btnDel').onclick=async()=>{if(!editId||!confirm('この期日を削除しますか？'))return;try{await call('delete',{id:editId});resetForm();render();toast('削除しました')}catch(e){showErr(e.message)}};
+function showErr(m){$('formErr').textContent=m;$('formErr').hidden=false}
+$('btnSave').onclick=async()=>{
+  const name=$('fName').value.trim(),amt=$('fAmt').value.replace(/[,，円\s]/g,'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)),date=$('fDate').value;
+  if(!name)return showErr('名前を入れてください');
+  if(amt&&!/^-?\d+$/.test(amt))return showErr('金額は数字で入れてください');
+  if(!date)return showErr('日付を選んでください');
+  if(!KEY)return openSet('先に合言葉を入れてください');
+  $('btnSave').disabled=true;
+  try{await call('save',{id:editId,item:{kind,name,amount:amt,date}});toast(editId?'保存しました':'登録しました');resetForm();render()}
+  catch(e){showErr(e.message)}finally{$('btnSave').disabled=false}};
+
+// ===== 一覧 =====
+function whenLabel(n){return n<0?`${-n}日過ぎ`:n===0?'今日':n===1?'明日':`あと${n}日`}
+function row(it,done){const n=daysLeft(it.date),cls=done?'':n<0?'over':n<=SOON_DAYS?'soon':'';
+  return `<div class="it ${cls}"><div class="when"><b>${md(it.date)}</b><small>${done?'済み':whenLabel(n)}</small></div>
+    <button class="body" data-edit="${esc(it.id)}"><div class="nm">${esc(it.name)}</div><div class="mt"><span class="tag" style="--kc:var(--k-${it.kind})">${esc(KIND[it.kind]?.name||'')}</span>${it.amount!=null?`<span class="amt">${yen(it.amount)}</span>`:''}</div></button>
+    ${done?`<button class="mini" data-undo="${esc(it.id)}">戻す</button><button class="mini del" data-del="${esc(it.id)}">削除</button>`:`<button class="done-b" data-done="${esc(it.id)}">済み</button>`}</div>`}
+function render(){
+  $('hdDate').textContent=md(dstr(new Date()));
+  const open=ITEMS.filter(x=>!x.done).sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'ja'));
+  const done=ITEMS.filter(x=>x.done).sort((a,b)=>b.date.localeCompare(a.date));
+  $('cnt').textContent=open.length;
+  $('list').innerHTML=open.length?open.map(x=>row(x,false)).join(''):`<div class="empty">${KEY?'登録された期日はありません':'⚙ 設定で合言葉を入れると、登録した期日が表示されます'}</div>`;
+  $('doneCard').hidden=!done.length;$('doneToggle').textContent=(showDone?'▲ 済みを隠す':'▼ 済みを表示')+`（${done.length}）`;
+  $('doneList').hidden=!showDone;$('doneList').innerHTML=done.map(x=>row(x,true)).join('');
+  const at=ls.get('kigen_at',0);$('syncAt').textContent=at?new Date(at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+' 更新':'';
+  renderNotice()}
+$('doneToggle').onclick=()=>{showDone=!showDone;render()};
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-done],[data-undo],[data-del],[data-edit]');if(!b)return;
+  if(b.dataset.edit)return editItem(b.dataset.edit);
+  const id=b.dataset.done||b.dataset.undo||b.dataset.del,op=b.dataset.done?'done':b.dataset.undo?'undo':'delete';
+  if(op==='delete'&&!confirm('完全に削除しますか？'))return;
+  b.disabled=true;try{await call(op,{id});render();toast(op==='done'?'済みにしました':op==='undo'?'一覧に戻しました':'削除しました')}catch(err){b.disabled=false;toast(err.message)}});
+
+// ===== 通知（Web Push） =====
+const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const pushOK='serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+let REG=null,MYSUB=null;
+async function initSW(){if(!('serviceWorker' in navigator))return;try{REG=await navigator.serviceWorker.register('sw.js');MYSUB=await REG.pushManager?.getSubscription()}catch(e){}renderNotice()}
+function notifState(){if(!pushOK)return isIOS&&!standalone?'needhome':'unsupported';if(Notification.permission==='denied')return 'denied';return MYSUB?'on':'off'}
+function renderNotice(){const s=notifState(),box=$('notice');let h='';
+  if(s==='needhome')h=`<div class="note warn"><b>通知を受け取るには、ホーム画面に追加してください</b>Safariの共有ボタン（□↑）→「ホーム画面に追加」→ ホーム画面の「期日」から開いて、通知をオンにします。</div>`;
+  else if(s==='off')h=`<div class="note"><b>期日の前日と当日の朝9時に通知します</b>アプリを閉じていても届きます。<button class="btn" id="btnNotif">この端末で通知をオンにする</button></div>`;
+  else if(s==='denied')h=`<div class="note warn"><b>通知が許可されていません</b>端末の設定 → 通知 →「期日」で許可してください。</div>`;
+  else if(s==='unsupported')h=`<div class="note warn"><b>このブラウザは通知に対応していません</b>iPhoneは iOS 16.4 以降で、ホーム画面に追加すると使えます。</div>`;
+  box.innerHTML=h;box.hidden=!h;const b=$('btnNotif');if(b)b.onclick=enablePush;
+  $('sNotif').textContent={on:'オン',off:'オフ',denied:'許可されていません',needhome:'ホーム画面から開いてください',unsupported:'未対応'}[s];
+  $('sSubs').textContent=SUBS==null?'—':SUBS+'台';$('btnNotifOff').hidden=s!=='on'}
+const b64u=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');const r=atob(s+'='.repeat((4-s.length%4)%4));return Uint8Array.from(r,c=>c.charCodeAt(0))};
+async function enablePush(){
+  if(!KEY)return openSet('先に合言葉を入れてください');
+  try{const p=await Notification.requestPermission();if(p!=='granted'){renderNotice();return toast('通知が許可されませんでした')}
+    REG=REG||await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready;
+    const {key}=await call('vapid');
+    let sub=await REG.pushManager.getSubscription();
+    if(sub&&sub.options&&sub.options.applicationServerKey){const cur=new Uint8Array(sub.options.applicationServerKey),want=b64u(key);if(cur.length!==want.length||cur.some((v,i)=>v!==want[i])){await sub.unsubscribe();sub=null}}
+    sub=sub||await REG.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(key)});
+    await call('subscribe',{sub:sub.toJSON(),label:(isIOS?(/iPad/.test(navigator.userAgent)||navigator.maxTouchPoints>1&&!/iPhone/.test(navigator.userAgent)?'iPad':'iPhone'):navigator.platform||'端末')});
+    MYSUB=sub;renderNotice();toast('通知をオンにしました')}
+  catch(e){toast('通知をオンにできませんでした：'+e.message)}}
+$('btnNotifOff').onclick=async()=>{if(!MYSUB)return;try{await call('unsubscribe',{endpoint:MYSUB.endpoint});await MYSUB.unsubscribe();MYSUB=null;renderNotice();toast('この端末への通知をやめました')}catch(e){toast(e.message)}};
+$('btnTest').onclick=async()=>{try{const j=await call('test');toast(j.sent?`テスト通知を送りました（${j.sent}台）`:'通知が届く端末がありません')}catch(e){toast(e.message)}};
+
+// ===== 設定 =====
+function openSet(msg){$('sKey').value=KEY;renderNotice();$('dlgSet').showModal();if(msg)toast(msg)}
+$('btnSet').onclick=()=>openSet();$('btnClose').onclick=()=>$('dlgSet').close();
+$('btnKey').onclick=async()=>{const k=$('sKey').value.trim();if(k.length<8)return toast('合言葉は8文字以上です');const old=KEY;KEY=k;
+  try{const j=await call('list');ls.set('kigen_key',k);$('dlgSet').close();render();toast(j.registered?'合言葉を登録しました':'読み込みました')}catch(e){KEY=old;toast(e.message)}};
+
+async function refresh(){if(!KEY)return render();try{await call('list')}catch(e){toast(e.message)}render()}
+renderKinds();render();initSW();refresh();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh()});
+</script>
+</body>
+</html>

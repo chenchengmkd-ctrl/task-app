@@ -31,6 +31,7 @@ from linebot import weekly_cf as weekly_cf_mod
 from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_report
 from linebot.square import check_midday_sales
 from linebot.dash import backfill_step as dash_backfill_step
+from linebot.due import notify_step as due_notify_step
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
 APP_VERSION = 120
@@ -126,6 +127,7 @@ def _run_poll(environ, start_response):
         (check_daily_plan, 'check_daily_plan'),
         (check_weekly_actual, 'check_weekly_actual'),
         (check_midday_sales, 'check_midday_sales'),
+        (due_notify_step, 'due_notify_step'),
         (dash_backfill_step, 'dash_backfill_step'),
     ):
         try:
@@ -655,6 +657,39 @@ def _handle_dash(environ, start_response):
     return _respond(start_response, '200 OK', result, cors=True)
 
 
+def _handle_due(environ, start_response):
+    """お金の期日（kigen.html）。合言葉は定期報告・ダッシュボードと同じ。"""
+    body = _read_json_body(environ)
+    if body is None:
+        return _respond(start_response, '400 Bad Request', {'error': 'JSONが読めません'}, cors=True)
+    from linebot import dash, due
+    op = str(body.get('op') or 'list')
+    try:
+        if op == 'vapid':
+            return _respond(start_response, '200 OK', {'ok': True, 'key': due.public_key()}, cors=True)
+        ok, registered = dash.check_key(body.get('key'))
+        if not ok:
+            return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います（8文字以上）'}, cors=True)
+        res = {'ok': True, 'registered': registered}
+        if op in ('save', 'done', 'undo', 'delete'):
+            res['items'] = due.apply(op, body)
+        elif op == 'subscribe':
+            res['subs'] = due.subscribe(body.get('sub'), body.get('label'))
+        elif op == 'unsubscribe':
+            res['subs'] = due.unsubscribe(str(body.get('endpoint') or ''))
+        elif op == 'test':
+            res['sent'] = due.push_all([{'title': 'テスト通知', 'body': '期日のお知らせはこのように届きます', 'tag': 'due-test'}])
+        else:
+            res['items'] = due.list_items()
+        if op != 'test':
+            res['subs'] = res.get('subs', due.sub_count())
+    except ValueError as e:
+        return _respond(start_response, '400 Bad Request', {'error': str(e)}, cors=True)
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)[:200]}, cors=True)
+    return _respond(start_response, '200 OK', res, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -695,6 +730,11 @@ def app(environ, start_response):
         if method == 'POST':
             return _handle_teiki_sync(environ, start_response)
 
+    if path == '/api/due':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_due(environ, start_response)
     if path == '/api/dash':
         if method == 'OPTIONS':
             return _respond(start_response, '204 No Content', {}, cors=True)

@@ -1,0 +1,13 @@
+{
+  "name": "お金の期日",
+  "short_name": "期日",
+  "start_url": "kigen.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0e7c86",
+  "icons": [
+    { "src": "line-assets/kigen-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "line-assets/kigen-icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
