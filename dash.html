@@ -40,6 +40,9 @@
   .sum3 span b{font-size:21px;font-variant-numeric:tabular-nums}
   .sum3 i{grid-column:1/-1;font-style:normal;font-size:11px;font-weight:700;color:var(--accent);text-align:center;padding-top:2px}
   .sum3:active{background:#e3ecea}
+  .sblk{margin-top:10px}.sblk:first-of-type{margin-top:0}
+  .sh{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}.sh b{font-size:15px}.sh small{font-size:11px;color:var(--muted)}
+  .sum3.err{background:#fdf2f2}.sum3.err b{color:var(--neg)}
   .kpi{background:var(--soft);border-radius:12px;padding:8px 10px}.kpi small{display:block;font-size:11px;color:var(--muted);font-weight:700}
   .kpi b{font-size:18px;font-variant-numeric:tabular-nums}.kpi em{font-style:normal;font-size:11px;color:var(--muted);margin-left:4px}
   .bar{height:10px;border-radius:5px;background:var(--soft);overflow:hidden;margin-top:6px;position:relative}
@@ -206,45 +209,42 @@ function renderSched(){const box=$('sched'),items=[],mp=myPlanToday(),cal=SRV&&S
   box.innerHTML=h;$('schedSub').textContent=`${list.length}件${isHol(TODAY)?'・祝日':''}`}
 // 屋台うなぎ（Square）が自分の店。定期報告の出金は屋台うなぎの分なので、利益・人件費は屋台うなぎの売上だけで出す。
 // ハンバーグ日和（Airレジ）と鰻いち（USENレジ）は別会社なので、売上だけを別に並べ、合計には足さない。
-// ふだんは屋台うなぎの「昨日・今月・着地予想」の3つだけ。押すと詳細（利益・人件費・経費の内訳・固定費・別会社）が開く
+// 3店を同じ大きさで並べる（屋台うなぎ → 鰻いち → ハンバーグ日和）。それぞれ「昨日・今月・着地予想」。押すとその店の数字（日・週・月）。
+// 屋台うなぎの利益・経費は下の「▼ 屋台うなぎの利益・経費」で開く（定期報告・勤怠アプリの経費は屋台うなぎの分）
 let salesOpen=false;
+const SALES_ORDER=['square','usen','air'];
 function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,c=monthCost();
   if(!s){box.innerHTML=srvErr?`<div class="hint warn">売上を読めませんでした（${esc(srvErr)}）</div>`:'<div class="skel">読み込み中…</div>';return}
-  const own=s.stores.find(x=>x.id==='square'),others=s.stores.filter(x=>x.id!=='square');
-  const t=new Date(TODAY+'T00:00'),dim=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(),passed=t.getDate()-1;
-  let h=`<div class="hint" style="margin-bottom:4px"><b style="color:var(--ink)">屋台うなぎ</b></div>`;
-  if(!own)h+='<div class="hint warn">Squareがbotにつながっていないため出せません</div>';
-  else if(own.error)h+=`<div class="hint warn">Squareから読めませんでした（${esc(own.error)}）</div>`;
-  else{// 経費は勤怠アプリ（人件費）と勤怠botのレシート（原材料・消耗品）、固定費は今月分。読めないときだけ定期報告の出金で代わりに出す
+  const t=new Date(TODAY+'T00:00'),dim=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(),passed=t.getDate()-1,fc=m=>passed?m/passed*dim:0;
+  let h=`<div class="hint" style="margin-bottom:6px">昨日＝${md(s.yesterday_date)}・今月＝昨日まで・着地予想＝今のペースで月末まで</div>`;
+  SALES_ORDER.forEach(id=>{const x=s.stores.find(z=>z.id===id),name=STORE[id];
+    h+=`<div class="sblk"><div class="sh"><b>${esc(name)}</b><small>${x?esc(x.name)+(x.count!=null&&!x.error?`・昨日${x.count}件`:''):''}</small></div>`;
+    if(!x)h+=`<div class="hint">レジがbotにつながっていないため出せません</div>`;
+    else if(x.error)h+=`<button class="sum3 err" data-store="${id}"><span style="grid-column:1/-1"><small>読めませんでした</small><b style="font-size:13px">${esc(x.error)}</b></span><i>押すと店の数字を開きます ›</i></button>`;
+    else h+=`<button class="sum3" data-store="${id}"><span><small>昨日</small><b>${man(x.yesterday)}</b></span><span><small>今月</small><b>${man(x.month)}</b></span><span><small>着地予想</small><b>${passed?man(fc(x.month)):'—'}</b></span><i>日・週・月の数字 ›</i></button>`;
+    h+='</div>'});
+  const own=s.stores.find(x=>x.id==='square');
+  if(own&&!own.error){
     const k=SRV.costs&&!SRV.costs.error?SRV.costs:null,labor=k?k.labor:c.labor,variable=k?k.variable:c.cost,fixed=k?k.fixed:0;
-    const mtd=own.month||0,forecast=passed?mtd/passed*dim:0,profit=mtd-variable-fixed,laborRate=mtd?labor/mtd:0;
-    // 利益の着地予想：売上と日々の経費（人件費・原材料・消耗品）は今のペースで月末まで、固定費は今月分
-    const pForecast=passed?forecast-variable/passed*dim-fixed:0;
-    h+=`<button class="sum3" id="salesTog" aria-expanded="${salesOpen}">
-      <span><small>昨日（${md(s.yesterday_date)}）</small><b>${man(own.yesterday)}</b></span>
-      <span><small>今月（昨日まで）</small><b>${man(mtd)}</b></span>
-      <span><small>着地予想</small><b>${passed?man(forecast):'—'}</b></span>
-      <i>${salesOpen?'▲ 閉じる':'▼ 詳細'}</i></button>
-    <button class="anbtn" data-store="square">📈 店の数字（日・週・月）を見る</button>`;
+    const mtd=own.month||0,profit=mtd-variable-fixed,laborRate=mtd?labor/mtd:0,pForecast=passed?fc(mtd)-variable/passed*dim-fixed:0;
+    h+=`<button class="anbtn" id="salesTog">${salesOpen?'▲ 閉じる':`▼ 屋台うなぎの利益・経費（今月の利益 ${man(profit)}）`}</button>`;
     if(salesOpen){
       h+=`<div class="kpis">
         <div class="kpi"><small>利益（今月・概算）</small><b class="${profit<0?'neg':''}">${man(profit)}</b><em>円</em></div>
         <div class="kpi"><small>利益の着地予想</small><b class="${pForecast<0?'neg':''}">${passed?man(pForecast):'—'}</b><em>${passed?'円':''}</em></div>
         <div class="kpi"><small>人件費（今月）</small><b>${man(labor)}</b><em>${mtd?'売上の'+Math.round(laborRate*100)+'%':''}</em></div>
-        <div class="kpi"><small>昨日の会計</small><b>${own.count}</b><em>件・${fmt(own.yesterday)}円</em></div></div>`;
+        <div class="kpi"><small>経費の合計（今月）</small><b>${man(variable+fixed)}</b><em>円</em></div></div>`;
       if(k){h+='<div style="margin-top:10px"><div class="st" style="border-top:none"><span style="font-size:11px;font-weight:700">今月の経費（昨日まで）</span><b></b></div>'+
           k.by.map(x=>`<div class="st"><span>${esc(x.name)}${x.id==='labor'?'（勤怠アプリ）':/ingredient|supplies/.test(x.id)?'（レシート）':''}</span><b>${fmt(x.amount)}</b></div>`).join('')+
           (k.fixed_items||[]).map(f=>`<div class="st"><span>固定費：${esc(f.label)}${f.day?`（${f.day}日）`:''}</span><b>${fmt(f.amount)}</b></div>`).join('')+
           `<div class="st"><span><b style="color:var(--ink)">経費の合計</b></span><b>${fmt(variable+fixed)}</b></div></div>`;
         h+=`<div class="hint" style="margin-top:6px">利益＝今月の売上 − 経費の合計。人件費は勤怠アプリ、原材料・消耗品は勤怠botのレシートから（昨日まで）。固定費は今月分をまるごと入れています。</div>`}
       else h+=`<div class="hint warn" style="margin-top:6px">勤怠アプリのデータを読めなかったので、定期報告の出金（${c.days}日分）${man(c.cost)}円で出しています。</div>`}}
-  if(others.length&&(salesOpen||!own||own.error)){h+='<div style="margin-top:12px"><div class="st" style="border-top:none"><span style="font-size:11px;font-weight:700">別会社</span><b style="font-size:11px;color:var(--muted);font-weight:600">昨日</b><b style="font-size:11px;color:var(--muted);font-weight:600">今月</b></div>'+
-    others.map(x=>`<button class="st stb" data-store="${esc(x.id)}"><span><b style="color:var(--ink);font-weight:700">${esc(STORE[x.id]||x.name)}</b> <small>${esc(x.name)}${x.count!=null&&!x.error?`・${x.count}件`:''}</small></span>${x.error?'<b class="neg" style="min-width:150px">読めませんでした</b>':`<b>${fmt(x.yesterday)}</b><b>${man(x.month)}</b>`}<i>›</i></button>`).join('')+'<div class="hint">店名を押すと、日・週・月の客数・単価・時間別・出数などが見られます</div></div>'}
   box.innerHTML=h;$('salesSub').textContent=s.at?`${s.at} 時点`:'';
   const tg=$('salesTog');if(tg)tg.onclick=()=>{salesOpen=!salesOpen;renderSales()};
   box.querySelectorAll('[data-store]').forEach(b=>b.onclick=()=>openAna(b.dataset.store))}
 /* ---------- 店の数字（日・週・月）。屋台うなぎ・ハンバーグ日和・鰻いち ---------- */
-const AN_STORES=[['square','屋台うなぎ'],['air','ハンバーグ日和'],['usen','鰻いち']],AN_MODES=[['day','日'],['week','週'],['month','月']];
+const AN_STORES=[['square','屋台うなぎ'],['usen','鰻いち'],['air','ハンバーグ日和']],AN_MODES=[['day','日'],['week','週'],['month','月']];
 let AN={sid:'square',mode:'day',anchor:YDAY,seq:0};
 const mondayOf=d=>{const x=new Date(d+'T00:00');x.setDate(x.getDate()-(x.getDay()+6)%7);return dstr(x)};
 // 期間（終わりは昨日まで）と、くらべる前の期間（同じ日数）
