@@ -30,6 +30,7 @@ from linebot import receipt as receipt_mod
 from linebot import weekly_cf as weekly_cf_mod
 from linebot.weekly_actual import check_weekly_actual, build_weekly_actual_report
 from linebot.square import check_midday_sales
+from linebot.dash import backfill_step as dash_backfill_step
 
 # デプロイが反映されたかを /api/health で確認するための版数。コードを直すたびに上げる。
 APP_VERSION = 120
@@ -125,6 +126,7 @@ def _run_poll(environ, start_response):
         (check_daily_plan, 'check_daily_plan'),
         (check_weekly_actual, 'check_weekly_actual'),
         (check_midday_sales, 'check_midday_sales'),
+        (dash_backfill_step, 'dash_backfill_step'),
     ):
         try:
             fn(push_text, get_users)
@@ -633,17 +635,18 @@ def _handle_dash(environ, start_response):
     today = body.get('date') or config.today_iso()
     if not config.parse_date(today):
         return _respond(start_response, '400 Bad Request', {'error': 'date の形が違います'}, cors=True)
-    if body.get('detail'):
-        # 別会社の店の詳しい数字（押したときだけ。レジを何度も開くので時間がかかる）
-        from datetime import date as _date, timedelta as _td
-        day = body.get('day') or (_date.fromisoformat(today) - _td(days=1)).isoformat()
-        if not config.parse_date(day):
-            return _respond(start_response, '400 Bad Request', {'error': 'day の形が違います'}, cors=True)
+    if body.get('ana') or body.get('fill'):
+        # 店の数字（日・週・月）と、その注文の中身の続きを読む
+        sid, start, end = str(body.get('ana') or body.get('fill')), body.get('start'), body.get('end')
+        if not (config.parse_date(start) and config.parse_date(end)) or start > end:
+            return _respond(start_response, '400 Bad Request', {'error': 'start / end の形が違います'}, cors=True)
+        if (config.parse_date(end) - config.parse_date(start)).days > 62:
+            return _respond(start_response, '400 Bad Request', {'error': '期間は2か月までです'}, cors=True)
         try:
-            detail = dash.store_detail(str(body['detail']), day)
+            res = dash.fill(sid, start, end) if body.get('fill') else dash.store_range(sid, start, end)
         except Exception as e:
             return _respond(start_response, '502 Bad Gateway', {'ok': False, 'error': str(e)[:200]}, cors=True)
-        return _respond(start_response, '200 OK', {'ok': True, 'detail': detail}, cors=True)
+        return _respond(start_response, '200 OK' if res.get('ok') else '502 Bad Gateway', res, cors=True)
     try:
         result = dash.build(today, fresh=bool(body.get('fresh')))
     except Exception as e:

@@ -143,9 +143,13 @@ def _costs(today_iso):
             'first_day': d.day == 1}
 
 
-# ---------- 別会社の店の詳しい数字（ハンバーグ日和＝Airレジ、鰻いち＝USENレジ） ----------
-# 客数・組数・客単価・出数・時間別の売上と人数、鰻いちは滞在時間も。注文の中身はレジの詳細を1件ずつ開くので
-# 1回に最大30件ずつ読み、全部読めたら日付ごとに保存して使い回す。
+# ---------- 店の数字（日・週・月）：屋台うなぎ＝Square（勤怠アプリの日ごとの集計）、ハンバーグ日和＝Airレジ、鰻いち＝USENレジ ----------
+# 売上・組数はレジに期間まとめて1回問い合わせて出す。注文の中身（出数・Airレジの人数）はレジを1件ずつ開くので、
+# 読んだ分だけ使い、残りは5分おきの見回り（backfill_step）と「続きを読む」（fill）で少しずつ貯めていく。
+import re as _re
+
+BACKFILL_DAYS = 45
+
 
 def _hm(t):
     try:
@@ -155,43 +159,64 @@ def _hm(t):
         return None
 
 
+def _days(start, end):
+    d0, d1 = date.fromisoformat(start), date.fromisoformat(end)
+    return [(d0 + timedelta(days=i)).isoformat() for i in range((d1 - d0).days + 1)]
+
+
+def _get_many(table, keys):
+    """キーの一覧をまとめて読む → {key: value}"""
+    out = {}
+    for i in range(0, len(keys), 40):
+        part = keys[i:i + 40]
+        inlist = ','.join('"' + k.replace('"', '') + '"' for k in part)
+        for r in get_supabase(table, f'key=in.({quote(inlist)})&select=key,value'):
+            out[r['key']] = r.get('value')
+    return out
+
+
 def _stats(orders, with_stay):
+    """会計の一覧から、売上・組数・客数・単価・時間別・出数・滞在時間・日ごとの売上をまとめる。"""
     dine = [o for o in orders if not (o.get('takeout') or o.get('bento'))]
     to = [o for o in orders if o.get('takeout') or o.get('bento')]
+    known = [o for o in dine if o.get('guests')]  # 人数がわかっている会計（Airレジは中身を読んだ分だけ）
     sales = sum(o.get('total') or 0 for o in orders)
+    guests = sum(o.get('guests') or 0 for o in known)
+    known_sales = sum(o.get('total') or 0 for o in known)
     dine_sales = sum(o.get('total') or 0 for o in dine)
-    guests = sum(o.get('guests') or 0 for o in dine)
-    hours = {}
+    hours, daily, items = {}, {}, {}
     for o in orders:
-        mm = _hm(o.get('in') or o.get('time')) if with_stay else _hm(o.get('time'))
-        if mm is None:
-            continue
-        h = hours.setdefault(mm // 60, {'h': mm // 60, 'sales': 0, 'groups': 0, 'guests': 0})
-        h['sales'] += o.get('total') or 0
-        h['groups'] += 1
-        if not (o.get('takeout') or o.get('bento')):
-            h['guests'] += o.get('guests') or 0
-    items = {}
-    for o in orders:
+        mm = _hm((o.get('in') or o.get('time')) if with_stay else o.get('time'))
+        tko = o.get('takeout') or o.get('bento')
+        if mm is not None:
+            h = hours.setdefault(mm // 60, {'h': mm // 60, 'sales': 0, 'groups': 0, 'guests': 0})
+            h['sales'] += o.get('total') or 0
+            h['groups'] += 0 if tko else 1
+            h['guests'] += 0 if tko else (o.get('guests') or 0)
+        if o.get('date'):
+            dd = daily.setdefault(o['date'], {'date': o['date'], 'sales': 0, 'groups': 0, 'guests': 0})
+            dd['sales'] += o.get('total') or 0
+            dd['groups'] += 0 if tko else 1
+            dd['guests'] += 0 if tko else (o.get('guests') or 0)
         for it in o.get('items') or []:
             n = (it.get('name') or '').strip()
             if n:
-                items[n] = items.get(n, 0) + int(it.get('qty') or 1)
+                items.setdefault(n, {'name': n, 'qty': 0})['qty'] += int(it.get('qty') or 1)
     out = {'sales': sales, 'orders': len(orders), 'groups': len(dine), 'guests': guests,
-           'per_guest': round(dine_sales / guests) if guests else None,
+           'guests_known_groups': len(known),
+           'per_guest': round(known_sales / guests) if guests else None,
            'per_group': round(dine_sales / len(dine)) if dine else None,
            'takeout': {'count': len(to), 'sales': sum(o.get('total') or 0 for o in to)},
            'hourly': [hours[k] for k in sorted(hours)],
-           'items': sorted(({'name': k, 'qty': v} for k, v in items.items()), key=lambda x: -x['qty'])[:20],
-           'items_read': sum(1 for o in orders if o.get('items'))}
+           'daily': [daily[k] for k in sorted(daily)],
+           'items': sorted(items.values(), key=lambda x: -x['qty'])[:20],
+           'read': sum(1 for o in orders if o.get('items') or o.get('cash') is not None)}
     if with_stay:
         mins = []
         for o in dine:
             a, b = _hm(o.get('in')), _hm(o.get('out'))
             if a is not None and b is not None:
-                if b < a:
-                    b += 24 * 60
-                mins.append(b - a)
+                mins.append(b - a + (24 * 60 if b < a else 0))
         if mins:
             mins.sort()
             buckets = [('〜30分', 0, 30), ('30〜60分', 30, 60), ('60〜90分', 60, 90), ('90〜120分', 90, 120), ('120分〜', 120, 10 ** 6)]
@@ -200,41 +225,165 @@ def _stats(orders, with_stay):
     return out
 
 
-def store_detail(sid, day):
-    key = f'dash:storedetail:{sid}:{day}'
-    cached = get_state(key)
-    if isinstance(cached, dict) and cached.get('complete'):
-        return cached
-    if sid == 'air':
-        from . import airregi_web
-        if not airregi_web.is_enabled():
-            return {'ok': False, 'error': 'Airレジがbotにつながっていません'}
-        r = airregi_web.day_sales(day)
-        if not r.get('ok'):
-            return {'ok': False, 'error': r.get('error') or 'Airレジを読めませんでした'}
-        orders = r.get('orders') or []
-        read = sum(1 for o in orders if o.get('cash') is not None or o.get('items'))
-        out = {'ok': True, 'store': 'ハンバーグ日和', 'register': 'Airレジ', 'date': day, **_stats(orders, False)}
-    elif sid == 'usen':
+def _square_range(days):
+    """屋台うなぎ：勤怠アプリが保存している日ごとの集計（birdmen:sales:日付）を足す。組数はないので客数のみ。"""
+    got = _get_many('birdmen_kv', ['birdmen:sales:' + d for d in days])
+    sales = guests = 0
+    hours, items, daily, usage = {}, {}, [], {}
+    for d in days:
+        v = got.get('birdmen:sales:' + d)
+        if not isinstance(v, dict):
+            continue
+        t, c = int(v.get('total') or 0), int(v.get('customers') or 0)
+        sales += t
+        guests += c
+        daily.append({'date': d, 'sales': t, 'guests': c, 'groups': None})
+        for h, n in (v.get('byHour') or {}).items():
+            try:
+                hh = int(h)
+            except ValueError:
+                continue
+            hours.setdefault(hh, {'h': hh, 'sales': None, 'groups': None, 'guests': 0})['guests'] += int(n or 0)
+        for it in v.get('items') or []:
+            n = (it.get('name') or '').strip()
+            if n:
+                x = items.setdefault(n, {'name': n, 'qty': 0, 'amount': 0})
+                x['qty'] += int(it.get('qty') or 0)
+                x['amount'] += int(it.get('amount') or 0)
+        for k, val in (v.get('usage') or {}).items():
+            try:
+                usage[k] = usage.get(k, 0) + float(val or 0)
+            except (TypeError, ValueError):
+                pass
+    return {'store': '屋台うなぎ', 'register': 'Square', 'sales': sales, 'orders': None, 'groups': None, 'guests': guests,
+            'per_guest': round(sales / guests) if guests else None, 'per_group': None, 'takeout': None,
+            'hourly': [hours[k] for k in sorted(hours)], 'daily': daily,
+            'items': sorted(items.values(), key=lambda x: -x['qty'])[:20],
+            'usage': {k: round(v, 1) for k, v in usage.items()}, 'days_with_data': len(daily), 'complete': True}
+
+
+def _usen_orders(start, end):
+    from . import usen
+    html = usen._search(start, end)
+    orders = [o for o in usen.parse_slips(html) if not o.get('date') or start <= o['date'] <= end]
+    for o in orders:
+        if not o.get('date') and start == end:
+            o['date'] = start
+    caches = _get_many('bot_state', ['usen:items:' + d for d in _days(start, end)])
+    for o in orders:
+        o['items'] = (caches.get('usen:items:' + (o.get('date') or '')) or {}).get(o['id'], [])
+        o.pop('args', None)
+    return orders
+
+
+def _air_date(j, fallback):
+    for k in ('businessDay', 'businessDate', 'salesDate', 'visStoreDate', 'accountingDate'):
+        m = _re.search(r'(\d{4})[/-]?(\d{2})[/-]?(\d{2})', str(j.get(k) or ''))
+        if m:
+            return f'{m.group(1)}-{m.group(2)}-{m.group(3)}'
+    return fallback
+
+
+def _air_orders(start, end):
+    from . import airregi_web as a
+    r = a.api('/api/searchReceipt/execute/', {'businessDayFrom': start.replace('-', ''), 'businessDayTo': end.replace('-', ''),
+                                              'salesJournalSearchType': '0'})
+    rows = a._paid((((r.json() or {}).get('results') or {}).get('resultsData') or {}).get('journal') or [])
+    caches = _get_many('bot_state', ['airregi:receipts3:' + d for d in _days(start, end)])
+    allc = {}
+    for v in caches.values():
+        if isinstance(v, dict):
+            allc.update(v)
+    orders = []
+    for j in rows:
+        c = allc.get(j['visStoreId']) or {}
+        t = _re.search(r'(\d{1,2}):(\d{2})', str(j.get('visStoreDate') or ''))
+        items = c.get('items', [])
+        orders.append({'id': 'air-' + j['visStoreId'], 'date': _air_date(j, start if start == end else ''),
+                       'time': f'{int(t.group(1)):02d}:{t.group(2)}' if t else '', 'total': a._yen(j.get('moneyAmount')),
+                       'guests': c.get('guests', 0), 'items': items, 'cash': c.get('cash'),
+                       'bento': any(_re.search(r'弁当|テイクアウト|持ち帰り', i.get('name', '')) for i in items)})
+    return orders
+
+
+def store_range(sid, start, end):
+    """その店の、start〜end（両端を含む）の数字。"""
+    if sid == 'square':
+        return {'ok': True, 'start': start, 'end': end, **_square_range(_days(start, end))}
+    if sid == 'usen':
         from . import usen
         if not usen.is_enabled():
             return {'ok': False, 'error': 'USENレジがbotにつながっていません'}
-        html = usen._search(day, day)
-        orders = [o for o in usen.parse_slips(html) if not o.get('date') or o['date'] == day]
-        try:
-            usen._fill_items(day, html, orders)
-        except Exception as e:  # 注文の中身が取れなくても、ほかの数字は出す
-            print('dash usen items failed:', e)
-        read = sum(1 for o in orders if o.get('items'))
-        out = {'ok': True, 'store': '鰻いち', 'register': 'USENレジ', 'date': day, **_stats(orders, True)}
+        orders = _usen_orders(start, end)
+        out = {'store': '鰻いち', 'register': 'USENレジ', **_stats(orders, True)}
+        out['read'] = sum(1 for o in orders if o.get('items'))
+    elif sid == 'air':
+        from . import airregi_web
+        if not airregi_web.is_enabled():
+            return {'ok': False, 'error': 'Airレジがbotにつながっていません'}
+        orders = _air_orders(start, end)
+        out = {'store': 'ハンバーグ日和', 'register': 'Airレジ', **_stats(orders, False)}
+        out['read'] = sum(1 for o in orders if o.get('cash') is not None or o.get('items'))
     else:
         return {'ok': False, 'error': 'その店はありません'}
-    out['read'] = read
-    out['complete'] = read >= out['orders']
-    out['at'] = config.now_jst().strftime('%H:%M')
-    if out['complete']:
-        set_state(key, out)
-    return out
+    out['complete'] = out['read'] >= out['orders']
+    return {'ok': True, 'start': start, 'end': end, **out}
+
+
+def _fill_day(sid, day):
+    """その日の注文の中身を最大30件読む。→ 全部読めたら True"""
+    if sid == 'air':
+        from . import airregi_web
+        r = airregi_web.day_sales(day)
+        return bool(r.get('ok')) and all(o.get('cash') is not None for o in r.get('orders') or [])
+    from . import usen
+    html = usen._search(day, day)
+    orders = [o for o in usen.parse_slips(html) if not o.get('date') or o['date'] == day]
+    usen._fill_items(day, html, orders)
+    return all(o.get('items') for o in orders)
+
+
+def fill(sid, start, end, budget_sec=35):
+    """「続きを読む」：新しい日から順に、読み残しのある日の注文の中身を読む（時間の上限まで）。"""
+    if sid not in ('air', 'usen'):
+        return {'ok': True, 'done': True}
+    t0, done = time.time(), True
+    for d in reversed(_days(start, end)):
+        if time.time() - t0 > budget_sec:
+            done = False
+            break
+        try:
+            if not _fill_day(sid, d):
+                done = False
+                break
+        except Exception as e:
+            return {'ok': False, 'error': str(e)[:150]}
+    return {'ok': True, 'done': done}
+
+
+def backfill_step(push_text_fn=None, get_users_fn=None):
+    """5分おきの見回りから呼ばれる。昨日から順にさかのぼり、注文の中身を読み残している日を30件ずつ読む（店ごとに1日分）。"""
+    today = date.fromisoformat(config.today_iso())
+    for sid in ('usen', 'air'):
+        try:
+            if sid == 'usen':
+                from . import usen as m
+            else:
+                from . import airregi_web as m
+            if not m.is_enabled():
+                continue
+            key = f'dash:backfill:{sid}'
+            st = get_state(key) or {}
+            if st.get('today') != today.isoformat():  # 日が変わったら昨日からやり直す
+                st = {'today': today.isoformat(), 'cursor': (today - timedelta(days=1)).isoformat()}
+            cur = date.fromisoformat(st['cursor'])
+            if (today - cur).days > BACKFILL_DAYS:
+                continue
+            if _fill_day(sid, cur.isoformat()):
+                st['cursor'] = (cur - timedelta(days=1)).isoformat()
+            set_state(key, st)
+        except Exception as e:
+            print('dash backfill error', sid, e)
 
 
 def build(today_iso, fresh=False):

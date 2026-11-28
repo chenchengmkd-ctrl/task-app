@@ -65,7 +65,17 @@
   .btns{display:flex;gap:8px;margin-top:16px}.btns button{flex:1;padding:11px;border-radius:12px;font-weight:700;background:var(--soft);color:var(--accent)}.btns .p{background:var(--g);color:#fff}
   .skel{color:var(--muted);font-size:13px}
   .stb{width:100%;text-align:left;align-items:center}.stb i{font-style:normal;color:var(--muted);margin-left:6px}.stb:active{background:var(--soft)}
-  .wide-dlg{width:min(94vw,560px);max-height:88vh;overflow:auto}
+  .wide-dlg{width:min(94vw,600px);max-height:90vh;overflow:auto}
+  .seg{display:flex;gap:4px;background:var(--soft);border-radius:11px;padding:3px;margin-bottom:6px}
+  .seg button{flex:1;padding:7px 2px;border-radius:8px;font-size:13px;font-weight:700;color:var(--muted)}.seg button.on{background:var(--g);color:#fff}
+  .anav{display:flex;align-items:center;gap:8px;margin:2px 0 8px}.anav b{flex:1;text-align:center;font-size:16px}
+  .anav button{width:44px;height:36px;border-radius:10px;background:var(--soft);color:var(--accent);font-weight:700}.anav button:disabled{opacity:.3}
+  .anbtn{width:100%;margin-top:8px;padding:9px;border-radius:12px;background:#fff;border:1px solid var(--line);color:var(--accent);font-weight:700;font-size:13px}
+  .cmp{font-size:11px;color:var(--muted);margin-top:1px}
+  .dbars{display:flex;align-items:flex-end;gap:2px;height:110px;padding-top:6px}
+  .db{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+  .db i{display:block;width:100%;background:var(--g);border-radius:3px 3px 0 0;min-height:1px}
+  .db span{font-size:9px;color:var(--muted);margin-top:2px}.db span.su{color:#c2410c}.db span.sa{color:#2563eb}
   .dh{font-size:12px;color:var(--muted);font-weight:800;margin:14px 0 4px}
   .hb{display:grid;grid-template-columns:64px 1fr 64px auto;align-items:center;gap:6px;font-size:12px;padding:3px 0;font-variant-numeric:tabular-nums}
   .hb i{height:10px;border-radius:4px;background:var(--g);display:block;min-width:2px}.hb b{text-align:right}.hb em{font-style:normal;color:var(--muted);font-size:11px;white-space:nowrap}
@@ -99,7 +109,10 @@
 <footer><span id="upd"></span><a href="teiki.html">定期報告を開く →</a></footer>
 
 <dialog id="dlgStore" class="wide-dlg">
-  <h2 style="margin:0 0 4px"><span id="stTitle"></span><span class="sub">昨日の詳しい数字</span></h2>
+  <h2 style="margin:0 0 8px">店の数字<span class="sub">日・週・月で見られます</span></h2>
+  <div class="seg" id="anStore"></div>
+  <div class="seg" id="anMode"></div>
+  <div class="anav"><button id="anPrev" aria-label="前へ">◀</button><b id="anLabel"></b><button id="anNext" aria-label="次へ">▶</button></div>
   <div id="stBody"></div>
   <div class="btns"><button id="stClose">閉じる</button></div>
 </dialog>
@@ -211,7 +224,8 @@ function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,c=monthCost();
       <span><small>昨日（${md(s.yesterday_date)}）</small><b>${man(own.yesterday)}</b></span>
       <span><small>今月（昨日まで）</small><b>${man(mtd)}</b></span>
       <span><small>着地予想</small><b>${passed?man(forecast):'—'}</b></span>
-      <i>${salesOpen?'▲ 閉じる':'▼ 詳細'}</i></button>`;
+      <i>${salesOpen?'▲ 閉じる':'▼ 詳細'}</i></button>
+    <button class="anbtn" data-store="square">📈 店の数字（日・週・月）を見る</button>`;
     if(salesOpen){
       h+=`<div class="kpis">
         <div class="kpi"><small>利益（今月・概算）</small><b class="${profit<0?'neg':''}">${man(profit)}</b><em>円</em></div>
@@ -225,25 +239,64 @@ function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,c=monthCost();
         h+=`<div class="hint" style="margin-top:6px">利益＝今月の売上 − 経費の合計。人件費は勤怠アプリ、原材料・消耗品は勤怠botのレシートから（昨日まで）。固定費は今月分をまるごと入れています。</div>`}
       else h+=`<div class="hint warn" style="margin-top:6px">勤怠アプリのデータを読めなかったので、定期報告の出金（${c.days}日分）${man(c.cost)}円で出しています。</div>`}}
   if(others.length&&(salesOpen||!own||own.error)){h+='<div style="margin-top:12px"><div class="st" style="border-top:none"><span style="font-size:11px;font-weight:700">別会社</span><b style="font-size:11px;color:var(--muted);font-weight:600">昨日</b><b style="font-size:11px;color:var(--muted);font-weight:600">今月</b></div>'+
-    others.map(x=>`<button class="st stb" data-store="${esc(x.id)}"><span><b style="color:var(--ink);font-weight:700">${esc(STORE[x.id]||x.name)}</b> <small>${esc(x.name)}${x.count!=null&&!x.error?`・${x.count}件`:''}</small></span>${x.error?'<b class="neg" style="min-width:150px">読めませんでした</b>':`<b>${fmt(x.yesterday)}</b><b>${man(x.month)}</b>`}<i>›</i></button>`).join('')+'<div class="hint">店名を押すと、昨日の客数・単価・時間別・出数などが見られます</div></div>'}
+    others.map(x=>`<button class="st stb" data-store="${esc(x.id)}"><span><b style="color:var(--ink);font-weight:700">${esc(STORE[x.id]||x.name)}</b> <small>${esc(x.name)}${x.count!=null&&!x.error?`・${x.count}件`:''}</small></span>${x.error?'<b class="neg" style="min-width:150px">読めませんでした</b>':`<b>${fmt(x.yesterday)}</b><b>${man(x.month)}</b>`}<i>›</i></button>`).join('')+'<div class="hint">店名を押すと、日・週・月の客数・単価・時間別・出数などが見られます</div></div>'}
   box.innerHTML=h;$('salesSub').textContent=s.at?`${s.at} 時点`:'';
   const tg=$('salesTog');if(tg)tg.onclick=()=>{salesOpen=!salesOpen;renderSales()};
-  box.querySelectorAll('[data-store]').forEach(b=>b.onclick=()=>openStore(b.dataset.store))}
-/* ---------- 別会社の店の詳しい数字（押したときだけbotに読みに行く） ---------- */
-async function openStore(id){const d=$('dlgStore'),body=$('stBody');$('stTitle').textContent=STORE[id]||id;body.innerHTML='<div class="skel">レジから読み込み中…（少し時間がかかります）</div>';d.showModal();
-  try{const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:ls.get('teiki_sync_key',''),date:TODAY,detail:id})});
-    const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok||!j.detail||!j.detail.ok)throw new Error((j.detail&&j.detail.error)||j.error||('エラー '+r.status));renderStore(j.detail,id)}
-  catch(e){body.innerHTML=`<div class="hint warn">読めませんでした（${esc(e.message)}）</div>`}}
-function renderStore(x,id){const body=$('stBody'),kp=(l,v,u)=>`<div class="kpi"><small>${l}</small><b>${v}</b><em>${u||''}</em></div>`;
-  let h=`<div class="hint">${md(x.date)}（${WD[new Date(x.date+'T00:00').getDay()]}）・${esc(x.register)}・${esc(x.at||'')} 時点</div>
-  <div class="kpis">${kp('売上',fmt(x.sales),'円')}${kp('組数（店内）',x.groups,'組')}${kp('客数（店内）',x.guests,'人')}${kp('客単価',x.per_guest!=null?fmt(x.per_guest):'—',x.per_guest!=null?'円':'')}${kp('組単価',x.per_group!=null?fmt(x.per_group):'—',x.per_group!=null?'円':'')}${kp('テイクアウト・弁当',x.takeout.count,`件・${fmt(x.takeout.sales)}円`)}</div>`;
+  box.querySelectorAll('[data-store]').forEach(b=>b.onclick=()=>openAna(b.dataset.store))}
+/* ---------- 店の数字（日・週・月）。屋台うなぎ・ハンバーグ日和・鰻いち ---------- */
+const AN_STORES=[['square','屋台うなぎ'],['air','ハンバーグ日和'],['usen','鰻いち']],AN_MODES=[['day','日'],['week','週'],['month','月']];
+let AN={sid:'square',mode:'day',anchor:YDAY,seq:0};
+const mondayOf=d=>{const x=new Date(d+'T00:00');x.setDate(x.getDate()-(x.getDay()+6)%7);return dstr(x)};
+// 期間（終わりは昨日まで）と、くらべる前の期間（同じ日数）
+function anRange(){const a=AN.anchor;let st,en,ps,pe,label;
+  if(AN.mode==='day'){st=en=a;ps=pe=addDays(a,-1);label=`${md(a)}（${WD[new Date(a+'T00:00').getDay()]}）`}
+  else if(AN.mode==='week'){st=mondayOf(a);en=addDays(st,6);if(en>YDAY)en=YDAY;const n=(new Date(en)-new Date(st))/864e5;ps=addDays(st,-7);pe=addDays(ps,n);label=`${md(st)}〜${md(en)}`}
+  else{const d=new Date(a+'T00:00');st=dstr(new Date(d.getFullYear(),d.getMonth(),1));en=dstr(new Date(d.getFullYear(),d.getMonth()+1,0));if(en>YDAY)en=YDAY;
+    const n=+en.slice(8);const p=new Date(d.getFullYear(),d.getMonth()-1,1),pl=new Date(d.getFullYear(),d.getMonth(),0).getDate();ps=dstr(p);pe=dstr(new Date(p.getFullYear(),p.getMonth(),Math.min(n,pl)));label=`${d.getMonth()+1}月${en<dstr(new Date(d.getFullYear(),d.getMonth()+1,0))?`（${+en.slice(8)}日まで）`:''}`}
+  return {st,en,ps,pe,label}}
+function anShift(k){const a=AN.anchor;if(AN.mode==='day')AN.anchor=addDays(a,k);else if(AN.mode==='week')AN.anchor=addDays(a,7*k);
+  else{const d=new Date(a+'T00:00');AN.anchor=dstr(new Date(d.getFullYear(),d.getMonth()+k,1))}if(AN.anchor>YDAY)AN.anchor=YDAY;loadAna()}
+async function anPost(body){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({key:ls.get('teiki_sync_key',''),date:TODAY},body))});
+  const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||('エラー '+r.status));return j}
+function openAna(sid){AN.sid=sid||AN.sid;$('dlgStore').showModal();loadAna()}
+async function loadAna(){const seg=(box,list,cur,on)=>{box.innerHTML=list.map(([k,n])=>`<button class="${k===cur?'on':''}" data-k="${k}">${n}</button>`).join('');box.querySelectorAll('button').forEach(b=>b.onclick=()=>on(b.dataset.k))};
+  seg($('anStore'),AN_STORES,AN.sid,k=>{AN.sid=k;loadAna()});seg($('anMode'),AN_MODES,AN.mode,k=>{AN.mode=k;loadAna()});
+  const R=anRange(),seq=++AN.seq;$('anLabel').textContent=R.label;
+  const nx=AN.mode==='day'?addDays(AN.anchor,1):AN.mode==='week'?addDays(mondayOf(AN.anchor),7):dstr(new Date(new Date(AN.anchor+'T00:00').getFullYear(),new Date(AN.anchor+'T00:00').getMonth()+1,1));
+  $('anNext').disabled=nx>YDAY;$('anPrev').onclick=()=>anShift(-1);$('anNext').onclick=()=>anShift(1);
+  $('stBody').innerHTML='<div class="skel">読み込み中…（レジから読むので少し時間がかかります）</div>';
+  try{const [cur,prev]=await Promise.all([anPost({ana:AN.sid,start:R.st,end:R.en}),anPost({ana:AN.sid,start:R.ps,end:R.pe}).catch(()=>null)]);
+    if(seq!==AN.seq)return;renderAna(cur,prev,R)}
+  catch(e){if(seq===AN.seq)$('stBody').innerHTML=`<div class="hint warn">読めませんでした（${esc(e.message)}）</div>`}}
+const USAGE={tails:['鰻','尾'],riceKg:['米','kg'],servings:['食数','食']};
+function renderAna(x,p,R){const kp=(l,v,u,sub)=>`<div class="kpi"><small>${l}</small><b>${v}</b><em>${u||''}</em>${sub?`<div class="cmp">${sub}</div>`:''}</div>`;
+  const cmp=(a,b,unit)=>{if(!p||b==null||!b)return '';const r=(a-b)/b*100;return `<span class="${r>=0?'okc':'neg'}">${r>=0?'＋':''}${Math.round(r)}%</span> 前の期間 ${unit==='円'?(b>=100000?man(b):fmt(b)+'円'):fmt(b)+unit}`};
+  let h=`<div class="hint" style="margin-bottom:4px">${esc(x.register)}・${R.st===R.en?md(R.st):md(R.st)+'〜'+md(R.en)}${R.ps?`（くらべるのは ${R.ps===R.pe?md(R.ps):md(R.ps)+'〜'+md(R.pe)}）`:''}</div><div class="kpis">`;
+  h+=kp('売上',fmt(x.sales),'円',cmp(x.sales,p&&p.sales,'円'));
+  h+=kp('客数',fmt(x.guests),'人',cmp(x.guests,p&&p.guests,'人'));
+  if(x.groups!=null)h+=kp('組数（店内）',fmt(x.groups),'組',cmp(x.groups,p&&p.groups,'組'));
+  h+=kp('客単価',x.per_guest!=null?fmt(x.per_guest):'—',x.per_guest!=null?'円':'',cmp(x.per_guest||0,p&&p.per_guest,'円'));
+  if(x.per_group!=null)h+=kp('組単価',fmt(x.per_group),'円',cmp(x.per_group,p&&p.per_group,'円'));
+  if(x.takeout)h+=kp('テイクアウト・弁当',x.takeout.count,`件・${man(x.takeout.sales)}円`);
+  if(x.usage)Object.entries(x.usage).forEach(([k,v])=>{const u=USAGE[k];if(u)h+=kp(k==='servings'?u[0]:u[0]+'の使用量',v,u[1])});
+  h+='</div>';
+  if(x.register==='Airレジ'&&x.guests_known_groups<x.groups)h+=`<div class="hint" style="margin-top:4px">客数・客単価は、人数がわかった ${x.guests_known_groups}/${x.groups}組から出しています</div>`;
+  if(!x.complete&&x.orders)h+=`<div class="hint warn" style="margin-top:6px">出数${x.register==='Airレジ'?'・人数':''}は ${x.read}/${x.orders}件の会計から（残りはbotが少しずつ読み進めています）<button class="small" id="anFill">続きを読む</button></div>`;
+  // 日ごとの売上（週・月）
+  if(R.st!==R.en&&x.daily&&x.daily.length){const mx=Math.max(1,...x.daily.map(d=>d.sales));h+='<h3 class="dh">日ごとの売上</h3><div class="dbars">'+
+    _days(R.st,R.en).map(d=>{const v=(x.daily.find(z=>z.date===d)||{}).sales||0,w=new Date(d+'T00:00').getDay();return `<div class="db" title="${md(d)} ${fmt(v)}円"><i style="height:${v/mx*100}%"></i><span class="${w===0?'su':w===6?'sa':''}">${+d.slice(8)}</span></div>`}).join('')+'</div>';
+    const best=x.daily.slice().sort((a,b)=>b.sales-a.sales)[0];if(best)h+=`<div class="hint">いちばん売れた日：${md(best.date)}（${WD[new Date(best.date+'T00:00').getDay()]}）${fmt(best.sales)}円・1日平均 ${fmt(x.sales/Math.max(1,x.daily.length))}円</div>`}
+  // 時間別
+  if(x.hourly&&x.hourly.length){const useSales=x.hourly.some(r=>r.sales!=null),key=useSales?'sales':'guests',mx=Math.max(1,...x.hourly.map(r=>r[key]||0));
+    h+=`<h3 class="dh">時間別${useSales?'（売上）':'（客数）'}${x.register==='USENレジ'?'・入店の時刻':x.register==='Airレジ'?'・会計の時刻':''}</h3>`+
+      x.hourly.map(r=>`<div class="hb"><span>${r.h}時</span><i style="width:${(r[key]||0)/mx*100}%"></i><b>${useSales?man(r.sales):r.guests+'人'}</b><em>${useSales?`${r.groups}組${r.guests?`・${r.guests}人`:''}`:''}</em></div>`).join('')}
   if(x.stay)h+=`<h3 class="dh">滞在時間（店内・${x.stay.count}組）</h3><div class="hint" style="margin-bottom:4px">平均 <b style="color:var(--ink)">${x.stay.avg}分</b>・真ん中 ${x.stay.median}分</div>`+
-    x.stay.buckets.map(b=>`<div class="hb"><span>${b.label}</span><i style="width:${x.stay.count?b.count/x.stay.count*100:0}%"></i><b>${b.count}組</b></div>`).join('');
-  if(x.hourly.length){const mx=Math.max(1,...x.hourly.map(r=>r.sales));h+=`<h3 class="dh">時間別（${id==='usen'?'入店':'会計'}の時刻）</h3>`+
-    x.hourly.map(r=>`<div class="hb"><span>${r.h}時</span><i style="width:${r.sales/mx*100}%"></i><b>${man(r.sales)}</b><em>${r.groups}組${r.guests?`・${r.guests}人`:''}</em></div>`).join('')}
-  h+='<h3 class="dh">出数（よく出た品）</h3>'+(x.items.length?x.items.map((it,i)=>`<div class="row"><span class="s" style="min-width:20px">${i+1}</span><span class="k">${esc(it.name)}</span><span class="v">${it.qty}</span></div>`).join(''):'<div class="hint">注文の中身をまだ読めていません</div>');
-  if(!x.complete)h+=`<div class="hint warn" style="margin-top:8px">注文の中身は ${x.read}/${x.orders}件まで読めています。<button class="small" id="stMore">続きを読む</button></div>`;
-  body.innerHTML=h;const m=$('stMore');if(m)m.onclick=()=>openStore(id)}
+    x.stay.buckets.map(b=>`<div class="hb"><span>${b.label}</span><i style="width:${x.stay.count?b.count/x.stay.count*100:0}%"></i><b>${b.count}組</b><em></em></div>`).join('');
+  h+='<h3 class="dh">出数（よく出た品）</h3>'+(x.items&&x.items.length?x.items.map((it,i)=>`<div class="row"><span class="s" style="min-width:20px">${i+1}</span><span class="k">${esc(it.name)}</span>${it.amount!=null?`<span class="s">${man(it.amount)}円</span>`:''}<span class="v">${it.qty}</span></div>`).join(''):'<div class="hint">まだありません</div>');
+  if(x.days_with_data!=null&&R.st!==R.en)h+=`<div class="hint" style="margin-top:8px">勤怠アプリに集計がある ${x.days_with_data}日分の合計です</div>`;
+  $('stBody').innerHTML=h;
+  const f=$('anFill');if(f)f.onclick=async()=>{f.disabled=true;f.textContent='読んでいます…';try{await anPost({fill:AN.sid,start:R.st,end:R.en})}catch(e){}loadAna()}}
+function _days(a,b){const o=[];for(let d=a;d<=b;d=addDays(d,1))o.push(d);return o}
 function renderMail(){const box=$('mail'),m=SRV&&SRV.mail;
   if(!SRV){box.innerHTML=srvErr?`<div class="hint warn">読めませんでした（${esc(srvErr)}）</div>`:'<div class="skel">読み込み中…</div>';return}
   if(!m||!Array.isArray(m.items)){box.innerHTML='<div class="hint">まだ準備中です。毎朝のメールのまとめがつながると、昨日の夕方以降に届いた連絡のうち、返事が要りそうなものが5件まで出ます。</div>';$('mailSub').textContent='';return}
