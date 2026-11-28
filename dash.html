@@ -40,7 +40,7 @@
   .bar{height:10px;border-radius:5px;background:var(--soft);overflow:hidden;margin-top:6px;position:relative}
   .bar i{display:block;height:100%;background:var(--g);border-radius:5px}.bar u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.5}
   .st{display:flex;font-size:13px;padding:4px 0;border-top:1px dashed var(--line);font-variant-numeric:tabular-nums}.st:first-child{border-top:none}
-  .st span{flex:1;color:var(--muted)}.st b{min-width:90px;text-align:right}
+  .st span{flex:1;min-width:0;color:var(--muted)}.st span small{font-size:11px}.st b{min-width:72px;text-align:right}
   .neg{color:var(--neg)!important}.okc{color:var(--ok)!important}
   .ml{padding:8px 0;border-top:1px solid var(--line)}.ml:first-of-type{border-top:none}a.ml:active{background:var(--soft)}
   .ml .h{display:flex;gap:6px;align-items:baseline;font-size:13px}.ml .h b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -100,6 +100,8 @@
    ・定期報告アプリと同じ端末のデータ（予定・タスク・支払い・経費・シフト・レジ金）はその場で読む
    ・Googleカレンダー、レジの売上、朝のメールのまとめは bot（/api/dash）から読む */
 const API='https://task-app-nine-liard.vercel.app/api/dash';
+// レジごとの店の名前（それぞれ別の店）
+const STORE={square:'屋台うなぎ',air:'ハンバーグ日和',usen:'鰻いち'};
 const $=id=>document.getElementById(id);
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -179,10 +181,12 @@ function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,c=monthCost();
   const t=new Date(TODAY+'T00:00'),dim=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(),passed=t.getDate()-1;
   const forecast=passed?mtd/passed*dim:0;// 今月のペースのまま月末まで続いた場合
   const profit=mtd-c.cost,laborRate=mtd?c.labor/mtd:0;
-  let h=`<div class="hint">昨日（${md(s.yesterday_date)}）の売上</div><div class="big">${fmt(yd)}<span style="font-size:14px;color:var(--muted);font-weight:600"> 円</span></div>`;
-  h+=ok.length>1||s.stores.some(x=>x.error)?'<div style="margin-top:4px">'+s.stores.map(x=>`<div class="st"><span>${esc(x.name)}${x.count!=null&&!x.error?`（${x.count}件）`:''}</span><b class="${x.error?'neg':''}">${x.error?'読めませんでした':fmt(x.yesterday)}</b></div>`).join('')+'</div>':'';
+  let h=`<div class="hint">昨日（${md(s.yesterday_date)}）の売上（3店の合計）</div><div class="big">${fmt(yd)}<span style="font-size:14px;color:var(--muted);font-weight:600"> 円</span></div>`;
+  // 店ごと（昨日・今月）。レジは店ごとに別
+  h+='<div style="margin-top:6px"><div class="st" style="border-top:none"><span style="font-size:11px">店</span><b style="font-size:11px;color:var(--muted);font-weight:600">昨日</b><b style="font-size:11px;color:var(--muted);font-weight:600">今月</b></div>'+
+    s.stores.map(x=>`<div class="st"><span><b style="color:var(--ink);font-weight:700">${esc(STORE[x.id]||x.name)}</b> <small>${esc(x.name)}${x.count!=null&&!x.error?`・${x.count}件`:''}</small></span>${x.error?'<b class="neg" style="min-width:180px">読めませんでした</b>':`<b>${fmt(x.yesterday)}</b><b>${man(x.month)}</b>`}</div>`).join('')+'</div>';
   h+=`<div class="kpis">
-    <div class="kpi"><small>今月の合計（昨日まで）</small><b>${man(mtd)}</b><em>円</em></div>
+    <div class="kpi"><small>今月の合計（3店・昨日まで）</small><b>${man(mtd)}</b><em>円</em></div>
     <div class="kpi"><small>月末の見込み</small>${passed?`<b>${man(forecast)}</b><em>今のペースなら</em>`:'<b style="font-size:13px;color:var(--muted)">2日目から出ます</b>'}</div>
     <div class="kpi"><small>利益（概算）</small><b class="${profit<0?'neg':''}">${man(profit)}</b><em>円</em></div>
     <div class="kpi"><small>人件費</small><b>${man(c.labor)}</b><em>${mtd?'売上の'+Math.round(laborRate*100)+'%':''}</em></div></div>`;

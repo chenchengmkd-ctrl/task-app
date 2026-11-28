@@ -92,6 +92,7 @@ def _sales(today_iso, fresh=False):
     y = (d - timedelta(days=1)).isoformat()
     first = d.replace(day=1).isoformat()
     stores = []
+    # レジごとに別の店：Square=屋台うなぎ、Airレジ=ハンバーグ日和、USENレジ=鰻いち（name はレジの名前）
     for sid, name, fn in (('square', 'Square', _square), ('air', 'Airレジ', _air), ('usen', 'USENレジ', _usen)):
         try:
             r = fn(y, first)
