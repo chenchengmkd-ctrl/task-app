@@ -168,7 +168,7 @@
   .rrow .x{flex:0 0 34px;height:34px;border-radius:9px;background:var(--soft);color:var(--neg);font-weight:700}
   .kwsel{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px;font-weight:700;padding:0 12px;margin-bottom:10px;color:var(--ink)}
   #p-plan{--c-sc:#6250d6}
-  #p-plan{--c-sh:#e87ba4;--c-sc:#6250d6}
+  #p-plan{--c-sh:#e87ba4;--c-sc:#6250d6;--c-pay:#e8853d}
   .tk .dueb{font-size:11px;font-weight:700;margin-left:6px;color:var(--muted)}.tk .dueb.late{color:var(--neg)}.tk .dueb.soon{color:var(--warn)}
   .tk .drow{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px;color:var(--muted)}.tk .drow input{flex:0 0 150px;padding:6px 8px;font-size:13px}
   #calF{margin-bottom:8px}
@@ -322,7 +322,6 @@
   <button data-tab="task">タスク</button>
   <button data-tab="cf">資金繰り</button>
   <button data-tab="plan">予定</button>
-  <button data-tab="kg">期日</button>
 </nav>
 <!-- ===== 入力 ===== -->
 <div class="page" id="p-form">
@@ -402,6 +401,40 @@
     </div>
   </div>
   <div id="plDays"></div>
+  <!-- お金の期日（請求書・支払い・契約更新・税金）。サーバーに置き、前日と当日の朝9時に通知する -->
+  <div id="p-kg">
+  <div id="kgNotice"></div>
+  <div class="card" id="kgForm">
+    <h2 id="kgFormTitle">お金の期日を登録</h2>
+    <div class="kg-kinds" id="kgKinds"></div>
+    <div class="kg-f">
+      <div class="w"><label for="kgName">名前</label><input id="kgName" type="text" placeholder="例：山田商店への請求書" maxlength="80" autocomplete="off"></div>
+      <div><label for="kgAmt">金額（円）</label><input id="kgAmt" type="text" inputmode="numeric" placeholder="例：62000" autocomplete="off"></div>
+      <div><label for="kgDate" id="kgDateL">日付</label><input id="kgDate" type="date"></div>
+    </div>
+    <div class="kg-acts">
+      <button class="kg-btn sub" id="kgCancel" hidden>やめる</button>
+      <button class="kg-btn sub" id="kgDel" hidden style="color:var(--neg)">削除</button>
+      <button class="kg-btn" id="kgSave">登録する</button>
+    </div>
+    <div class="hint warn" id="kgErr" hidden></div>
+  </div>
+  <div class="card">
+    <h2>お金の期日<span class="sub" style="margin-left:6px">近い順</span> <span class="sub" id="kgAt"></span></h2>
+    <div id="kgList"></div>
+    <div class="kg-legend"><span><i style="background:#fdecec;border:1px solid #f3c4c4"></i>期限切れ</span><span><i style="background:#fff4e5;border:1px solid #f6d7a8"></i>7日以内</span></div>
+  </div>
+  <div class="card" id="kgDoneCard" hidden>
+    <button class="kg-toggle" id="kgDoneToggle"></button>
+    <div id="kgDoneList" hidden></div>
+  </div>
+  <div class="card">
+    <h2>期日の通知</h2>
+    <div class="hint" style="margin-top:0">期日の前日と当日の朝9時に、この端末へ通知します（アプリを閉じていても届きます）。</div>
+    <div class="kg-acts"><button class="kg-btn sub" id="kgNotifOff" hidden>この端末の通知をやめる</button><button class="kg-btn sub" id="kgTest">テスト通知</button></div>
+    <div class="hint" id="kgNotifState"></div>
+  </div>
+</div>
 </div>
 
 <!-- ===== 資金繰り（支払い日前の報告）===== -->
@@ -531,41 +564,6 @@
 </div>
 
 <!-- ===== 設定 ===== -->
-<!-- ===== 期日（請求書・支払い・契約更新・税金） ===== -->
-<div class="page" id="p-kg">
-  <div id="kgNotice"></div>
-  <div class="card" id="kgForm">
-    <h2 id="kgFormTitle">期日を登録</h2>
-    <div class="kg-kinds" id="kgKinds"></div>
-    <div class="kg-f">
-      <div class="w"><label for="kgName">名前</label><input id="kgName" type="text" placeholder="例：山田商店への請求書" maxlength="80" autocomplete="off"></div>
-      <div><label for="kgAmt">金額（円）</label><input id="kgAmt" type="text" inputmode="numeric" placeholder="例：62000" autocomplete="off"></div>
-      <div><label for="kgDate" id="kgDateL">日付</label><input id="kgDate" type="date"></div>
-    </div>
-    <div class="kg-acts">
-      <button class="kg-btn sub" id="kgCancel" hidden>やめる</button>
-      <button class="kg-btn sub" id="kgDel" hidden style="color:var(--neg)">削除</button>
-      <button class="kg-btn" id="kgSave">登録する</button>
-    </div>
-    <div class="hint warn" id="kgErr" hidden></div>
-  </div>
-  <div class="card">
-    <h2>期日が近い順 <span class="sub" id="kgAt"></span></h2>
-    <div id="kgList"></div>
-    <div class="kg-legend"><span><i style="background:#fdecec;border:1px solid #f3c4c4"></i>期限切れ</span><span><i style="background:#fff4e5;border:1px solid #f6d7a8"></i>7日以内</span></div>
-  </div>
-  <div class="card" id="kgDoneCard" hidden>
-    <button class="kg-toggle" id="kgDoneToggle"></button>
-    <div id="kgDoneList" hidden></div>
-  </div>
-  <div class="card">
-    <h2>通知</h2>
-    <div class="hint" style="margin-top:0">期日の前日と当日の朝9時に、この端末へ通知します（アプリを閉じていても届きます）。</div>
-    <div class="kg-acts"><button class="kg-btn sub" id="kgNotifOff" hidden>この端末の通知をやめる</button><button class="kg-btn sub" id="kgTest">テスト通知</button></div>
-    <div class="hint" id="kgNotifState"></div>
-  </div>
-</div>
-
 <div class="page" id="p-set">
   <div class="card">
     <h2>スマホとiPadの同期<span class="sub">同じ合言葉を入れた端末どうしで、データが自動で同じになります</span></h2>
@@ -902,10 +900,11 @@ function check(){
 
 /* ---------- 画面切替 ---------- */
 let page='form',lastMain='form';
-const TABS=['form','task','cf','plan','kg'];
+const TABS=['form','task','cf','plan'];
 function go(p){
+  if(p==='kg'){go('plan');setTimeout(()=>$('p-kg').scrollIntoView({block:'start'}),50);return}
   page=p;if(TABS.includes(p))lastMain=p;
-  ['form','prev','cf','task','tsend','hist','set','plan','reji','kg'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
+  ['form','prev','cf','task','tsend','hist','set','plan','reji'].forEach(x=>$('p-'+x).style.display=x===p?'block':'none');
   $('bar').style.display=(p==='form'||p==='prev')?'flex':'none';
   $('tbar').style.display=p==='task'?'flex':'none';
   $('tabs').style.display=TABS.includes(p)?'flex':'none';
@@ -917,10 +916,9 @@ function go(p){
   if(p==='hist'){renderHist();renderTHist()}
   if(p==='set')renderSettings();
   if(p==='cf')renderCf();
-  if(p==='plan')renderPlan();
+  if(p==='plan'){renderPlan();kgRefresh()}
   if(p==='form'){renderAll();rjLink()}
   if(p==='reji')renderReji();
-  if(p==='kg')kgRefresh();
   scrollTo(0,0);
 }
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(page===b.dataset.go?lastMain:b.dataset.go));
@@ -1349,11 +1347,12 @@ function plDates(k){const t=new Date();if(k==='m1'){const y=t.getFullYear(),m=t.
 // 自分の予定とお店のシフトを1つのカレンダーで見る（シフトは写真を読み取った文章を貼るだけなので、別の画面にしない）
 function renderPlan(){
   if(plDay===null)plDay=todayStr();
-  $('plHint').textContent='日にちを押すと、下にその日の予定とお店のシフトが開きます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。';
+  $('plHint').textContent='日にちを押すと、下にその日の予定とお店のシフトが開きます。入れた予定は、前の日の資金報告の「明日の予定」に自動で入ります。¥はお金の期日（登録は下の「お金の期日を登録」）です。';
   renderMyCal();renderStaff();
 }
 // カレンダーの1マス：お店のシフト（ピンク）と予定（紫）
 function plCell(ds,dayNum,l,sh,src,hol){const items=[];
+  (typeof KG!=='undefined'?KG:[]).filter(x=>!x.done&&x.date===ds).forEach(x=>items.push(`<span class="e kgc" style="border-color:var(--c-pay)">¥ ${esc(x.name)}</span>`));
   if(sh.length)items.push(`<span class="e" style="border-color:var(--c-sh)">${esc(shSum(sh))}</span>`);
   l.forEach(x=>items.push(`<span class="e${src==='rule'?' rl':''}" style="border-color:var(--c-sc)">${x.s?tm(x.s)+' ':''}${esc((x.t||'').trim())}</span>`));
   return `<span class="n">${dayNum}${hol?'<small class="hol">祝</small>':''}</span>${items.slice(0,3).join('')}${items.length>3?`<span class="more">+${items.length-3}</span>`:''}`}
@@ -1405,6 +1404,8 @@ function renderMyCal(){const now=new Date(),t=todayStr();if(!plYM)plYM=[now.getF
       names.forEach(n=>{const b=document.createElement('button'),inn=sl.some(x=>x.n===n);b.className='chip'+(inn?' on':'');b.textContent=n;
         b.onclick=()=>{const k=sl.findIndex(x=>x.n===n);if(k>=0)sl.splice(k,1);else sl.push({n});sl.sort((x,y)=>names.indexOf(x.n)-names.indexOf(y.n));shPut(sa);renderPlan()};ch.appendChild(b)});
       blk.appendChild(ch)}
+    const kd=KG.filter(x=>!x.done&&x.date===d);if(kd.length){const c3=document.createElement('div');c3.className='chl';c3.style.marginTop='14px';c3.textContent='お金の期日';blk.appendChild(c3);
+      kd.forEach(x=>{const r=document.createElement('button');r.className='up-i';r.style.cssText='width:100%;text-align:left;font-size:14px';r.innerHTML=`<span class="k">${esc(x.name)} <small style="color:var(--muted)">${esc(KG_KIND[x.kind]?.name||'')}</small></span>${x.amount!=null?`<b>${fmt(x.amount)}円</b>`:''}`;r.onclick=()=>kgEditItem(x.id);blk.appendChild(r)})}
     const c2=document.createElement('div');c2.className='chl';c2.style.marginTop='14px';c2.textContent='自分の予定';blk.appendChild(c2)}
   const a=plGet(),ep=effPlan(d,rs,a),l=a[d]=ep.src==='me'?a[d]:ep.l.map(x=>({...x}));
   // 保存のたびに、定期の予定がある日を空にしたら「この日はなし」として覚える
@@ -1828,7 +1829,7 @@ async function kgCall(op,extra){
   return j}
 function kgKinds(){$('kgKinds').innerHTML=KG_KINDS.map(k=>`<button data-kk="${k.id}" class="${k.id===kgKind?'on':''}" style="--kc:var(--k-${k.id})">${k.name.replace('の','の<br>')}</button>`).join('');$('kgDateL').textContent=KG_KIND[kgKind].date}
 $('kgKinds').onclick=e=>{const b=e.target.closest('[data-kk]');if(b){kgKind=b.dataset.kk;kgKinds()}};
-function kgReset(){kgEdit=null;$('kgName').value=$('kgAmt').value=$('kgDate').value='';$('kgFormTitle').textContent='期日を登録';$('kgSave').textContent='登録する';$('kgCancel').hidden=$('kgDel').hidden=$('kgErr').hidden=true;kgKinds()}
+function kgReset(){kgEdit=null;$('kgName').value=$('kgAmt').value=$('kgDate').value='';$('kgFormTitle').textContent='お金の期日を登録';$('kgSave').textContent='登録する';$('kgCancel').hidden=$('kgDel').hidden=$('kgErr').hidden=true;kgKinds()}
 function kgErr(m){$('kgErr').textContent=m;$('kgErr').hidden=false}
 function kgEditItem(id){const it=KG.find(x=>x.id===id);if(!it)return;kgEdit=id;kgKind=it.kind;kgKinds();$('kgName').value=it.name;$('kgAmt').value=it.amount??'';$('kgDate').value=it.date;
   $('kgFormTitle').textContent='期日を直す';$('kgSave').textContent='保存する';$('kgCancel').hidden=$('kgDel').hidden=false;$('kgErr').hidden=true;$('kgForm').scrollIntoView({behavior:'smooth',block:'start'})}
@@ -1845,14 +1846,14 @@ function kgRow(it,done){const n=kgDays(it.date),c=done?'':n<0?'over':n<=7?'soon'
   return `<div class="kg-it ${c}"><div class="when"><b>${kgMd(it.date)}</b><small>${done?'済み':kgWhen(n)}</small></div>
     <button class="body" data-kedit="${esc(it.id)}"><div class="nm">${esc(it.name)}</div><div class="mt"><span class="kg-tag" style="--kc:var(--k-${it.kind})">${esc(KG_KIND[it.kind]?.name||'')}</span>${it.amount!=null?`<span class="kg-amt">${fmt(it.amount)}円</span>`:''}</div></button>
     ${done?`<button class="kg-mini" data-kundo="${esc(it.id)}">戻す</button><button class="kg-mini del" data-kdel="${esc(it.id)}">削除</button>`:`<button class="kg-done" data-kdone="${esc(it.id)}">済み</button>`}</div>`}
-function kgRender(){
+function kgRender(){if(page==='plan'&&kgRender.ready)renderMyCal();kgRender.ready=true;
   const open=KG.filter(x=>!x.done).sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'ja')),done=KG.filter(x=>x.done).sort((a,b)=>b.date.localeCompare(a.date));
   $('kgList').innerHTML=open.length?open.map(x=>kgRow(x,false)).join(''):`<div class="kg-empty">${syKey().length<8?'「設定」で同期の合言葉を決めると使えます':'登録された期日はありません'}</div>`;
   $('kgDoneCard').hidden=!done.length;$('kgDoneToggle').textContent=(kgShowDone?'▲ 済みを隠す':'▼ 済みを表示')+`（${done.length}）`;
   $('kgDoneList').hidden=!kgShowDone;$('kgDoneList').innerHTML=done.map(x=>kgRow(x,true)).join('');
   const at=ls.get('kigen_at',0);$('kgAt').textContent=at?new Date(at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+' 更新':'';
   kgNotice();kgDot()}
-function kgDot(){const b=document.querySelector('[data-tab=kg]');if(!b)return;let dot=b.querySelector('.dot');const ns=KG.filter(x=>!x.done).map(x=>kgDays(x.date));
+function kgDot(){const b=document.querySelector('[data-tab=plan]');if(!b)return;let dot=b.querySelector('.dot');const ns=KG.filter(x=>!x.done).map(x=>kgDays(x.date));
   const cls=ns.some(n=>n<=1)?'dot':ns.some(n=>n<=7)?'dot soon':'';if(!cls){dot&&dot.remove();return}
   if(!dot){dot=document.createElement('i');b.appendChild(dot)}dot.className=cls}
 $('kgDoneToggle').onclick=()=>{kgShowDone=!kgShowDone;kgRender()};
@@ -1887,10 +1888,10 @@ async function kgEnable(){
   catch(e){toast('通知をオンにできませんでした：'+e.message)}}
 $('kgNotifOff').onclick=async()=>{if(!kgMySub)return;try{await kgCall('unsubscribe',{endpoint:kgMySub.endpoint});await kgMySub.unsubscribe();kgMySub=null;kgNotice();toast('この端末への通知をやめました')}catch(e){toast(e.message)}};
 $('kgTest').onclick=async()=>{if(syKey().length<8)return toast('先に「設定」で同期の合言葉を決めてください');try{const j=await kgCall('test');toast(j.sent?`テスト通知を送りました（${j.sent}件）`:'通知が届く端末がありません。先に通知をオンにしてください')}catch(e){toast(e.message)}};
-async function kgRefresh(){kgRender();if(syKey().length<8)return;try{await kgCall('list')}catch(e){toast('期日：'+e.message)}kgRender()}
+async function kgRefresh(){kgRender();if(syKey().length<8)return;try{await kgCall('list')}catch(e){toast('期日：'+e.message)}kgRender();if(page==='plan')renderMyCal()}
 (async()=>{if('serviceWorker' in navigator){try{kgReg=await navigator.serviceWorker.register('sw.js');kgMySub=await kgReg.pushManager?.getSubscription()}catch(e){}}kgKinds();kgRefresh()})();
 if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.go==='kg')go('kg')});
-go(TABS.includes(location.hash.slice(1))?location.hash.slice(1):'form');renderTabDot();
+go(location.hash==='#kg'?'kg':TABS.includes(location.hash.slice(1))?location.hash.slice(1):'form');renderTabDot();
 // 合言葉を変えたら、新しい保存場所とはじめての同期をやり直す
 $('syKey').addEventListener('change',()=>{const v=$('syKey').value.trim();if(v===syKey())return;lsRaw('teiki_sync_key',v);lsRaw('teiki_sync_init',false);lsRaw('teiki_sync_pull',0);lsRaw('teiki_sync_u',{});lsRaw('teiki_sync_dirty',[]);syMsg='';syShow();syncNow()});
 $('syKeyShow').onclick=()=>{const i=$('syKey');i.type=i.type==='password'?'text':'password';$('syKeyShow').textContent=i.type==='password'?'表示':'隠す'};
