@@ -1454,13 +1454,13 @@ function shParse(text){const out=[],bad=[],t=new Date();
         if(tm2&&tm2[1].trim())ppl.push({n:tm2[1].trim(),s:hm(tm2[2]),e:hm(tm2[3])});else if(!/\d/.test(x))ppl.push({n:x,s:'',e:''});else bad.push(raw)});
     out.push({date,ppl})});
   const by={};out.forEach(r=>by[r.date]=r);return {days:Object.values(by).sort((a,b)=>a.date.localeCompare(b.date)),bad}}
-let SHP=null;
+let SHP=null,SH_UNSURE=new Set();
 function renderShPrev(){const box=$('shPrev');box.innerHTML='';if(!SHP)return;const {days,bad}=SHP,cur=shGet(),st=staff();
   if(!days.length){box.innerHTML='<div class="hint warn">日付の行が見つかりませんでした</div>';return}
   const newN=[...new Set(days.flatMap(d=>d.ppl.map(x=>x.n)))].filter(n=>!st.includes(n));
   let h=`<div class="ln-h"><span>${days.length}日分（${md(days[0].date)}〜${md(days[days.length-1].date)}）</span></div>`;
   days.forEach(d=>{const dt=new Date(d.date+'T00:00'),had=(cur[d.date]||[]).length;
-    h+=`<div class="ln-i"><b>${md(d.date)}（${WD[dt.getDay()]}）</b>${had?' <small style="display:inline">今のシフトと入れ替えます</small>':''}<small>${esc(d.ppl.length?shSum(d.ppl):'出る人なし')}</small></div>`});
+    h+=`<div class="ln-i"${SH_UNSURE.has(d.date)?' style="background:#fff4e5;border-radius:8px;padding-left:6px"':''}><b>${md(d.date)}（${WD[dt.getDay()]}）</b>${SH_UNSURE.has(d.date)?' <small style="display:inline;color:#b45309;font-weight:700">⚠要確認</small>':''}${had?' <small style="display:inline">今のシフトと入れ替えます</small>':''}<small>${esc(d.ppl.length?shSum(d.ppl):'出る人なし')}</small></div>`});
   if(newN.length)h+=`<div class="hint">スタッフに新しく追加します：${esc(newN.join('、'))}</div>`;
   if(bad.length)h+=`<div class="hint warn">読めなかった行：${esc(bad.join(' ／ '))}</div>`;
   box.innerHTML=h;const b=document.createElement('button');b.className='commit2 b3';b.style.cssText='width:100%;margin-top:12px';b.textContent=`${days.length}日分を登録する`;
@@ -1473,6 +1473,7 @@ function renderShPrev(){const box=$('shPrev');box.innerHTML='';if(!SHP)return;co
   box.appendChild(b)}
 $('shPasteTog').onclick=()=>{const b=$('shPasteBody');b.style.display=b.style.display==='none'?'':'none'};
 $('shRead').onclick=()=>{SHP=shParse($('shText').value);renderShPrev()};
+$('shText').addEventListener('input',()=>SH_UNSURE.clear());
 // 写真からシフトを読む：端末の中で縮めてからサーバー（AI）に送り、「11/5 かな、江夏」の形の文章にして上の欄に入れる
 const SH_API='https://task-app-nine-liard.vercel.app/api/shift_read';
 function shShrink(file){return new Promise((ok,ng)=>{const url=URL.createObjectURL(file),im=new Image();
@@ -1481,16 +1482,16 @@ function shShrink(file){return new Promise((ok,ng)=>{const url=URL.createObjectU
   im.onerror=()=>{URL.revokeObjectURL(url);ng(new Error('写真を開けませんでした'))};im.src=url})}
 $('shPhotoBtn').onclick=()=>{if(syKey().length<8){toast('先に「設定」で同期の合言葉を決めてください');return}$('shPhoto').click()};
 $('shPhoto').onchange=async e=>{const files=[...e.target.files];e.target.value='';if(!files.length)return;
-  const st=$('shPhotoSt'),btn=$('shPhotoBtn'),lines=[],errs=[];btn.disabled=true;
+  const st=$('shPhotoSt'),btn=$('shPhotoBtn'),lines=[],errs=[];btn.disabled=true;SH_UNSURE=new Set();
   for(let i=0;i<files.length;i++){st.className='hint';st.textContent=`読み取り中…（${i+1}/${files.length}枚）20秒ほどかかります`;
     try{const image=await shShrink(files[i]);
       const r=await fetch(SH_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:syKey(),image,mime:'image/jpeg'})});
       const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||('エラー '+r.status));
-      j.days.forEach(d=>lines.push(`${+d.date.slice(5,7)}/${+d.date.slice(8,10)} ${d.labels.length?d.labels.join('、'):'なし'}`))}
+      j.days.forEach(d=>{if(d.unsure)SH_UNSURE.add(d.date)});j.days.forEach(d=>lines.push(`${+d.date.slice(5,7)}/${+d.date.slice(8,10)} ${d.labels.length?d.labels.join('、'):'なし'}`))}
     catch(err){errs.push((files.length>1?`${i+1}枚目：`:'')+err.message)}}
   btn.disabled=false;
   if(lines.length){$('shText').value=lines.join('\n');SHP=shParse($('shText').value);renderShPrev();$('shPrev').scrollIntoView({behavior:'smooth',block:'nearest'})}
-  st.className='hint'+(errs.length?' warn':'');st.textContent=(lines.length?`${lines.length}日分を読み取りました。下で確認して「登録する」を押してください。`:'')+(errs.length?(lines.length?'　':'')+errs.join(' ／ '):'')};
+  st.className='hint'+(errs.length||SH_UNSURE.size?' warn':'');st.textContent=(lines.length?`${lines.length}日分を読み取りました。`+(SH_UNSURE.size?`⚠ ${[...SH_UNSURE].sort().map(md).join('・')} は読み取りが2回で食い違ったので、表と見比べてください。`:'下で表と見比べて「登録する」を押してください。'):'')+(errs.length?(lines.length?'　':'')+errs.join(' ／ '):'')};
 /* ---------- レジ金（使ったとき・戻したときだけ記録） ---------- */
 // teiki_reji：{base:30000, log:[{id,d,type:'use'|'back',v,k}]}
 const rjGet=()=>Object.assign({base:30000,log:[]},ls.get('teiki_reji',{})),rjPut=o=>ls.set('teiki_reji',o);

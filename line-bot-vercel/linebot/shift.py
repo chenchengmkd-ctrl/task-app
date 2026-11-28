@@ -13,6 +13,7 @@
 """
 import base64
 import json
+import os
 import re
 
 from . import config
@@ -42,24 +43,29 @@ _PROMPT = '\n'.join([
     'あなたは日本の飲食店のシフト管理担当です。渡されたシフト表の画像を読み取り、JSONだけを返してください。',
     '説明文・前置き・コードフェンスは一切付けないこと。',
     '',
-    'この表は、横の並びが「日付」、縦の並びが「従業員の名前」です。',
-    '交差するマスに、その人のその日の区分（A・B・P・○・×など）が入っています。',
+    'この表は、一番上の行に「日付」が左から右へ並び、左端の列に「従業員の名前」が上から下へ並んでいます。',
+    '名前の行と日付の列が交差するマスに、その人のその日の区分（A・B・C・P・○・×など）が入っています。',
+    '表の右側にある凡例（「A 09:30-13:30」のような時間の説明）は表ではないので無視すること。',
+    '',
+    '読み方（必ずこの順で）：',
+    '1. 一番上の行の日付を、左端から右端まで1つ残らず数字で列挙する（例：11/16 なら 16）。',
+    '2. 名前ごとに1行ずつ、その行のマスを左端の日付から右端の日付まで、1マスも飛ばさず順に読む。',
+    '   marks の個数は、必ず手順1の日付の個数と同じにすること。',
+    '   隣の行や隣の列と取り違えないよう、名前の行を横にまっすぐたどること。',
     '',
     '出力するJSONの形式：',
     '{',
-    '  "month": 月の数値（表の見出しにある月。読めなければ0）,',
-    '  "days": [',
-    '    {"day": 日にちの数値, "people": [{"name": "名前", "mark": "その人のマスの記号"}]}',
+    '  "month": 表の見出しや日付にある月の数値（読めなければ0）,',
+    '  "dates": [日にちの数値, ...],',
+    '  "rows": [',
+    '    {"name": "名前", "marks": ["左端の日付のマスの記号", "2番目の日付のマスの記号", ...]}',
     '  ]',
     '}',
     '',
     'ルール：',
-    '- days は表にある日付を左から順に、すべて出すこと。',
-    '- people には、その日に表に載っている全員を、記号がなんであれそのまま入れること。',
-    '  「×」の人も省かずに入れる（登録するかどうかはこちらで判断する）。',
-    '- mark は、マスに書かれている文字をそのまま1〜2文字で書く（A、B、P、○、×など）。',
+    '- mark は、マスに書かれている文字をそのまま1〜2文字で書く（A、B、C、P、○、×など）。大文字小文字は区別しなくてよい。',
     '  空欄のマスは "" とする。セルの色は無視し、書かれている文字だけを見ること。',
-    '- name は表の左端に書かれている表記のまま書く（敬称は付けない）。',
+    '- name は表の左端に書かれている表記のまま書く（敬称は付けない）。表にいる全員を、×ばかりの人も含めて出す。',
     '- 表に無い日付・人を推測で足さないこと。',
 ])
 
@@ -116,47 +122,97 @@ def _label(person):
     return f'{name}{mark}'
 
 
-def read_shift(image_bytes, mime, names_only=False):
-    """シフト表を読み取り、[{date, labels}] を日付順で返す。失敗時はNone。
-    names_only=True のときは記号（A・B・P）を付けず名前だけにする（定期報告アプリの予定タブ用）。"""
-    b64 = base64.b64encode(image_bytes).decode('ascii')
-    parts = [
-        {'inline_data': {'mime_type': mime, 'data': b64}},
-        {'text': _PROMPT},
-    ]
-    data = _parse_json(call_gemini('シフト表を読み取ってJSONだけを返すアシスタント。', parts, max_tokens=4000))
+# 読み取りに使うモデル。強いものから順に試し、使えない（存在しない・無料枠外）なら次へ。
+# 既定の GEMINI_MODEL（flash-lite）は軽すぎて、横に長い表で列を取り違える（11/24以降が1列ずれる等）。
+SHIFT_MODELS = [m for m in [os.environ.get('SHIFT_GEMINI_MODEL', '').strip(),
+                            'gemini-3.1-flash', 'gemini-3-flash-preview', 'gemini-2.5-flash',
+                            config.GEMINI_MODEL] if m]
+_good_model = None
+
+
+def _ask(parts):
+    """使えるモデルが見つかるまで順に試す。→ 応答テキスト（だめならNone）"""
+    global _good_model
+    from . import gemini_client
+    order = ([_good_model] if _good_model else []) + [m for m in SHIFT_MODELS if m != _good_model]
+    for m in order:
+        text = call_gemini('シフト表を読み取ってJSONだけを返すアシスタント。', parts, max_tokens=8000, model=m, retries=1)
+        if text:
+            _good_model = m
+            return text
+        err = gemini_client.LAST_ERROR or ''
+        if not any(k in err for k in ('HTTP 404', 'HTTP 400', 'HTTP 403', 'not found', 'NOT_FOUND', 'not supported')):
+            return None       # モデルの問題ではない失敗（混雑など）は、別モデルに替えても同じなので打ち切る
+    return None
+
+
+def _read_table(parts):
+    """1回読む。→ {'month', 'dates', 'rows'}（日付と各行の個数がそろっていない行は bad に入れる）。失敗時None"""
+    data = _parse_json(_ask(parts))
     if not data:
         return None
-
+    dates = []
+    for d in data.get('dates') or []:
+        try:
+            dates.append(int(str(d).split('/')[-1]))
+        except (TypeError, ValueError):
+            return None
+    if not dates or len(dates) > MAX_DAYS:
+        return None
+    rows, bad = [], []
+    for r in data.get('rows') or []:
+        if not isinstance(r, dict) or not str(r.get('name') or '').strip():
+            continue
+        marks = [str(x or '').strip() for x in (r.get('marks') or [])]
+        (rows if len(marks) == len(dates) else bad).append({'name': str(r['name']).strip(), 'marks': marks})
     try:
         month = int(data.get('month') or 0)
     except (TypeError, ValueError):
         month = 0
-    if not 1 <= month <= 12:
-        month = config.now_jst().month
-    year = _month_to_year(month)
+    return {'month': month, 'dates': dates, 'rows': rows, 'bad': bad}
 
-    out = []
-    for entry in (data.get('days') or [])[:MAX_DAYS]:
-        if not isinstance(entry, dict):
-            continue
-        try:
-            day = int(entry.get('day'))
-        except (TypeError, ValueError):
-            continue
-        date_iso = _safe_date(year, month, day)
+
+def _working(table, i):
+    """その日に出る人 [{name, mark}]"""
+    return [{'name': r['name'], 'mark': r['marks'][i]} for r in table['rows'] if r['marks'][i] not in OFF_MARKS]
+
+
+def read_shift(image_bytes, mime, names_only=False):
+    """シフト表を読み取り、[{date, labels, unsure}] を日付順で返す。失敗時はNone。
+    同じ画像を2回読み、食い違った日・読み切れなかった行がある日は unsure=True にする（人の目で確かめてもらう）。
+    names_only=True のときは記号（A・B・P）を付けず名前だけにする（定期報告アプリの予定タブ用）。"""
+    from concurrent.futures import ThreadPoolExecutor
+    b64 = base64.b64encode(image_bytes).decode('ascii')
+    parts = [{'inline_data': {'mime_type': mime, 'data': b64}}, {'text': _PROMPT}]
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        results = [t for t in ex.map(lambda _: _read_table(parts), range(2)) if t and t['rows']]
+    if not results:
+        return None
+    main = max(results, key=lambda t: (len(t['rows']), -len(t['bad'])))
+    other = next((t for t in results if t is not main), None)
+
+    month = main['month'] if 1 <= main['month'] <= 12 else config.now_jst().month
+    year = _month_to_year(month)
+    out, prev_day, cur_month, cur_year = [], None, month, year
+    for i, day in enumerate(main['dates']):
+        if prev_day is not None and day < prev_day:      # 月をまたぐ表（11/30 → 12/1）
+            cur_month = cur_month % 12 + 1
+            cur_year += cur_month == 1
+        prev_day = day
+        date_iso = _safe_date(cur_year, cur_month, day)
         if not date_iso:
             continue
-        labels = []
-        for person in entry.get('people') or []:
-            if not isinstance(person, dict):
-                continue
-            if str(person.get('mark') or '').strip() in OFF_MARKS:
-                continue          # ×＝休みなので登録しない
-            label = str(person.get('name') or '').strip() if names_only else _label(person)
-            if label:
-                labels.append(label)
-        out.append({'date': date_iso, 'labels': labels})
+        people = _working(main, i)
+        unsure = bool(main['bad'])
+        if other is not None:
+            if other['dates'] != main['dates']:
+                unsure = True
+            else:
+                a = sorted(p['name'] for p in people)
+                b = sorted(p['name'] for p in _working(other, i))
+                unsure = unsure or a != b
+        labels = [p['name'] if names_only else _label(p) for p in people]
+        out.append({'date': date_iso, 'labels': [x for x in labels if x], 'unsure': unsure})
     out.sort(key=lambda d: d['date'])
     return out or None
 
@@ -179,6 +235,8 @@ def _format_pending(days):
         dt = config.parse_date(d['date'])
         wd = '日月火水木金土'[(dt.weekday() + 1) % 7]
         body = '、'.join(d['labels']) if d['labels'] else '（休み）'
+        if d.get('unsure'):
+            body += '　⚠要確認'
         lines.append(f'{dt.day}日({wd}) {body}')
     return (head + '\n' + '\n'.join(lines) +
             f'\n\nこの内容で、毎日 {START_HHMM}〜{END_HHMM} の枠にカレンダー登録しますか？'
