@@ -386,6 +386,69 @@ def backfill_step(push_text_fn=None, get_users_fn=None):
             print('dash backfill error', sid, e)
 
 
+# ---------- LINE：勤怠botが入っているグループ・トークに届いたメッセージ（勤怠botが birdmen:kintai-msglog:日付 に記録） ----------
+# 昨日の17時以降のうち、オーナー本人の発言と打刻などの決まった言葉を除き、返事が要りそうなものをAIに5件まで選ばせる。
+# 同じメッセージの組み合わせなら選び直さず、保存した結果を使う。
+_CMD = _re.compile(r'^(出勤|退勤|休憩|登録|取消|訂正|予約|今日の予約|オーナー|おはよう|お疲れ|おつかれ|了解|承知|ありがとう|OK|ok|はい)[\s\S]{0,6}$')
+
+
+def _line_items(today_iso):
+    import hashlib
+    import json
+    d = date.fromisoformat(today_iso)
+    y = (d - timedelta(days=1)).isoformat()
+    since = f'{y}T17:00'
+    got = _get_many('birdmen_kv', [f'birdmen:kintai-msglog:{y}', f'birdmen:kintai-msglog:{today_iso}',
+                                   'birdmen:kintai-owners', 'birdmen:kintai-linemap'])
+    owners = set(got.get('birdmen:kintai-owners') or [])
+    owner_names = {(got.get('birdmen:kintai-linemap') or {}).get(u) for u in owners} - {None}
+    msgs = []
+    for k in (f'birdmen:kintai-msglog:{y}', f'birdmen:kintai-msglog:{today_iso}'):
+        for m in got.get(k) or []:
+            if not isinstance(m, dict) or (m.get('at') or '') < since:
+                continue
+            if m.get('user') in owners or m.get('name') in owner_names:
+                continue
+            t = (m.get('text') or '').strip()
+            if not t or _CMD.match(t):
+                continue
+            msgs.append(m)
+    if not msgs:
+        return {'items': [], 'count': 0}
+    msgs = msgs[-60:]
+    h = hashlib.sha256(json.dumps([m.get('id') for m in msgs]).encode()).hexdigest()[:16]
+    key = f'dash:line:{today_iso}'
+    cached = get_state(key)
+    if isinstance(cached, dict) and cached.get('h') == h:
+        return cached
+    from .gemini_client import call_gemini
+    lines = '\n'.join(f'{i}. [{m.get("at", "")[5:].replace("T", " ")}] {m.get("name", "")}: {(m.get("text") or "").replace(chr(10), " ")[:300]}'
+                      for i, m in enumerate(msgs))
+    system = ('あなたは飲食店オーナーの秘書です。お店のスタッフや関係者がLINEのグループやトークに送ったメッセージの一覧から、'
+              'オーナーが返事・判断・対応をした方がよさそうなもの（質問、依頼、相談、確認、シフトの相談、トラブルの報告など）を最大5件選び、'
+              '急ぎそうな順に並べてください。あいさつ・了解の返事・ただの報告・雑談は選ばないでください。'
+              '出力はJSONの配列だけで、各要素は {"i": 一覧の番号, "summary": "何を求められているかの日本語1行（40字以内）"} にしてください。'
+              '選ぶものがなければ [] を返してください。')
+    raw = call_gemini(system, lines, max_tokens=600, retries=1) or '[]'
+    m = _re.search(r'\[[\s\S]*\]', raw)
+    try:
+        picks = json.loads(m.group(0)) if m else []
+    except ValueError:
+        picks = []
+    items = []
+    for p in picks[:5]:
+        try:
+            src = msgs[int(p.get('i'))]
+        except (TypeError, ValueError, IndexError, AttributeError):
+            continue
+        at = src.get('at') or ''
+        items.append({'channel': 'LINE', 'from': src.get('name') or '', 'time': ('昨日 ' if at[:10] == y else '今日 ') + at[11:16],
+                      'summary': (p.get('summary') or src.get('text') or '')[:80], 'text': (src.get('text') or '')[:300]})
+    out = {'h': h, 'items': items, 'count': len(msgs), 'at': config.now_jst().strftime('%H:%M')}
+    set_state(key, out)
+    return out
+
+
 def build(today_iso, fresh=False):
     out = {'ok': True, 'date': today_iso}
     try:
@@ -398,6 +461,11 @@ def build(today_iso, fresh=False):
     except Exception as e:
         print('dash costs error', e)
         out['costs'] = {'error': str(e)[:120]}
+    try:
+        out['line'] = _line_items(today_iso)
+    except Exception as e:
+        print('dash line error', e)
+        out['line'] = {'error': str(e)[:120], 'items': []}
     mail = get_state('dash:mail')
     out['mail'] = mail if isinstance(mail, dict) else None
     return out

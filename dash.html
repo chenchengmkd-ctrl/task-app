@@ -53,7 +53,9 @@
   .ml{padding:8px 0;border-top:1px solid var(--line)}.ml:first-of-type{border-top:none}a.ml:active{background:var(--soft)}
   .ml .h{display:flex;gap:6px;align-items:baseline;font-size:13px}.ml .h b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ml .h span{font-size:11px;color:var(--muted);white-space:nowrap}.ml p{font-size:13px;color:#3b4442;margin-top:1px}
-  .tag{font-size:10px;font-weight:700;border-radius:5px;padding:0 5px;background:var(--soft);color:var(--muted)}
+  .tag{font-size:10px;font-weight:700;border-radius:5px;padding:0 5px;background:var(--soft);color:var(--muted)}.tag.tl{background:#e6f7ea;color:#06873a}
+  .mh{font-size:11px;font-weight:800;color:var(--muted);margin:8px 0 2px}.mh:first-child{margin-top:0}
+  .ml .qt{font-size:12px;color:var(--muted)}
   .row{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-top:1px solid var(--line);font-size:14px}.row:first-of-type{border-top:none}
   .row .k{flex:1;min-width:0;word-break:break-word}.row .v{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}.row .s{font-size:11px;color:var(--muted);white-space:nowrap}
   .late{color:var(--neg);font-weight:700;font-size:11px}
@@ -297,15 +299,19 @@ function renderAna(x,p,R){const kp=(l,v,u,sub)=>`<div class="kpi"><small>${l}</s
   $('stBody').innerHTML=h;
   const f=$('anFill');if(f)f.onclick=async()=>{f.disabled=true;f.textContent='読んでいます…';try{await anPost({fill:AN.sid,start:R.st,end:R.en})}catch(e){}loadAna()}}
 function _days(a,b){const o=[];for(let d=a;d<=b;d=addDays(d,1))o.push(d);return o}
-function renderMail(){const box=$('mail'),m=SRV&&SRV.mail;
+// 返事が必要そうな連絡：Gmail（毎朝のまとめ）と LINE（勤怠botが入っているグループ・トーク）を、それぞれ5件まで
+function renderMail(){const box=$('mail'),m=SRV&&SRV.mail,ln=SRV&&SRV.line;
   if(!SRV){box.innerHTML=srvErr?`<div class="hint warn">読めませんでした（${esc(srvErr)}）</div>`:'<div class="skel">読み込み中…</div>';return}
-  if(!m||!Array.isArray(m.items)){box.innerHTML='<div class="hint">まだ準備中です。毎朝のメールのまとめがつながると、昨日の夕方以降に届いた連絡のうち、返事が要りそうなものが5件まで出ます。</div>';$('mailSub').textContent='';return}
-  const items=m.items.slice(0,5);
-  // 押すとGmailでそのメールを開く（返信はGmailで自分でする）
-  box.innerHTML=(m.date&&m.date!==TODAY?'<div class="hint warn" style="margin-bottom:4px">今朝のまとめがまだなので、前回のまとめを出しています</div>':'')+
-    (items.length?items.map(x=>{const inner=`<div class="h"><span class="tag">${esc(x.channel||'メール')}</span><b>${esc(x.from||'')}</b><span>${esc(x.time||'')}</span></div><p>${esc(x.summary||x.subject||'')}</p>`;
-      return /^https:\/\/mail\.google\.com\//.test(x.url||'')?`<a class="ml" href="${esc(x.url)}" target="_blank" rel="noopener" style="display:block;color:inherit;text-decoration:none">${inner}</a>`:`<div class="ml">${inner}</div>`}).join(''):'<div class="hint">返事が要りそうな連絡はありません</div>');
-  $('mailSub').textContent=m.at?`${m.at} まとめ`:''}
+  const row=x=>{const inner=`<div class="h"><span class="tag ${x.channel==='LINE'?'tl':''}">${esc(x.channel||'メール')}</span><b>${esc(x.from||'')}</b><span>${esc(x.time||'')}</span></div><p>${esc(x.summary||x.subject||'')}</p>${x.text&&x.text!==x.summary?`<p class="qt">「${esc(x.text.length>60?x.text.slice(0,60)+'…':x.text)}」</p>`:''}`;
+    return /^https:\/\/mail\.google\.com\//.test(x.url||'')?`<a class="ml" href="${esc(x.url)}" target="_blank" rel="noopener" style="display:block;color:inherit;text-decoration:none">${inner}</a>`:`<div class="ml">${inner}</div>`};
+  let h='<div class="mh">Gmail</div>';
+  if(!m||!Array.isArray(m.items))h+='<div class="hint">まだ準備中です（毎朝のメールのまとめがつながると出ます）</div>';
+  else{if(m.date&&m.date!==TODAY)h+='<div class="hint warn" style="margin-bottom:4px">今朝のまとめがまだなので、前回のまとめを出しています</div>';
+    h+=m.items.length?m.items.slice(0,5).map(row).join(''):'<div class="hint">返事が要りそうなメールはありません</div>'}
+  h+='<div class="mh">LINE（勤怠botが入っているグループ・トーク）</div>';
+  if(!ln||ln.error)h+=`<div class="hint${ln&&ln.error?' warn':''}">${ln&&ln.error?'読めませんでした（'+esc(ln.error)+'）':'まだありません'}</div>`;
+  else h+=ln.items.length?ln.items.slice(0,5).map(row).join(''):`<div class="hint">返事が要りそうなメッセージはありません${ln.count?`（昨日の夕方から ${ln.count}件を確認）`:''}</div>`;
+  box.innerHTML=h;$('mailSub').textContent=m&&m.at?`メール ${m.at} まとめ`:''}
 function renderMore(){const box=$('more');let h='';
   const tk=todayTasks(),late=tk.filter(x=>x.late).length,rt=ls.get('teiki_rt',[]),done=(ls.get('teiki_rtlog',{})[TODAY]||[]).length;
   h+=`<div><h3>今日のタスク ${tk.length}件${late?` <span class="late">（遅れ ${late}）</span>`:''}${rt.length?`・毎日やること ${done}/${rt.length}`:''}</h3>`+
