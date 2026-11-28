@@ -22,10 +22,7 @@ PREFIX = 'nippo:r:'
 SHARED_KEY = 'nippo:shared'
 # 店ごとに保存場所を分ける（'' は今の店＝鰻。'air' はAirレジの店、'usen' はUSENレジの店）
 STORES = {'': ('nippo:r:', 'nippo:shared'), 'air': ('nippo-air:r:', 'nippo-air:shared'),
-          'usen': ('nippo-usen:r:', 'nippo-usen:shared'),
-          # 定期報告アプリ（teiki.html）。資金報告は日付ごと、ほかのデータ（タスク・予定・支払いなど）は
-          # 「k.保存名」ごとに1件として持つ
-          'teiki': ('teiki:r:', 'teiki:shared')}
+          'usen': ('nippo-usen:r:', 'nippo-usen:shared')}
 # 1件の名前：日付（YYYY-MM-DD）か、定期報告アプリの「k.保存名」
 _ENTRY = re.compile(r'\d{4}-\d{2}-\d{2}|k\.[A-Za-z0-9_]{1,40}')
 
@@ -35,7 +32,18 @@ def _entry_ok(d):
 
 
 def keys_for(store):
+    # 定期報告アプリは合言葉ごとに保存場所を分ける（('teiki', 印) の形で渡ってくる）
+    if isinstance(store, tuple) and store[0] == 'teiki':
+        return (f'teiki:{store[1]}:r:', f'teiki:{store[1]}:shared')
     return STORES.get(store or '', STORES[''])
+
+
+def teiki_store(passphrase):
+    """定期報告アプリ（teiki.html）の保存場所。合言葉そのものは保存せず、そこから作った印で分ける。
+    同じ合言葉を入れた端末どうしだけが同じデータを見る。資金報告は日付ごと、
+    ほかのデータ（タスク・予定・支払いなど）は「k.保存名」ごとに1件として持つ。"""
+    import hashlib
+    return ('teiki', hashlib.sha256(('teiki-sync:' + passphrase).encode('utf-8')).hexdigest()[:24])
 
 
 def _u(v):

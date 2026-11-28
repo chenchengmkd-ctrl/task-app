@@ -492,11 +492,11 @@
 <div class="page" id="p-set">
   <div class="card">
     <h2>スマホとiPadの同期<span class="sub">同じ合言葉を入れた端末どうしで、データが自動で同じになります</span></h2>
-    <label class="t">合言葉</label>
-    <div style="display:flex;gap:8px"><input type="password" id="syKey" autocomplete="off" placeholder="日報アプリと同じ合言葉" style="flex:1"><button class="small-btn" id="syKeyShow" type="button">表示</button></div>
+    <label class="t">合言葉（自分で決める・8文字以上）</label>
+    <div style="display:flex;gap:8px"><input type="password" id="syKey" autocomplete="off" placeholder="例：自分だけがわかる言葉" style="flex:1"><button class="small-btn" id="syKeyShow" type="button">表示</button></div>
     <div class="hint" id="syState" style="margin-top:6px"></div>
     <button class="small-btn addrow" id="syNow">今すぐ同期</button>
-    <div class="hint">はじめては、データが入っている方の端末で先に合言葉を入れてください。あとから入れた端末は、同じ日・同じ項目はサーバーの内容になり、その端末にしかないものは追加されます。</div>
+    <div class="hint">日報アプリの合言葉とは別です。もう1台にも同じ合言葉を入れてください。人に推測されにくい言葉にしてください。<br>はじめては、データが入っている方の端末で先に合言葉を入れてください。あとから入れた端末は、同じ日・同じ項目はサーバーの内容になり、その端末にしかないものは追加されます。</div>
   </div>
   <div class="card">
     <h2>見出しの名前</h2>
@@ -534,12 +534,12 @@
 const $=id=>document.getElementById(id);
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-/* ---------- スマホとiPadの同期（日報アプリと同じ仕組み・同じ合言葉。保存場所は teiki） ----------
+/* ---------- スマホとiPadの同期（日報とは別の、自分で決めた合言葉。合言葉ごとに保存場所が分かれる） ----------
    資金報告は日付ごと、ほかのデータは「k.保存名」ごとに1件として送る。新しく保存した方が勝つ。 */
-const SYNC_API='https://task-app-nine-liard.vercel.app/api/nippo_sync';
+const SYNC_API='https://task-app-nine-liard.vercel.app/api/teiki_sync';
 const SYNC_KEYS=['teiki_cfg','teiki_cf','shin_tasks','shin_days','shin_recent','teiki_rt','teiki_rtlog','teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once','teiki_reji','teiki_plan_rule','teiki_plan_none'];
 let syApplying=false,syTimer=null,syBusy=false,sySnap=null,syAllTimer=null,syMsg='';
-const syKey=()=>ls.get('nippo_sqkey','');
+const syKey=()=>ls.get('teiki_sync_key','');
 function lsRaw(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 // 変わった項目と、その時刻（ms）を覚えておく
 function syMark(e){const u=ls.get('teiki_sync_u',{});u[e]=Date.now();lsRaw('teiki_sync_u',u);const q=ls.get('teiki_sync_dirty',[]);if(!q.includes(e)){q.push(e);lsRaw('teiki_sync_dirty',q)}sySoon()}
@@ -554,7 +554,7 @@ function sySoon(){clearTimeout(syTimer);syTimer=setTimeout(syncNow,2000)}
 function syVal(e){const u=ls.get('teiki_sync_u',{})[e]||Date.now();
   if(e.startsWith('k.'))return {_u:u,v:ls.get(e.slice(2),null)};
   const a=ls.get('teiki_all',{});return a[e]?Object.assign({},a[e],{_u:u}):{date:e,_del:true,_u:u}}
-async function syPost(body){const r=await fetch(SYNC_API,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':syKey()},body:JSON.stringify(Object.assign({store:'teiki'},body))});
+async function syPost(body){const r=await fetch(SYNC_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({key:syKey()},body))});
   const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||('エラー '+r.status));return j}
 // サーバーから来た分を入れる（この端末の方が新しいものはそのまま）
 function syApply(entries){const u=ls.get('teiki_sync_u',{}),dirty=new Set(ls.get('teiki_sync_dirty',[]));let changed=false;syApplying=true;
@@ -566,7 +566,7 @@ function syApply(entries){const u=ls.get('teiki_sync_u',{}),dirty=new Set(ls.get
     if(aCh){_lsSet('teiki_all',a);CACHE=null;sySnap=snapAll()}
     lsRaw('teiki_sync_u',u);lsRaw('teiki_sync_dirty',[...dirty])}finally{syApplying=false}
   return changed}
-async function syncNow(){if(!syKey()||syBusy)return;syBusy=true;
+async function syncNow(){if(syKey().length<8||syBusy)return;syBusy=true;
   try{let changed=false;
     // はじめての同期：先にサーバーの分を入れてから、この端末にしかないものを送る
     if(!ls.get('teiki_sync_init',false)){const j=await syPost({op:'pull',since:0});changed=syApply(j.reports)||changed;const have=new Set(Object.keys(j.reports||{}));
@@ -585,7 +585,7 @@ function syRefresh(){T=ls.get('shin_tasks',[]);TD=ls.get('shin_days',{});syRende
 function syRender(){const ae=document.activeElement;if(ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)&&ae.id!=='syKey'){setTimeout(syRender,3000);return}
   const a=allReports();if(a[R.date])R=JSON.parse(JSON.stringify(a[R.date]));go(page)}
 function syShow(){$('syKey').value=syKey();const st=$('syState');st.className='hint'+(/⚠/.test(syMsg)?' warn':'');
-  st.textContent=!syKey()?'合言葉を入れると同期が始まります（今はこの端末だけに保存しています）':syMsg||'同期待ち…'}
+  st.textContent=!syKey()?'合言葉を入れると同期が始まります（今はこの端末だけに保存しています）':syKey().length<8?'⚠ 合言葉は8文字以上にしてください':syMsg||'同期待ち…';if(/⚠/.test(st.textContent))st.className='hint warn'}
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>{const n=+String(v==null?'':v).replace(/[,，円\s]/g,'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248));return isFinite(n)?n:0};
 const fmt=n=>(n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString('ja-JP');
@@ -1735,9 +1735,10 @@ function load(o){R=JSON.parse(JSON.stringify(o));save();if(page==='form')renderA
 
 load(allReports()[todayStr()]||blank(todayStr()));
 go(TABS.includes(location.hash.slice(1))?location.hash.slice(1):'form');renderTabDot();
-$('syKey').addEventListener('change',()=>{lsRaw('nippo_sqkey',$('syKey').value.trim());syMsg='';syShow();syncNow()});
+// 合言葉を変えたら、新しい保存場所とはじめての同期をやり直す
+$('syKey').addEventListener('change',()=>{const v=$('syKey').value.trim();if(v===syKey())return;lsRaw('teiki_sync_key',v);lsRaw('teiki_sync_init',false);lsRaw('teiki_sync_pull',0);lsRaw('teiki_sync_u',{});lsRaw('teiki_sync_dirty',[]);syMsg='';syShow();syncNow()});
 $('syKeyShow').onclick=()=>{const i=$('syKey');i.type=i.type==='password'?'text':'password';$('syKeyShow').textContent=i.type==='password'?'表示':'隠す'};
-$('syNow').onclick=()=>{if(!syKey()){toast('合言葉を入れてください');return}syMsg='同期中…';syShow();syncNow()};
+$('syNow').onclick=()=>{if(syKey().length<8){toast('合言葉（8文字以上）を入れてください');return}syMsg='同期中…';syShow();syncNow()};
 syncNow();setInterval(()=>{if(!document.hidden)syncNow()},60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow()});
 </script>

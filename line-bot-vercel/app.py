@@ -588,6 +588,36 @@ def _handle_nippo_sync(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
+def _handle_teiki_sync(environ, start_response):
+    """定期報告アプリ（teiki.html）のスマホ・iPad同期。日報とは別の、自分で決めた合言葉で使う。
+    Vercelの設定は不要。合言葉ごとに保存場所が分かれる（合言葉そのものは保存しない）。"""
+    try:
+        if int(environ.get('CONTENT_LENGTH') or 0) > 3_000_000:
+            return _respond(start_response, '413 Payload Too Large', {'error': 'データが大きすぎます'}, cors=True)
+    except ValueError:
+        pass
+    body = _read_json_body(environ)
+    if body is None:
+        return _respond(start_response, '400 Bad Request', {'error': 'JSONが読めません'}, cors=True)
+    key = str(body.get('key') or '')
+    if len(key) < 8:
+        return _respond(start_response, '400 Bad Request', {'error': '合言葉は8文字以上にしてください'}, cors=True)
+    from linebot import nippo_sync
+    store = nippo_sync.teiki_store(key)
+    try:
+        if body.get('op') == 'push':
+            reports = body.get('reports') or {}
+            if not isinstance(reports, dict) or len(reports) > 500:
+                return _respond(start_response, '400 Bad Request', {'error': '一度に送る量が多すぎます'}, cors=True)
+            result = nippo_sync.push(reports, None, store)
+        else:
+            result = nippo_sync.pull(body.get('since'), store)
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    status = '200 OK' if result.get('ok') else '502 Bad Gateway'
+    return _respond(start_response, status, result, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -621,6 +651,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_usen_probe(environ, start_response)
+
+    if path == '/api/teiki_sync':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_teiki_sync(environ, start_response)
 
     if path == '/api/nippo_sync':
         if method == 'OPTIONS':
