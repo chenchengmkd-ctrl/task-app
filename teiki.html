@@ -19,6 +19,7 @@
   header h1{font-size:19px;font-weight:700;letter-spacing:.02em;flex:1}
   header h1 small{font-size:13px;font-weight:600;color:rgba(255,255,255,.85);margin-left:8px}
   header button{color:#fff;padding:8px 9px;font-size:14px;font-weight:700;border-radius:8px}
+  header .hlink{color:#fff;text-decoration:none;padding:6px 8px;font-size:17px;border-radius:8px}
   header button:active{background:rgba(255,255,255,.22)}
   main{max-width:760px;margin:0 auto;padding:12px 14px}
   .card{background:var(--card);border:1px solid rgba(14,124,134,.12);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 6px 20px rgba(14,124,134,.07)}
@@ -270,6 +271,7 @@
 <body>
 <header>
   <h1>定期報告<small id="hDate"></small></h1>
+  <a class="hlink" href="dash.html" aria-label="ダッシュボード">📊</a>
   <button data-go="hist">履歴</button>
   <button data-go="set">設定</button>
   <button id="btnNew">今日</button>
