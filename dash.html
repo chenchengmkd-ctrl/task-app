@@ -91,8 +91,6 @@
   <h2 style="margin:0">ダッシュボードの設定</h2>
   <label>合言葉（定期報告の同期と同じ・8文字以上）</label>
   <input type="password" id="fKey" autocomplete="off">
-  <label>今月の売上目標（全店の合計・円）</label>
-  <input type="text" id="fGoal" inputmode="numeric" placeholder="例：3,000,000">
   <div class="hint" style="margin-top:10px">このページは見るだけです。メールの送信や予定の変更はしません。</div>
   <div class="btns"><button id="dCancel">閉じる</button><button class="p" id="dSave">保存</button></div>
 </dialog>
@@ -175,21 +173,19 @@ function renderSched(){const box=$('sched'),items=[],mp=myPlanToday(),cal=SRV&&S
   if(cal&&!cal.enabled)h+='<div class="hint" style="margin-top:6px">Googleカレンダーはbotにつながっていないため出ていません</div>';
   else if(!SRV&&srvErr)h+=`<div class="hint warn" style="margin-top:6px">Googleカレンダーを読めませんでした（${esc(srvErr)}）</div>`;
   box.innerHTML=h;$('schedSub').textContent=`${list.length}件${isHol(TODAY)?'・祝日':''}`}
-function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,goal=num((ls.get('teiki_dash',{})||{}).goal),c=monthCost();
+function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,c=monthCost();
   if(!s){box.innerHTML=srvErr?`<div class="hint warn">売上を読めませんでした（${esc(srvErr)}）</div>`:'<div class="skel">読み込み中…</div>';return}
   const ok=s.stores.filter(x=>!x.error),yd=ok.reduce((a,x)=>a+(x.yesterday||0),0),mtd=ok.reduce((a,x)=>a+(x.month||0),0);
   const t=new Date(TODAY+'T00:00'),dim=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(),passed=t.getDate()-1;
-  const rate=goal?mtd/goal:0,pace=goal&&passed?mtd/(goal*passed/dim):0,forecast=passed?mtd/passed*dim:0;
+  const forecast=passed?mtd/passed*dim:0;// 今月のペースのまま月末まで続いた場合
   const profit=mtd-c.cost,laborRate=mtd?c.labor/mtd:0;
   let h=`<div class="hint">昨日（${md(s.yesterday_date)}）の売上</div><div class="big">${fmt(yd)}<span style="font-size:14px;color:var(--muted);font-weight:600"> 円</span></div>`;
   h+=ok.length>1||s.stores.some(x=>x.error)?'<div style="margin-top:4px">'+s.stores.map(x=>`<div class="st"><span>${esc(x.name)}${x.count!=null&&!x.error?`（${x.count}件）`:''}</span><b class="${x.error?'neg':''}">${x.error?'読めませんでした':fmt(x.yesterday)}</b></div>`).join('')+'</div>':'';
   h+=`<div class="kpis">
     <div class="kpi"><small>今月の合計（昨日まで）</small><b>${man(mtd)}</b><em>円</em></div>
-    <div class="kpi"><small>月の目標に対して</small>${goal?`<b class="${pace>=1?'okc':pace<0.9?'neg':''}">${Math.round(rate*100)}%</b><em>目標 ${man(goal)}</em>`:'<b style="font-size:13px;color:var(--muted)">⚙で目標を入れる</b>'}</div>
+    <div class="kpi"><small>月末の見込み</small>${passed?`<b>${man(forecast)}</b><em>今のペースなら</em>`:'<b style="font-size:13px;color:var(--muted)">2日目から出ます</b>'}</div>
     <div class="kpi"><small>利益（概算）</small><b class="${profit<0?'neg':''}">${man(profit)}</b><em>円</em></div>
     <div class="kpi"><small>人件費</small><b>${man(c.labor)}</b><em>${mtd?'売上の'+Math.round(laborRate*100)+'%':''}</em></div></div>`;
-  if(goal)h+=`<div class="bar"><i style="width:${Math.min(100,rate*100)}%"></i><u style="left:${Math.min(100,passed/dim*100)}%"></u></div>
-    <div class="hint" style="margin-top:4px">黒い線が今日までの目安。今のペースだと月末 ${man(forecast)}円（目標の${Math.round(forecast/goal*100)}%）</div>`;
   h+=`<div class="hint" style="margin-top:6px">経費は定期報告の出金（${c.days}日分・口座の移し替えは除く）の合計 ${man(c.cost)}円で、利益は売上からそれを引いた目安です。</div>`;
   box.innerHTML=h;$('salesSub').textContent=s.at?`${s.at} 時点`:''}
 function renderMail(){const box=$('mail'),m=SRV&&SRV.mail;
@@ -219,12 +215,9 @@ async function load(fresh){const key=ls.get('teiki_sync_key','');
   catch(e){srvErr=e.message;const c=ls.get('teiki_dash_cache',null);if(c&&c.d===TODAY)SRV=c.j}
   $('upd').textContent='更新 '+pad(new Date().getHours())+':'+pad(new Date().getMinutes())+(srvErr&&SRV?'（前回の内容を表示中）':'');renderAll()}
 $('btnReload').onclick=()=>{$('upd').textContent='更新中…';load(true)};
-$('btnSet').onclick=()=>{$('fKey').value=ls.get('teiki_sync_key','');const g=num((ls.get('teiki_dash',{})||{}).goal);$('fGoal').value=g?g.toLocaleString('ja-JP'):'';$('dlg').showModal()};
+$('btnSet').onclick=()=>{$('fKey').value=ls.get('teiki_sync_key','');$('dlg').showModal()};
 $('dCancel').onclick=()=>$('dlg').close();
 $('dSave').onclick=()=>{const k=$('fKey').value.trim();if(k&&k!==ls.get('teiki_sync_key','')){ls.set('teiki_sync_key',k);ls.set('teiki_sync_init',false);ls.set('teiki_sync_pull',0)}
-  const d=Object.assign({},ls.get('teiki_dash',{}),{goal:num($('fGoal').value)});ls.set('teiki_dash',d);
-  // 目標は定期報告アプリを開いたときにほかの端末へも同期される
-  const u=ls.get('teiki_sync_u',{});u['k.teiki_dash']=Date.now();ls.set('teiki_sync_u',u);const q=ls.get('teiki_sync_dirty',[]);if(!q.includes('k.teiki_dash')){q.push('k.teiki_dash');ls.set('teiki_sync_dirty',q)}
   $('dlg').close();load()};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)location.reload()});
 renderAll();load();
