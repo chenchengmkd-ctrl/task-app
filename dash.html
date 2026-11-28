@@ -128,9 +128,9 @@ const isHol=d=>jpHol(+d.slice(0,4)).has(d);
 
 /* ---------- 定期報告アプリのデータ（この端末） ---------- */
 const REP=ls.get('teiki_all',{});
-// 今日の自分の予定：予定タブで入れたもの → 昨日の定期報告の「明日の予定」→ 定期の予定
-function myPlanToday(){const me=filled(ls.get('teiki_plan',{})[TODAY]);if(me.length)return {l:me,src:'予定'};
-  const y=REP[YDAY];if(y&&filled(y.sched).length)return {l:filled(y.sched),src:'昨日の報告'};
+// 今日の自分の予定：昨日の定期報告の「明日の予定」（いちばん優先）→ 予定タブで入れたもの → 定期の予定
+function myPlanToday(){const y=REP[YDAY];if(y&&filled(y.sched).length)return {l:filled(y.sched),src:'昨日の報告'};
+  const me=filled(ls.get('teiki_plan',{})[TODAY]);if(me.length)return {l:me,src:'予定'};
   if(ls.get('teiki_plan_none',[]).includes(TODAY))return {l:[],src:''};
   const wd=new Date(TODAY+'T00:00').getDay(),h=isHol(TODAY);
   const r=ls.get('teiki_plan_rule',[]).filter(x=>((x.days||[]).includes(wd)||(x.hol&&h))&&(x.s||(x.t||'').trim()));return {l:r,src:'定期の予定'}}
