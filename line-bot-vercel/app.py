@@ -690,6 +690,43 @@ def _handle_due(environ, start_response):
     return _respond(start_response, '200 OK', res, cors=True)
 
 
+def _handle_shift_read(environ, start_response):
+    """定期報告アプリ（予定タブ）からシフト表の写真を受け取り、日ごとの出勤者を返す。登録はアプリ側で確認してから。"""
+    try:
+        if int(environ.get('CONTENT_LENGTH') or 0) > 4_000_000:
+            return _respond(start_response, '413 Payload Too Large', {'error': '写真が大きすぎます'}, cors=True)
+    except ValueError:
+        pass
+    body = _read_json_body(environ)
+    if body is None:
+        return _respond(start_response, '400 Bad Request', {'error': 'JSONが読めません'}, cors=True)
+    from linebot import dash, shift
+    try:
+        ok, _ = dash.check_key(body.get('key'))
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)[:200]}, cors=True)
+    if not ok:
+        return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います（8文字以上）'}, cors=True)
+    import base64 as _b64
+    mime = str(body.get('mime') or 'image/jpeg')
+    if mime not in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'):
+        return _respond(start_response, '400 Bad Request', {'error': '写真の形式に対応していません'}, cors=True)
+    try:
+        img = _b64.b64decode(str(body.get('image') or ''), validate=False)
+    except Exception:
+        img = b''
+    if not img:
+        return _respond(start_response, '400 Bad Request', {'error': '写真が空です'}, cors=True)
+    try:
+        days = shift.read_shift(img, mime, names_only=True)
+    except Exception as e:
+        return _respond(start_response, '502 Bad Gateway', {'error': 'AIの読み取りでエラーが出ました：' + str(e)[:120]}, cors=True)
+    if not days:
+        return _respond(start_response, '422 Unprocessable Entity',
+                        {'error': 'シフト表として読み取れませんでした。表全体が入るように、明るいところで撮り直してください。'}, cors=True)
+    return _respond(start_response, '200 OK', {'ok': True, 'days': days}, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -730,6 +767,11 @@ def app(environ, start_response):
         if method == 'POST':
             return _handle_teiki_sync(environ, start_response)
 
+    if path == '/api/shift_read':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_shift_read(environ, start_response)
     if path == '/api/due':
         if method == 'OPTIONS':
             return _respond(start_response, '204 No Content', {}, cors=True)

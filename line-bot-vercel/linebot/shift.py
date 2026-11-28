@@ -116,8 +116,9 @@ def _label(person):
     return f'{name}{mark}'
 
 
-def read_shift(image_bytes, mime):
-    """シフト表を読み取り、[{date, labels}] を日付順で返す。失敗時はNone。"""
+def read_shift(image_bytes, mime, names_only=False):
+    """シフト表を読み取り、[{date, labels}] を日付順で返す。失敗時はNone。
+    names_only=True のときは記号（A・B・P）を付けず名前だけにする（定期報告アプリの予定タブ用）。"""
     b64 = base64.b64encode(image_bytes).decode('ascii')
     parts = [
         {'inline_data': {'mime_type': mime, 'data': b64}},
@@ -152,7 +153,7 @@ def read_shift(image_bytes, mime):
                 continue
             if str(person.get('mark') or '').strip() in OFF_MARKS:
                 continue          # ×＝休みなので登録しない
-            label = _label(person)
+            label = str(person.get('name') or '').strip() if names_only else _label(person)
             if label:
                 labels.append(label)
         out.append({'date': date_iso, 'labels': labels})
