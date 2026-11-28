@@ -63,6 +63,8 @@ MEETING_TOKEN = _env('MEETING_TOKEN')
 
 # 日報アプリ（nippo.html）用。売上を返す口なので必須。iPadの日報アプリの「設定」に同じ文字を入れる。
 NIPPO_TOKEN = _env('NIPPO_TOKEN')
+# 毎朝のダッシュボード（dash.html）の合言葉。未設定なら、最初に使われた合言葉を持ち主として覚える
+DASH_TOKEN = _env('DASH_TOKEN')
 # ハンバーグ日和（Airレジの店）の日報アプリの合言葉。鰻の店とは別にする。
 # 未設定のあいだは NIPPO_TOKEN で動く（切り替えの途中で止まらないように）
 NIPPO_TOKEN_AIR = _env('NIPPO_TOKEN_AIR')

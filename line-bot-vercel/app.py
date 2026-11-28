@@ -618,6 +618,29 @@ def _handle_teiki_sync(environ, start_response):
     return _respond(start_response, status, result, cors=True)
 
 
+def _handle_dash(environ, start_response):
+    """毎朝のダッシュボード（dash.html）。今日の予定・売上・朝のメールのまとめを返す（見るだけ）。"""
+    body = _read_json_body(environ)
+    if body is None:
+        return _respond(start_response, '400 Bad Request', {'error': 'JSONが読めません'}, cors=True)
+    from linebot import dash
+    try:
+        ok, registered = dash.check_key(body.get('key'))
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    if not ok:
+        return _respond(start_response, '401 Unauthorized', {'error': '合言葉が違います（8文字以上）'}, cors=True)
+    today = body.get('date') or config.today_iso()
+    if not config.parse_date(today):
+        return _respond(start_response, '400 Bad Request', {'error': 'date の形が違います'}, cors=True)
+    try:
+        result = dash.build(today, fresh=bool(body.get('fresh')))
+    except Exception as e:
+        return _respond(start_response, '500 Internal Server Error', {'error': repr(e)}, cors=True)
+    result['registered'] = registered
+    return _respond(start_response, '200 OK', result, cors=True)
+
+
 def app(environ, start_response):
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', 'GET')
@@ -657,6 +680,12 @@ def app(environ, start_response):
             return _respond(start_response, '204 No Content', {}, cors=True)
         if method == 'POST':
             return _handle_teiki_sync(environ, start_response)
+
+    if path == '/api/dash':
+        if method == 'OPTIONS':
+            return _respond(start_response, '204 No Content', {}, cors=True)
+        if method == 'POST':
+            return _handle_dash(environ, start_response)
 
     if path == '/api/nippo_sync':
         if method == 'OPTIONS':

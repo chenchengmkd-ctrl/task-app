@@ -537,7 +537,7 @@ const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
 /* ---------- スマホとiPadの同期（日報とは別の、自分で決めた合言葉。合言葉ごとに保存場所が分かれる） ----------
    資金報告は日付ごと、ほかのデータは「k.保存名」ごとに1件として送る。新しく保存した方が勝つ。 */
 const SYNC_API='https://task-app-nine-liard.vercel.app/api/teiki_sync';
-const SYNC_KEYS=['teiki_cfg','teiki_cf','shin_tasks','shin_days','shin_recent','teiki_rt','teiki_rtlog','teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once','teiki_reji','teiki_plan_rule','teiki_plan_none'];
+const SYNC_KEYS=['teiki_dash','teiki_cfg','teiki_cf','shin_tasks','shin_days','shin_recent','teiki_rt','teiki_rtlog','teiki_plan','teiki_shift','teiki_staff','teiki_recur','teiki_once','teiki_reji','teiki_plan_rule','teiki_plan_none'];
 let syApplying=false,syTimer=null,syBusy=false,sySnap=null,syAllTimer=null,syMsg='';
 const syKey=()=>ls.get('teiki_sync_key','');
 function lsRaw(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}

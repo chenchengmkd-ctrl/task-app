@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0e7c86">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="今日">
+<link rel="apple-touch-icon" href="line-assets/dash-icon.png">
+<link rel="icon" href="line-assets/dash-icon.png">
+<title>今日のダッシュボード</title>
+<style>
+  :root{--bg:#f4f7f6;--card:#fff;--ink:#1a1a1a;--muted:#7f8a87;--line:#e1e8e6;--soft:#eef3f2;--warn:#b45309;--neg:#b91c1c;--ok:#047857;
+    --g:linear-gradient(135deg,#22c1a7 0%,#0e7c86 100%);--accent:#0e7c86;--c-g:#2a78d6;--c-sc:#6250d6;--c-sh:#d4558a;--c-pay:#e8853d}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Segoe UI","Meiryo",sans-serif;color:var(--ink);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+  button,input{font:inherit;color:inherit}button{cursor:pointer;border:none;background:none}
+  header{background:var(--g);color:#fff;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 16px;display:flex;align-items:flex-end;gap:10px}
+  header .d{flex:1}header .d small{display:block;font-size:13px;opacity:.85;font-weight:600}header .d b{font-size:24px;letter-spacing:.02em}
+  header button{color:#fff;font-weight:700;font-size:13px;padding:7px 10px;border-radius:9px;background:rgba(255,255,255,.18)}
+  main{max-width:760px;margin:0 auto;padding:12px 14px;display:grid;gap:12px}
+  @media (min-width:900px){main{max-width:1100px;grid-template-columns:1fr 1fr;align-items:start}.wide{grid-column:1/-1}}
+  .card{background:var(--card);border:1px solid rgba(14,124,134,.12);border-radius:18px;padding:14px 16px;box-shadow:0 6px 20px rgba(14,124,134,.06)}
+  h2{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  h2 .n{font-size:12px;font-weight:700;color:#fff;background:var(--accent);border-radius:6px;padding:0 6px}
+  h2 .sub{margin-left:auto;font-weight:500;font-size:11px;color:var(--muted)}
+  .hint{font-size:12px;color:var(--muted)}.hint.warn{color:var(--warn);font-weight:600}
+  .ev{display:flex;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line)}.ev:first-of-type{border-top:none}
+  .ev .t{flex:0 0 108px;font-weight:700;font-variant-numeric:tabular-nums;font-size:13px;white-space:nowrap}
+  .ev .k{flex:1;min-width:0;word-break:break-word}.ev .s{font-size:11px;color:var(--muted);white-space:nowrap}
+  .ev i{flex:0 0 8px;height:8px;border-radius:2px;align-self:center}
+  .ev.now .t{color:var(--accent)}.ev.past{opacity:.45}
+  .shift{margin-top:8px;font-size:13px;background:#fdf0f5;border-radius:10px;padding:6px 10px;color:#9d2c5b}
+  .big{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .kpi{background:var(--soft);border-radius:12px;padding:8px 10px}.kpi small{display:block;font-size:11px;color:var(--muted);font-weight:700}
+  .kpi b{font-size:18px;font-variant-numeric:tabular-nums}.kpi em{font-style:normal;font-size:11px;color:var(--muted);margin-left:4px}
+  .bar{height:10px;border-radius:5px;background:var(--soft);overflow:hidden;margin-top:6px;position:relative}
+  .bar i{display:block;height:100%;background:var(--g);border-radius:5px}.bar u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.5}
+  .st{display:flex;font-size:13px;padding:4px 0;border-top:1px dashed var(--line);font-variant-numeric:tabular-nums}.st:first-child{border-top:none}
+  .st span{flex:1;color:var(--muted)}.st b{min-width:90px;text-align:right}
+  .neg{color:var(--neg)!important}.okc{color:var(--ok)!important}
+  .ml{padding:8px 0;border-top:1px solid var(--line)}.ml:first-of-type{border-top:none}
+  .ml .h{display:flex;gap:6px;align-items:baseline;font-size:13px}.ml .h b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ml .h span{font-size:11px;color:var(--muted);white-space:nowrap}.ml p{font-size:13px;color:#3b4442;margin-top:1px}
+  .tag{font-size:10px;font-weight:700;border-radius:5px;padding:0 5px;background:var(--soft);color:var(--muted)}
+  .row{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-top:1px solid var(--line);font-size:14px}.row:first-of-type{border-top:none}
+  .row .k{flex:1;min-width:0;word-break:break-word}.row .v{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}.row .s{font-size:11px;color:var(--muted);white-space:nowrap}
+  .late{color:var(--neg);font-weight:700;font-size:11px}
+  .mini{display:grid;gap:10px}
+  .mini h3{font-size:12px;color:var(--muted);font-weight:800;margin-bottom:2px}
+  footer{max-width:760px;margin:6px auto 0;padding:0 16px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+  footer a{color:var(--accent);font-weight:700;text-decoration:none}
+  dialog{border:none;border-radius:18px;padding:18px;width:min(92vw,420px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  dialog::backdrop{background:rgba(0,0,0,.35)}
+  dialog label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 4px}
+  dialog input{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:16px}
+  .btns{display:flex;gap:8px;margin-top:16px}.btns button{flex:1;padding:11px;border-radius:12px;font-weight:700;background:var(--soft);color:var(--accent)}.btns .p{background:var(--g);color:#fff}
+  .skel{color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div class="d"><small id="hDay"></small><b id="hDate"></b></div>
+  <button id="btnReload" aria-label="更新">↻ 更新</button>
+  <button id="btnSet" aria-label="設定">⚙</button>
+</header>
+<main>
+  <section class="card" id="cSched">
+    <h2><span class="n">1</span>今日の予定<span class="sub" id="schedSub"></span></h2>
+    <div id="sched"><div class="skel">読み込み中…</div></div>
+  </section>
+  <section class="card" id="cSales">
+    <h2><span class="n">2</span>売上と利益<span class="sub" id="salesSub"></span></h2>
+    <div id="sales"><div class="skel">読み込み中…</div></div>
+  </section>
+  <section class="card" id="cMail">
+    <h2><span class="n">3</span>返事が必要そうな連絡<span class="sub" id="mailSub"></span></h2>
+    <div id="mail"><div class="skel">読み込み中…</div></div>
+  </section>
+  <section class="card" id="cMore">
+    <h2>そのほか今日のこと</h2>
+    <div class="mini" id="more"></div>
+  </section>
+</main>
+<footer><span id="upd"></span><a href="teiki.html">定期報告を開く →</a></footer>
+
+<dialog id="dlg">
+  <h2 style="margin:0">ダッシュボードの設定</h2>
+  <label>合言葉（定期報告の同期と同じ・8文字以上）</label>
+  <input type="password" id="fKey" autocomplete="off">
+  <label>今月の売上目標（全店の合計・円）</label>
+  <input type="text" id="fGoal" inputmode="numeric" placeholder="例：3,000,000">
+  <div class="hint" style="margin-top:10px">このページは見るだけです。メールの送信や予定の変更はしません。</div>
+  <div class="btns"><button id="dCancel">閉じる</button><button class="p" id="dSave">保存</button></div>
+</dialog>
+
+<script>
+/* 毎朝見るダッシュボード（見るだけ）。
+   ・定期報告アプリと同じ端末のデータ（予定・タスク・支払い・経費・シフト・レジ金）はその場で読む
+   ・Googleカレンダー、レジの売上、朝のメールのまとめは bot（/api/dash）から読む */
+const API='https://task-app-nine-liard.vercel.app/api/dash';
+const $=id=>document.getElementById(id);
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>{const n=+String(v==null?'':v).replace(/[,，円\s]/g,'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248));return isFinite(n)?n:0};
+const fmt=n=>(n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString('ja-JP');
+const man=n=>{const a=Math.abs(n);return (n<0?'−':'')+(a>=1e4?(a/1e4).toFixed(a>=1e6?0:1).replace(/\.0$/,'')+'万':Math.round(a).toLocaleString('ja-JP'))};
+const pad=n=>String(n).padStart(2,'0');
+const dstr=x=>x.getFullYear()+'-'+pad(x.getMonth()+1)+'-'+pad(x.getDate());
+const addDays=(d,n)=>{const x=new Date(d+'T00:00');x.setDate(x.getDate()+n);return dstr(x)};
+const md=d=>(+d.slice(5,7))+'/'+(+d.slice(8,10));
+const tm=t=>t?t.replace(/^0(\d)/,'$1'):'';
+const sum=l=>(l||[]).reduce((s,x)=>s+num(x.v),0);
+const WD='日月火水木金土';
+const TODAY=dstr(new Date()),YDAY=addDays(TODAY,-1);
+const filled=l=>(l||[]).filter(x=>x.s||(x.t||'').trim());
+// 日本の祝日（定期報告アプリと同じ計算）
+const HOL={};
+function jpHol(y){if(HOL[y])return HOL[y];const s=new Set(),add=(m,d)=>s.add(dstr(new Date(y,m-1,d)));
+  const nthMon=(m,n)=>1+(8-new Date(y,m-1,1).getDay())%7+7*(n-1),eq=b=>Math.floor(b+0.242194*(y-1980)-Math.floor((y-1980)/4));
+  add(1,1);add(1,nthMon(1,2));add(2,11);add(2,23);add(3,eq(20.8431));add(4,29);add(5,3);add(5,4);add(5,5);add(7,nthMon(7,3));add(8,11);add(9,nthMon(9,3));add(9,eq(23.2488));add(10,nthMon(10,2));add(11,3);add(11,23);
+  [...s].forEach(d=>{const mid=new Date(d+'T00:00');mid.setDate(mid.getDate()+1);const a=new Date(mid);a.setDate(a.getDate()+1);if(s.has(dstr(a))&&!s.has(dstr(mid))&&mid.getDay()!==0)s.add(dstr(mid))});
+  [...s].sort().forEach(d=>{const x=new Date(d+'T00:00');if(x.getDay()===0){do{x.setDate(x.getDate()+1)}while(s.has(dstr(x)));s.add(dstr(x))}});return HOL[y]=s}
+const isHol=d=>jpHol(+d.slice(0,4)).has(d);
+
+/* ---------- 定期報告アプリのデータ（この端末） ---------- */
+const REP=ls.get('teiki_all',{});
+// 今日の自分の予定：予定タブで入れたもの → 昨日の定期報告の「明日の予定」→ 定期の予定
+function myPlanToday(){const me=filled(ls.get('teiki_plan',{})[TODAY]);if(me.length)return {l:me,src:'予定'};
+  const y=REP[YDAY];if(y&&filled(y.sched).length)return {l:filled(y.sched),src:'昨日の報告'};
+  if(ls.get('teiki_plan_none',[]).includes(TODAY))return {l:[],src:''};
+  const wd=new Date(TODAY+'T00:00').getDay(),h=isHol(TODAY);
+  const r=ls.get('teiki_plan_rule',[]).filter(x=>((x.days||[]).includes(wd)||(x.hol&&h))&&(x.s||(x.t||'').trim()));return {l:r,src:'定期の予定'}}
+// 今月の経費（定期報告の出金。口座どうしの移し替えは数えない）と人件費
+const MOVE=/法人入金|個人入金|銀行入金|移動|振替|差額調整|内訳なし/,LABOR=/人件費|給与|給料|バイト代|タイミー|日当/;
+function monthCost(){const m=TODAY.slice(0,7);let cost=0,labor=0,days=0;
+  Object.values(REP).forEach(o=>{if(!o.date||o.date.slice(0,7)!==m||o.date>=TODAY)return;days++;
+    ['corp','pers','cash'].forEach(id=>(o[id]&&o[id].outs||[]).forEach(x=>{const k=x.k||'',v=num(x.v);if(!v||MOVE.test(k))return;cost+=v;if(LABOR.test(k))labor+=v}))});
+  return {cost,labor,days}}
+// 今日のタスク（定期報告のタスクタブと同じ決め方）
+function todayTasks(){const out=[];ls.get('shin_tasks',[]).forEach(x=>{const st=x.steps||[];
+  if(st.length)st.forEach(y=>{if(!y.done&&y.d&&y.d<=TODAY)out.push({t:y.t,sub:x.t,late:y.d<TODAY?y.d:'',due:x.due})});
+  else if(!x.done&&(!x.d||x.d<=TODAY))out.push({t:x.t,late:x.d&&x.d<TODAY?x.d:'',due:x.due})});return out}
+function dueSoon(){return ls.get('shin_tasks',[]).filter(x=>!x.done&&x.due&&x.due<=addDays(TODAY,3)).map(x=>({t:x.t,due:x.due}))}
+// 近い支払い（7日以内）：毎月・不定期・入出金予定
+function payments(){const end=addDays(TODAY,7),out=[],isInc=k=>/入金|売上|受取|返金/.test(k||'');
+  const last=Object.keys(REP).filter(d=>d<=TODAY).sort().pop(),plans=last?(REP[last].plans||[]):[];
+  plans.forEach(p=>{if(p.d&&p.d>=TODAY&&p.d<=end&&!isInc(p.k)&&((p.k||'').trim()||num(p.v)))out.push({d:p.d,k:(p.k||'').trim(),v:p.v===''?null:num(p.v)})});
+  ls.get('teiki_once',[]).forEach(o=>{if(o.d&&o.d>=TODAY&&o.d<=end)out.push({d:o.d,k:(o.k||'').trim(),v:o.v===''||o.v==null?null:num(o.v)})});
+  ls.get('teiki_recur',[]).filter(r=>(r.k||'').trim()).forEach(r=>{for(let i=0;i<2;i++){const t=new Date(TODAY+'T00:00'),y=t.getFullYear(),m=t.getMonth()+i,ld=new Date(y,m+1,0).getDate();
+    const d=dstr(new Date(y,m,r.day==='末'?ld:Math.min(+r.day||1,ld)));if(d<TODAY||d>end)continue;const k=r.k.trim();
+    if(out.some(x=>x.d.slice(0,7)===d.slice(0,7)&&x.k&&(x.k.includes(k)||k.includes(x.k))))continue;out.push({d,k,v:r.v===''||r.v==null?null:num(r.v),est:!!r.vary})}});
+  return out.sort((a,b)=>a.d.localeCompare(b.d))}
+function reji(){const o=Object.assign({base:30000,log:[]},ls.get('teiki_reji',{}));let n=o.base;o.log.forEach(x=>{n+=x.type==='use'?-num(x.v):num(x.v)});return {now:n,base:o.base,has:o.log.length>0}}
+
+/* ---------- 画面 ---------- */
+let SRV=null,srvErr='';
+function nowMin(){const d=new Date();return d.getHours()*60+d.getMinutes()}
+const toMin=t=>{const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?+m[1]*60+ +m[2]:null};
+function renderSched(){const box=$('sched'),items=[],mp=myPlanToday(),cal=SRV&&SRV.calendar;
+  (cal&&cal.events||[]).forEach(e=>items.push({s:e.all_day?'':e.start,e:e.end,t:e.title,src:'Google',c:'var(--c-g)',allDay:e.all_day}));
+  mp.l.forEach(x=>items.push({s:x.s||'',e:x.e||'',t:(x.t||'').trim(),src:mp.src,c:'var(--c-sc)'}));
+  // 同じ時刻・同じ内容は1つにまとめる
+  const seen=new Set(),list=items.filter(x=>{const k=(x.s||'')+'|'+x.t;if(seen.has(k))return false;seen.add(k);return true})
+    .sort((a,b)=>(a.allDay?-1:0)-(b.allDay?-1:0)||(toMin(a.s)??9999)-(toMin(b.s)??9999));
+  const nm=nowMin();
+  let h=list.length?'':'<div class="hint">今日の予定はまだ入っていません</div>';
+  list.forEach((x,i)=>{const st=toMin(x.s),en=toMin(x.e)??(st!=null?st+60:null),past=en!=null&&en<nm,now=st!=null&&st<=nm&&(en==null||nm<en);
+    h+=`<div class="ev${past?' past':''}${now?' now':''}"><i style="background:${x.c}"></i><span class="t">${x.allDay?'終日':x.s?tm(x.s)+(x.e?'〜'+tm(x.e):'〜'):'時間未定'}</span><span class="k">${esc(x.t||'（内容なし）')}</span><span class="s">${esc(x.src)}</span></div>`});
+  const sh=ls.get('teiki_shift',{})[TODAY]||[];
+  if(sh.length)h+=`<div class="shift">お店のシフト：${esc(sh.map(x=>x.n).join('・'))}</div>`;
+  if(cal&&!cal.enabled)h+='<div class="hint" style="margin-top:6px">Googleカレンダーはbotにつながっていないため出ていません</div>';
+  else if(!SRV&&srvErr)h+=`<div class="hint warn" style="margin-top:6px">Googleカレンダーを読めませんでした（${esc(srvErr)}）</div>`;
+  box.innerHTML=h;$('schedSub').textContent=`${list.length}件${isHol(TODAY)?'・祝日':''}`}
+function renderSales(){const box=$('sales'),s=SRV&&SRV.sales,goal=num((ls.get('teiki_dash',{})||{}).goal),c=monthCost();
+  if(!s){box.innerHTML=srvErr?`<div class="hint warn">売上を読めませんでした（${esc(srvErr)}）</div>`:'<div class="skel">読み込み中…</div>';return}
+  const ok=s.stores.filter(x=>!x.error),yd=ok.reduce((a,x)=>a+(x.yesterday||0),0),mtd=ok.reduce((a,x)=>a+(x.month||0),0);
+  const t=new Date(TODAY+'T00:00'),dim=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(),passed=t.getDate()-1;
+  const rate=goal?mtd/goal:0,pace=goal&&passed?mtd/(goal*passed/dim):0,forecast=passed?mtd/passed*dim:0;
+  const profit=mtd-c.cost,laborRate=mtd?c.labor/mtd:0;
+  let h=`<div class="hint">昨日（${md(s.yesterday_date)}）の売上</div><div class="big">${fmt(yd)}<span style="font-size:14px;color:var(--muted);font-weight:600"> 円</span></div>`;
+  h+=ok.length>1||s.stores.some(x=>x.error)?'<div style="margin-top:4px">'+s.stores.map(x=>`<div class="st"><span>${esc(x.name)}${x.count!=null&&!x.error?`（${x.count}件）`:''}</span><b class="${x.error?'neg':''}">${x.error?'読めませんでした':fmt(x.yesterday)}</b></div>`).join('')+'</div>':'';
+  h+=`<div class="kpis">
+    <div class="kpi"><small>今月の合計（昨日まで）</small><b>${man(mtd)}</b><em>円</em></div>
+    <div class="kpi"><small>月の目標に対して</small>${goal?`<b class="${pace>=1?'okc':pace<0.9?'neg':''}">${Math.round(rate*100)}%</b><em>目標 ${man(goal)}</em>`:'<b style="font-size:13px;color:var(--muted)">⚙で目標を入れる</b>'}</div>
+    <div class="kpi"><small>利益（概算）</small><b class="${profit<0?'neg':''}">${man(profit)}</b><em>円</em></div>
+    <div class="kpi"><small>人件費</small><b>${man(c.labor)}</b><em>${mtd?'売上の'+Math.round(laborRate*100)+'%':''}</em></div></div>`;
+  if(goal)h+=`<div class="bar"><i style="width:${Math.min(100,rate*100)}%"></i><u style="left:${Math.min(100,passed/dim*100)}%"></u></div>
+    <div class="hint" style="margin-top:4px">黒い線が今日までの目安。今のペースだと月末 ${man(forecast)}円（目標の${Math.round(forecast/goal*100)}%）</div>`;
+  h+=`<div class="hint" style="margin-top:6px">経費は定期報告の出金（${c.days}日分・口座の移し替えは除く）の合計 ${man(c.cost)}円で、利益は売上からそれを引いた目安です。</div>`;
+  box.innerHTML=h;$('salesSub').textContent=s.at?`${s.at} 時点`:''}
+function renderMail(){const box=$('mail'),m=SRV&&SRV.mail;
+  if(!SRV){box.innerHTML=srvErr?`<div class="hint warn">読めませんでした（${esc(srvErr)}）</div>`:'<div class="skel">読み込み中…</div>';return}
+  if(!m||!Array.isArray(m.items)){box.innerHTML='<div class="hint">まだ準備中です。毎朝のメールのまとめがつながると、昨日の夕方以降に届いた連絡のうち、返事が要りそうなものが5件まで出ます。</div>';$('mailSub').textContent='';return}
+  const items=m.items.slice(0,5);
+  box.innerHTML=items.length?items.map(x=>`<div class="ml"><div class="h"><span class="tag">${esc(x.channel||'メール')}</span><b>${esc(x.from||'')}</b><span>${esc(x.time||'')}</span></div><p>${esc(x.summary||x.subject||'')}</p></div>`).join(''):'<div class="hint">返事が要りそうな連絡はありません</div>';
+  $('mailSub').textContent=m.at?`${m.at} まとめ`:''}
+function renderMore(){const box=$('more');let h='';
+  const tk=todayTasks(),late=tk.filter(x=>x.late).length,rt=ls.get('teiki_rt',[]),done=(ls.get('teiki_rtlog',{})[TODAY]||[]).length;
+  h+=`<div><h3>今日のタスク ${tk.length}件${late?` <span class="late">（遅れ ${late}）</span>`:''}${rt.length?`・毎日やること ${done}/${rt.length}`:''}</h3>`+
+    (tk.length?tk.slice(0,4).map(x=>`<div class="row"><span class="k">${esc(x.t)}${x.sub?`<span class="s">（${esc(x.sub)}）</span>`:''}</span>${x.late?`<span class="late">${md(x.late)}から</span>`:''}</div>`).join('')+(tk.length>4?`<div class="hint">ほか ${tk.length-4}件</div>`:''):'<div class="hint">なし</div>')+'</div>';
+  const ds=dueSoon();if(ds.length)h+='<div><h3>期限が近いタスク</h3>'+ds.map(x=>`<div class="row"><span class="k">${esc(x.t)}</span><span class="${x.due<TODAY?'late':'s'}">期限 ${md(x.due)}${x.due<TODAY?'（過ぎています）':''}</span></div>`).join('')+'</div>';
+  const pay=payments();h+='<div><h3>7日以内の支払い'+(pay.length?`　計 ${fmt(pay.reduce((a,x)=>a+(x.v||0),0))}円`:'')+'</h3>'+(pay.length?pay.map(x=>`<div class="row"><span class="s" style="min-width:52px">${md(x.d)}（${WD[new Date(x.d+'T00:00').getDay()]}）</span><span class="k">${esc(x.k)}</span><span class="v">${x.v==null?'未定':(x.est?'約':'')+fmt(x.v)}</span></div>`).join(''):'<div class="hint">なし</div>')+'</div>';
+  const rj=reji();if(rj.has&&rj.now!==rj.base)h+=`<div><h3>レジ金</h3><div class="row"><span class="k">いま ${fmt(rj.now)}円</span><span class="${rj.now<rj.base?'late':'s'}">${rj.now<rj.base?`あと${fmt(rj.base-rj.now)}戻す`:`${fmt(rj.now-rj.base)}多い`}</span></div></div>`;
+  const yr=REP[YDAY];h+=`<div><h3>昨日の資金報告</h3><div class="row"><span class="k">${yr?(yr.sent?'送信済み':'まだ送っていません'):'記録がありません'}</span></div></div>`;
+  box.innerHTML=h}
+function renderAll(){const d=new Date();$('hDay').textContent=`${d.getFullYear()}年 ${WD[d.getDay()]}曜日${isHol(TODAY)?'・祝日':''}`;$('hDate').textContent=`${d.getMonth()+1}月${d.getDate()}日`;
+  renderSched();renderSales();renderMail();renderMore()}
+async function load(fresh){const key=ls.get('teiki_sync_key','');
+  if(String(key).length<8){srvErr='⚙で合言葉を入れてください';SRV=null;renderAll();return}
+  srvErr='';try{const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,date:TODAY,fresh:!!fresh})});
+    const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||('エラー '+r.status));SRV=j;ls.set('teiki_dash_cache',{d:TODAY,j})}
+  catch(e){srvErr=e.message;const c=ls.get('teiki_dash_cache',null);if(c&&c.d===TODAY)SRV=c.j}
+  $('upd').textContent='更新 '+pad(new Date().getHours())+':'+pad(new Date().getMinutes())+(srvErr&&SRV?'（前回の内容を表示中）':'');renderAll()}
+$('btnReload').onclick=()=>{$('upd').textContent='更新中…';load(true)};
+$('btnSet').onclick=()=>{$('fKey').value=ls.get('teiki_sync_key','');const g=num((ls.get('teiki_dash',{})||{}).goal);$('fGoal').value=g?g.toLocaleString('ja-JP'):'';$('dlg').showModal()};
+$('dCancel').onclick=()=>$('dlg').close();
+$('dSave').onclick=()=>{const k=$('fKey').value.trim();if(k&&k!==ls.get('teiki_sync_key','')){ls.set('teiki_sync_key',k);ls.set('teiki_sync_init',false);ls.set('teiki_sync_pull',0)}
+  const d=Object.assign({},ls.get('teiki_dash',{}),{goal:num($('fGoal').value)});ls.set('teiki_dash',d);
+  // 目標は定期報告アプリを開いたときにほかの端末へも同期される
+  const u=ls.get('teiki_sync_u',{});u['k.teiki_dash']=Date.now();ls.set('teiki_sync_u',u);const q=ls.get('teiki_sync_dirty',[]);if(!q.includes('k.teiki_dash')){q.push('k.teiki_dash');ls.set('teiki_sync_dirty',q)}
+  $('dlg').close();load()};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)location.reload()});
+renderAll();load();
+</script>
+</body>
+</html>
